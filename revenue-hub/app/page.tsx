@@ -517,7 +517,8 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
     <div style={{
       position: 'fixed', inset: 0, background: BG, zIndex: 200,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'center', padding: '0 40px',
+      justifyContent: 'flex-start', padding: '80px 40px 48px',
+      overflowY: 'auto',
     }}>
       {step === 0 ? (
         <>
