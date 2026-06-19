@@ -547,55 +547,57 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
     <div style={{
       position: 'fixed', inset: 0, background: BG, zIndex: 200,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      justifyContent: 'flex-start', padding: '80px 40px 48px',
-      overflowY: 'auto',
+      padding: '0 36px env(safe-area-inset-bottom)',
     }}>
+      {/* spacer pushes content into the lower portion */}
+      <div style={{ flex: 1 }} />
+
       {step === 0 ? (
         <>
           <img
             src="/icon-192.png"
             alt="Tagett"
-            width={96}
-            height={96}
-            style={{ borderRadius: 22, marginBottom: 32, boxShadow: `0 0 48px ${GOLD}40` }}
+            width={72}
+            height={72}
+            style={{ borderRadius: 18, marginBottom: 22, boxShadow: `0 0 36px ${GOLD}40` }}
           />
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 36, color: TEXT, marginBottom: 12, letterSpacing: '-0.02em' }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 28, color: TEXT, marginBottom: 10, letterSpacing: '-0.02em' }}>
             Tagett
           </div>
-          <div style={{ fontSize: 15, color: MUTED, textAlign: 'center', lineHeight: 1.65, marginBottom: 52, fontFamily: FONT_BODY }}>
-            AI operator tools for Ecstasy Technologies. Find leads, write content, scope projects, and track revenue — all in one place.
+          <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 40, fontFamily: FONT_BODY }}>
+            AI operator tools for Ecstasy Technologies. Find leads, write content, scope projects, and track revenue.
           </div>
         </>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 28, width: '100%', maxWidth: 280 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 22, width: '100%' }}>
             {AGENT_IDS.map((id) => {
               const a = AGENTS[id]
               return (
                 <div key={id} style={{
-                  background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 14,
-                  padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 5,
+                  background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12,
+                  padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4,
                 }}>
-                  <span style={{ fontSize: 24, lineHeight: 1 }}>{a.icon}</span>
-                  <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{a.short}</div>
-                  <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.45, fontFamily: FONT_BODY }}>{a.description}</div>
+                  <span style={{ fontSize: 20, lineHeight: 1 }}>{a.icon}</span>
+                  <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: TEXT }}>{a.short}</div>
+                  <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.4, fontFamily: FONT_BODY }}>{a.description}</div>
                 </div>
               )
             })}
           </div>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 22, color: TEXT, marginBottom: 10, textAlign: 'center' }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 18, color: TEXT, marginBottom: 8, textAlign: 'center' }}>
             Four agents. One mission.
           </div>
-          <div style={{ fontSize: 14, color: MUTED, textAlign: 'center', lineHeight: 1.65, marginBottom: 44, fontFamily: FONT_BODY }}>
-            Tap any agent below to start. They collaborate — hand off prospects, polish proposals, and log deals automatically.
+          <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 36, fontFamily: FONT_BODY }}>
+            Tap any agent to start. They collaborate: hand off prospects, polish proposals, and log deals automatically.
           </div>
         </>
       )}
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 28 }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         {[0, 1].map((i) => (
           <div key={i} style={{
-            width: i === step ? 22 : 6, height: 6, borderRadius: 3,
+            width: i === step ? 20 : 6, height: 5, borderRadius: 3,
             background: i === step ? TEXT : BORDER,
             transition: 'width 0.25s ease, background 0.25s ease',
           }} />
@@ -605,10 +607,10 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
       <button
         onClick={next}
         style={{
-          width: '100%', padding: '16px',
+          width: '100%', padding: '15px',
           background: TEXT, color: BG,
           borderRadius: 14, border: 'none',
-          fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16,
+          fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15,
           cursor: 'pointer',
         }}
       >
@@ -618,11 +620,13 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
       {step === 0 && (
         <button
           onClick={onComplete}
-          style={{ marginTop: 18, fontSize: 13, color: MUTED, fontFamily: FONT_BODY }}
+          style={{ marginTop: 16, marginBottom: 8, fontSize: 13, color: MUTED, fontFamily: FONT_BODY }}
         >
           Skip
         </button>
       )}
+
+      <div style={{ height: step === 0 ? 0 : 24 }} />
     </div>
   )
 }
