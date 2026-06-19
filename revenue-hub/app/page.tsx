@@ -11,7 +11,6 @@ const SURFACE2 = '#18181C'
 const BORDER = '#222226'
 const TEXT = '#F0EDE8'
 const MUTED = '#6B6870'
-const SUCCESS = '#4ade80'
 const FONT_HEADING = "var(--font-space-grotesk), 'Space Grotesk', sans-serif"
 const FONT_BODY = "var(--font-inter), 'Inter', sans-serif"
 
@@ -251,30 +250,6 @@ async function callChat(systemPrompt: string, messages: Message[]): Promise<stri
   return data.text as string
 }
 
-async function initiateCall(toNumber: string): Promise<{ success: boolean; error?: string }> {
-  const res = await fetch('/api/call', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ toNumber }),
-  })
-  const data = await res.json()
-  if (!res.ok) return { success: false, error: data.error }
-  return { success: true }
-}
-
-// ─── Phone number utilities ───────────────────────────────────────────────────
-
-const GH_PHONE_REGEX = /(\+233|0)([235][0-9]{8})/g
-
-function extractPhoneNumbers(text: string): string[] {
-  const matches = [...text.matchAll(GH_PHONE_REGEX)]
-  const numbers = matches.map((m) => {
-    const raw = m[0].replace(/\s/g, '')
-    return raw.startsWith('0') ? '+233' + raw.slice(1) : raw
-  })
-  return [...new Set(numbers)]
-}
-
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 
 function useIsMobile() {
@@ -306,58 +281,10 @@ function ThinkingDots() {
   )
 }
 
-// ─── CallChips ────────────────────────────────────────────────────────────────
-
-function CallChips({ numbers }: { numbers: string[] }) {
-  const [states, setStates] = useState<Record<string, 'idle' | 'calling' | 'called' | 'error'>>({})
-
-  const handleCall = async (num: string) => {
-    setStates((p) => ({ ...p, [num]: 'calling' }))
-    const result = await initiateCall(num)
-    setStates((p) => ({ ...p, [num]: result.success ? 'called' : 'error' }))
-  }
-
-  if (numbers.length === 0) return null
-
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 34 }}>
-      {numbers.map((num) => {
-        const state = states[num] ?? 'idle'
-        const isCalling = state === 'calling'
-        const isCalled = state === 'called'
-        const isError = state === 'error'
-        return (
-          <button
-            key={num}
-            onClick={() => handleCall(num)}
-            disabled={isCalling || isCalled}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '5px 12px', borderRadius: 20,
-              background: isCalled ? `${SUCCESS}15` : isError ? '#2a1010' : SURFACE,
-              border: `1px solid ${isCalled ? SUCCESS : isError ? '#f87171' : GOLD + '60'}`,
-              color: isCalled ? SUCCESS : isError ? '#f87171' : GOLD,
-              fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
-              cursor: isCalling || isCalled ? 'default' : 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
-            <span style={{ fontSize: 11 }}>
-              {isCalling ? '...' : isCalled ? '✓' : isError ? '!' : '◉'}
-            </span>
-            {isCalling ? 'Calling…' : isCalled ? 'Called' : isError ? 'Failed — retry?' : `Call ${num}`}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
 function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === 'user'
-  const phoneNumbers = !isUser ? extractPhoneNumbers(message.content) : []
 
   return (
     <div style={{ marginBottom: 14 }}>
@@ -382,7 +309,6 @@ function ChatMessage({ message }: { message: Message }) {
           {message.content}
         </div>
       </div>
-      {phoneNumbers.length > 0 && <CallChips numbers={phoneNumbers} />}
     </div>
   )
 }
