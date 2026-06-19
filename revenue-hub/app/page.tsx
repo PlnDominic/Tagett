@@ -292,6 +292,26 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
   revenue: [],
 }
 
+// ─── WhatsApp helpers ─────────────────────────────────────────────────────────
+
+const WA_GREEN = '#25D366'
+
+function extractProspects(text: string): Array<{ phone: string; pitch: string }> {
+  const results: Array<{ phone: string; pitch: string }> = []
+  const phoneMatches = [...text.matchAll(/Phone:\s*(\+?233\d{9}|0\d{9})/g)]
+  for (let i = 0; i < phoneMatches.length; i++) {
+    const m = phoneMatches[i]
+    let phone = m[1].replace(/\s/g, '')
+    if (phone.startsWith('0')) phone = '+233' + phone.slice(1)
+    if (!phone.startsWith('+')) phone = '+' + phone
+    const blockEnd = phoneMatches[i + 1]?.index ?? text.length
+    const block = text.slice(m.index!, blockEnd)
+    const pitchMatch = block.match(/Phone pitch:\s*["""'`](.+?)["""'`]/)
+    results.push({ phone, pitch: pitchMatch ? pitchMatch[1] : '' })
+  }
+  return results
+}
+
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 
 function useIsMobile() {
@@ -524,6 +544,69 @@ function HandoffChips({ agentId, content, onHandoff }: {
   )
 }
 
+// ─── WhatsAppChips ────────────────────────────────────────────────────────────
+
+function WhatsAppChips({ content }: { content: string }) {
+  const prospects = extractProspects(content)
+  if (prospects.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 34 }}>
+      {prospects.map(({ phone, pitch }) => {
+        const digits = phone.replace('+', '')
+        const url = `https://wa.me/${digits}${pitch ? `?text=${encodeURIComponent(pitch)}` : ''}`
+        return (
+          <a
+            key={phone}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5,
+              padding: '5px 12px', borderRadius: 20,
+              border: `1px solid ${WA_GREEN}60`,
+              background: `${WA_GREEN}10`,
+              color: WA_GREEN,
+              fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
+              textDecoration: 'none',
+            }}
+          >
+            📱 {phone}
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── CopyMessageButton ────────────────────────────────────────────────────────
+
+function CopyMessageButton({ content }: { content: string }) {
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(async () => {
+    await navigator.clipboard.writeText(content)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [content])
+  return (
+    <div style={{ marginTop: 8, paddingLeft: 34 }}>
+      <button
+        onClick={handleCopy}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 5,
+          padding: '5px 12px', borderRadius: 20,
+          border: `1px solid ${copied ? GOLD + '80' : BORDER}`,
+          background: copied ? `${GOLD}18` : SURFACE2,
+          color: copied ? GOLD : MUTED,
+          fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
+          transition: 'all 0.15s',
+        }}
+      >
+        {copied ? '✓ Copied' : '📋 Copy for WhatsApp'}
+      </button>
+    </div>
+  )
+}
+
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
 function ChatMessage({ message, agentId, isLast, onHandoff }: {
@@ -557,6 +640,12 @@ function ChatMessage({ message, agentId, isLast, onHandoff }: {
           {message.content}
         </div>
       </div>
+      {!isUser && agentId === 'prospect' && (
+        <WhatsAppChips content={message.content} />
+      )}
+      {!isUser && isLast && agentId === 'content' && (
+        <CopyMessageButton content={message.content} />
+      )}
       {!isUser && isLast && agentId && onHandoff && (
         <HandoffChips agentId={agentId} content={message.content} onHandoff={onHandoff} />
       )}
