@@ -31,6 +31,8 @@ interface Agent {
   short: string
   description: string
   systemPrompt: string
+  dailyPrompt: string
+  briefingLabel: string
 }
 
 type AllChats = Record<AgentId, Message[]>
@@ -43,6 +45,14 @@ const AGENTS: Record<AgentId, Agent> = {
     label: '01 ProspectBot',
     short: 'Prospect',
     description: 'Find & qualify clients in Ghana',
+    briefingLabel: "Today's Prospect List",
+    dailyPrompt: `Generate my prospect list for today. Give me 5 specific companies or individuals in Ghana I should contact right now to move toward GHS 120,000 this month. For each prospect include:
+- Company name, location, and sector
+- Why they need our services right now
+- Which service to lead with and the estimated GHS project value
+- A 2-sentence outreach message I can send via WhatsApp or email today
+
+Be specific — use real Ghanaian companies, districts, and industries. Make every entry actionable.`,
     systemPrompt: `You are ProspectBot, a business development AI for Ecstasy Geospatial Services based in Kumasi, Ghana. Your job is to help find and qualify potential clients for the following services:
 
 - Web development: GHS 5,000–18,000 per project
@@ -60,6 +70,14 @@ Always ground your responses in the Ghanaian business context. Reference real in
     label: '02 ContentBot',
     short: 'Content',
     description: 'X posts & client proposals',
+    briefingLabel: "Today's Content Pack",
+    dailyPrompt: `Generate today's content package for Ecstasy Geospatial Services. Deliver:
+
+1. Three ready-to-post X (Twitter) posts — each showcasing a different service (GIS mapping, web development, or UAV surveys). Make them specific and compelling to attract Ghanaian clients. No hashtag spam. Under 280 characters each.
+
+2. One professional WhatsApp follow-up message I can send to a warm prospect today — confident, brief, with a clear call to action.
+
+Keep everything on-brand: premium, confident, no filler phrases.`,
     systemPrompt: `You are ContentBot, a content writing AI for Ecstasy Geospatial Services based in Kumasi, Ghana. You write two types of content:
 
 1. X (Twitter) posts — concise, professional, GIS/tech/urban planning focus. Aimed at attracting Ghanaian clients and showcasing expertise. No hashtag spam. Max 280 characters unless thread requested.
@@ -80,6 +98,17 @@ Write in a confident, premium tone. Reference Ghana, Kumasi, Accra, and local in
     label: '03 ProjectBot',
     short: 'Project',
     description: 'Scope projects & generate proposals',
+    briefingLabel: 'Generate a Proposal',
+    dailyPrompt: `Generate a ready-to-send project proposal I can use today. Choose the service most likely to close quickly with a Ghanaian real estate developer or municipal assembly client.
+
+Include:
+- Project title and one-line summary
+- Scope of work with clear deliverables
+- Timeline in weeks
+- Itemised GHS pricing with a total
+- Payment terms (deposit + milestones)
+
+Make it professional enough to forward directly to a client from this screen. All amounts in GHS.`,
     systemPrompt: `You are ProjectBot, a project scoping AI for Ecstasy Geospatial Services based in Kumasi, Ghana. When given a project brief, you:
 
 1. Ask clarifying questions if needed
@@ -101,6 +130,14 @@ Consider Ghanaian project realities: site access, data availability, GNSS accura
     label: '04 RevenueTracker',
     short: 'Revenue',
     description: 'Track earnings vs GHS 120,000/month goal',
+    briefingLabel: "Today's Revenue Briefing",
+    dailyPrompt: `Give me my revenue focus briefing for today. My target is GHS 120,000 this month.
+
+Tell me:
+1. Exactly how many projects at each service price point I need to close to hit the goal — show the math clearly.
+2. The fastest path to GHS 120,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
+3. Three specific revenue actions I should take today — be direct and tactical, not generic.
+4. What a realistic week-by-week milestone breakdown looks like to hit GHS 120,000 by month end.`,
     systemPrompt: `You are RevenueTracker, a business analytics AI for Ecstasy Geospatial Services based in Kumasi, Ghana. You help track and analyse monthly revenue against a GHS 120,000/month target (~$10,000 USD).
 
 When given revenue data, you:
@@ -226,6 +263,61 @@ function ChatMessage({ message }: { message: Message }) {
   )
 }
 
+// ─── BriefingButton ───────────────────────────────────────────────────────────
+
+function BriefingButton({ label, onClick, loading, size = 'large' }: {
+  label: string
+  onClick: () => void
+  loading: boolean
+  size?: 'large' | 'small'
+}) {
+  if (size === 'small') {
+    return (
+      <button
+        onClick={onClick}
+        disabled={loading}
+        style={{
+          fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600,
+          color: loading ? MUTED : GOLD,
+          padding: '4px 10px',
+          border: `1px solid ${loading ? BORDER : GOLD + '60'}`,
+          borderRadius: 6,
+          transition: 'opacity 0.15s',
+          opacity: loading ? 0.5 : 1,
+          whiteSpace: 'nowrap',
+        }}
+      >
+        ▶ Run
+      </button>
+    )
+  }
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+        padding: '14px 28px',
+        background: loading ? SURFACE2 : GOLD,
+        color: loading ? MUTED : BG,
+        borderRadius: 12,
+        fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15,
+        transition: 'background 0.15s, color 0.15s',
+        marginTop: 20,
+        cursor: loading ? 'not-allowed' : 'pointer',
+        boxShadow: loading ? 'none' : `0 0 24px ${GOLD}30`,
+      }}
+    >
+      {loading ? (
+        <>Generating… <ThinkingDots /></>
+      ) : (
+        <>▶ {label}</>
+      )}
+    </button>
+  )
+}
+
 // ─── GoalRing (desktop sidebar) ───────────────────────────────────────────────
 
 function GoalRing({ earned }: { earned: number }) {
@@ -298,17 +390,8 @@ function MiniGoalRing({ earned }: { earned: number }) {
 
 function MobileHeader({ agent, earnedGHS }: { agent: Agent; earnedGHS: number }) {
   return (
-    <div style={{
-      background: SURFACE,
-      borderBottom: `1px solid ${BORDER}`,
-      paddingTop: 'env(safe-area-inset-top)',
-      flexShrink: 0,
-    }}>
-      <div style={{
-        height: 52,
-        padding: '0 16px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
+    <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, paddingTop: 'env(safe-area-inset-top)', flexShrink: 0 }}>
+      <div style={{ height: 52, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             Revenue Hub
@@ -325,21 +408,13 @@ function MobileHeader({ agent, earnedGHS }: { agent: Agent; earnedGHS: number })
 
 // ─── BottomNav ────────────────────────────────────────────────────────────────
 
-interface BottomNavProps {
+function BottomNav({ activeAgent, allChats, onSelect }: {
   activeAgent: AgentId
   allChats: AllChats
   onSelect: (id: AgentId) => void
-}
-
-function BottomNav({ activeAgent, allChats, onSelect }: BottomNavProps) {
+}) {
   return (
-    <div style={{
-      background: SURFACE,
-      borderTop: `1px solid ${BORDER}`,
-      display: 'flex',
-      paddingBottom: 'env(safe-area-inset-bottom)',
-      flexShrink: 0,
-    }}>
+    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0 }}>
       {AGENT_IDS.map((id) => {
         const agent = AGENTS[id]
         const isActive = id === activeAgent
@@ -351,27 +426,18 @@ function BottomNav({ activeAgent, allChats, onSelect }: BottomNavProps) {
             key={id}
             onClick={() => onSelect(id)}
             style={{
-              flex: 1,
-              minHeight: 56,
+              flex: 1, minHeight: 56,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: 3,
-              background: 'none',
+              gap: 3, background: 'none',
               borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
               paddingTop: 10, paddingBottom: 8,
               transition: 'border-color 0.15s',
             }}
           >
-            <span style={{
-              fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 11,
-              color: isActive ? GOLD : MUTED,
-              letterSpacing: '0.04em',
-            }}>
+            <span style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 11, color: isActive ? GOLD : MUTED, letterSpacing: '0.04em' }}>
               {num}
             </span>
-            <span style={{
-              fontFamily: FONT_HEADING, fontSize: 12, fontWeight: isActive ? 600 : 400,
-              color: isActive ? TEXT : MUTED,
-            }}>
+            <span style={{ fontFamily: FONT_HEADING, fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? TEXT : MUTED }}>
               {agent.short}
             </span>
             {turnCount > 0 && (
@@ -379,8 +445,7 @@ function BottomNav({ activeAgent, allChats, onSelect }: BottomNavProps) {
                 fontFamily: FONT_BODY, fontSize: 9,
                 color: isActive ? GOLD : MUTED,
                 background: isActive ? `${GOLD}20` : SURFACE2,
-                padding: '1px 5px', borderRadius: 8,
-                minWidth: 16, textAlign: 'center',
+                padding: '1px 5px', borderRadius: 8, minWidth: 16, textAlign: 'center',
               }}>
                 {turnCount}
               </span>
@@ -394,13 +459,11 @@ function BottomNav({ activeAgent, allChats, onSelect }: BottomNavProps) {
 
 // ─── ChatInput ────────────────────────────────────────────────────────────────
 
-interface ChatInputProps {
+function ChatInput({ agentShort, onSend, loading }: {
   agentShort: string
   onSend: (text: string) => void
   loading: boolean
-}
-
-function ChatInput({ agentShort, onSend, loading }: ChatInputProps) {
+}) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -435,11 +498,8 @@ function ChatInput({ agentShort, onSend, loading }: ChatInputProps) {
           rows={1}
           style={{
             flex: 1, background: 'none', border: 'none', outline: 'none',
-            color: TEXT,
-            fontSize: 16, // 16px prevents iOS auto-zoom
-            resize: 'none', lineHeight: 1.5,
-            maxHeight: 120, overflowY: 'auto',
-            fontFamily: FONT_BODY,
+            color: TEXT, fontSize: 16, resize: 'none', lineHeight: 1.5,
+            maxHeight: 120, overflowY: 'auto', fontFamily: FONT_BODY,
           }}
           onInput={(e) => {
             const t = e.currentTarget
@@ -467,7 +527,12 @@ function ChatInput({ agentShort, onSend, loading }: ChatInputProps) {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agentShort }: { messages: Message[]; loading: boolean; agentShort: string }) {
+function MessageList({ messages, loading, agent, onRunBriefing }: {
+  messages: Message[]
+  loading: boolean
+  agent: Agent
+  onRunBriefing: () => void
+}) {
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -478,19 +543,32 @@ function MessageList({ messages, loading, agentShort }: { messages: Message[]; l
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px 8px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
       {messages.length === 0 ? (
         <div style={{
-          height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: MUTED, fontSize: 14, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY,
+          height: '100%', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          color: MUTED, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY,
+          padding: '0 24px',
         }}>
-          <div>
-            <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.25 }}>◈</div>
-            Start a conversation with {agentShort}.<br />
-            <span style={{ fontSize: 12 }}>Enter to send · Shift+Enter for new line</span>
+          <div style={{ fontSize: 32, marginBottom: 16, opacity: 0.2 }}>◈</div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT, marginBottom: 6 }}>
+            {agent.label}
           </div>
+          <div style={{ fontSize: 13, color: MUTED, marginBottom: 4 }}>
+            {agent.description}
+          </div>
+          <div style={{ fontSize: 12, color: MUTED, opacity: 0.6, marginBottom: 8 }}>
+            Tap to run autonomously, or type a custom message below.
+          </div>
+          <BriefingButton
+            label={agent.briefingLabel}
+            onClick={onRunBriefing}
+            loading={loading}
+            size="large"
+          />
         </div>
       ) : (
         messages.map((m, i) => <ChatMessage key={i} message={m} />)
       )}
-      {loading && (
+      {loading && messages.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
           <div style={{
             width: 26, height: 26, borderRadius: '50%', background: GOLD,
@@ -556,6 +634,10 @@ export default function Page() {
     }
   }, [activeAgent, messages, agent])
 
+  const handleRunBriefing = useCallback(() => {
+    handleSend(agent.dailyPrompt)
+  }, [agent.dailyPrompt, handleSend])
+
   const handleClear = useCallback(() => {
     setAllChats((prev) => ({ ...prev, [activeAgent]: [] }))
     setError(null)
@@ -577,41 +659,39 @@ export default function Page() {
     return max
   })()
 
+  // Shared agent subheader (description + briefing + clear buttons)
+  const AgentSubheader = (
+    <div style={{
+      padding: '10px 16px 8px',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+      borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
+    }}>
+      <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />
+        {messages.length > 0 && (
+          <button
+            onClick={handleClear}
+            style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, minHeight: 30 }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  )
+
   // ── Mobile layout ──────────────────────────────────────────────────────────
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
         <MobileHeader agent={agent} earnedGHS={earnedGHS} />
-
-        {/* Chat area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {/* Agent subtitle + clear */}
-          <div style={{
-            padding: '10px 16px 8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
-          }}>
-            <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY }}>{agent.description}</span>
-            {messages.length > 0 && (
-              <button
-                onClick={handleClear}
-                style={{
-                  fontSize: 12, color: MUTED, padding: '4px 10px',
-                  border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY,
-                  minHeight: 30,
-                }}
-              >
-                Clear
-              </button>
-            )}
-          </div>
-
+          {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-
-          <MessageList messages={messages} loading={loading} agentShort={agent.short} />
+          <MessageList messages={messages} loading={loading} agent={agent} onRunBriefing={handleRunBriefing} />
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
         </div>
-
         <BottomNav activeAgent={activeAgent} allChats={allChats} onSelect={handleSelectAgent} />
       </div>
     )
@@ -621,17 +701,13 @@ export default function Page() {
   return (
     <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
       {/* Sidebar */}
-      <div style={{
-        width: 240, flexShrink: 0, background: SURFACE,
-        borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column',
-      }}>
+      <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Revenue Hub
           </div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Geospatial</div>
         </div>
-
         <nav style={{ padding: '12px 10px', flex: 1 }}>
           {AGENT_IDS.map((id) => {
             const a = AGENTS[id]
@@ -655,10 +731,7 @@ export default function Page() {
                     {a.label}
                   </span>
                   {msgCount > 0 && (
-                    <span style={{
-                      fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED,
-                      background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10,
-                    }}>
+                    <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED, background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10 }}>
                       {Math.floor(msgCount / 2)}
                     </span>
                   )}
@@ -668,7 +741,6 @@ export default function Page() {
             )
           })}
         </nav>
-
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
           <GoalRing earned={earnedGHS} />
         </div>
@@ -684,24 +756,22 @@ export default function Page() {
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT }}>{agent.label}</div>
             <div style={{ fontSize: 12, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{agent.description}</div>
           </div>
-          {messages.length > 0 && (
-            <button
-              onClick={handleClear}
-              style={{
-                fontSize: 12, color: MUTED, padding: '4px 10px',
-                border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY,
-                transition: 'color 0.15s, border-color 0.15s',
-              }}
-              onMouseEnter={(e) => { const t = e.currentTarget; t.style.color = TEXT; t.style.borderColor = MUTED }}
-              onMouseLeave={(e) => { const t = e.currentTarget; t.style.color = MUTED; t.style.borderColor = BORDER }}
-            >
-              Clear
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />
+            {messages.length > 0 && (
+              <button
+                onClick={handleClear}
+                style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, transition: 'color 0.15s, border-color 0.15s' }}
+                onMouseEnter={(e) => { const t = e.currentTarget; t.style.color = TEXT; t.style.borderColor = MUTED }}
+                onMouseLeave={(e) => { const t = e.currentTarget; t.style.color = MUTED; t.style.borderColor = BORDER }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
-
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agentShort={agent.short} />
+        <MessageList messages={messages} loading={loading} agent={agent} onRunBriefing={handleRunBriefing} />
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
       </div>
     </div>
