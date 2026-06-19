@@ -300,6 +300,128 @@ function useIsMobile() {
   return isMobile
 }
 
+// ─── Push notifications ───────────────────────────────────────────────────────
+
+function urlBase64ToUint8Array(b64: string): Uint8Array<ArrayBuffer> {
+  const pad = '='.repeat((4 - (b64.length % 4)) % 4)
+  const base64 = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = window.atob(base64)
+  const buf = new ArrayBuffer(raw.length)
+  const view = new Uint8Array(buf)
+  for (let i = 0; i < raw.length; i++) view[i] = raw.charCodeAt(i)
+  return view
+}
+
+type NotifStatus = 'unknown' | 'unsupported' | 'denied' | 'subscribed' | 'idle'
+
+function useNotifications() {
+  const [status, setStatus] = useState<NotifStatus>('unknown')
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+      setStatus('unsupported'); return
+    }
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+    if (Notification.permission === 'denied') { setStatus('denied'); return }
+    navigator.serviceWorker.ready.then(async (reg) => {
+      const sub = await reg.pushManager.getSubscription()
+      setStatus(sub ? 'subscribed' : 'idle')
+    }).catch(() => setStatus('idle'))
+  }, [])
+
+  const subscribe = useCallback(async () => {
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!vapidKey) { alert('NEXT_PUBLIC_VAPID_PUBLIC_KEY not set.'); return }
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') { setStatus('denied'); return }
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidKey),
+    })
+    const res = await fetch('/api/notify/subscribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(sub),
+    })
+    if (res.ok) setStatus('subscribed')
+    else {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? 'Failed to save subscription.')
+    }
+  }, [])
+
+  const unsubscribe = useCallback(async () => {
+    const reg = await navigator.serviceWorker.ready
+    const sub = await reg.pushManager.getSubscription()
+    if (sub) await sub.unsubscribe()
+    await fetch('/api/notify/subscribe', { method: 'DELETE' })
+    setStatus('idle')
+  }, [])
+
+  const sendTest = useCallback(async () => {
+    const res = await fetch('/api/notify/send', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'Revenue Hub', body: 'Push notifications are working!' }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      alert(err.error ?? 'Failed to send.')
+    }
+  }, [])
+
+  return { status, subscribe, unsubscribe, sendTest }
+}
+
+function NotifToggle({ status, onSubscribe, onUnsubscribe, onTest }: {
+  status: NotifStatus
+  onSubscribe: () => void
+  onUnsubscribe: () => void
+  onTest: () => void
+}) {
+  if (status === 'unknown' || status === 'unsupported') return null
+  const isOn = status === 'subscribed'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <button
+        onClick={isOn ? onUnsubscribe : status === 'denied' ? undefined : onSubscribe}
+        disabled={status === 'denied'}
+        title={
+          status === 'denied' ? 'Notifications blocked — enable in browser settings'
+            : isOn ? 'Disable notifications' : 'Enable daily briefing notifications'
+        }
+        style={{
+          width: 30, height: 30, borderRadius: 8,
+          border: `1px solid ${isOn ? GOLD + '80' : BORDER}`,
+          background: isOn ? `${GOLD}18` : SURFACE2,
+          color: isOn ? GOLD : status === 'denied' ? MUTED : MUTED,
+          fontSize: 14,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0, opacity: status === 'denied' ? 0.4 : 1,
+          transition: 'border-color 0.15s, background 0.15s',
+        }}
+      >
+        {isOn ? '🔔' : '🔕'}
+      </button>
+      {isOn && (
+        <button
+          onClick={onTest}
+          title="Send a test notification"
+          style={{
+            fontSize: 10, fontFamily: FONT_BODY, color: MUTED,
+            padding: '3px 7px', border: `1px solid ${BORDER}`,
+            borderRadius: 6, whiteSpace: 'nowrap',
+          }}
+        >
+          Test
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
 function useTheme() {
@@ -704,11 +826,15 @@ function MiniGoalRing({ earned }: { earned: number }) {
 
 // ─── MobileHeader ─────────────────────────────────────────────────────────────
 
-function MobileHeader({ agent, earnedGHS, theme, onToggleTheme }: {
+function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifStatus, onSubscribe, onUnsubscribe, onTestNotif }: {
   agent: Agent
   earnedGHS: number
   theme: 'dark' | 'light'
   onToggleTheme: () => void
+  notifStatus: NotifStatus
+  onSubscribe: () => void
+  onUnsubscribe: () => void
+  onTestNotif: () => void
 }) {
   return (
     <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, paddingTop: 'env(safe-area-inset-top)', flexShrink: 0 }}>
@@ -717,7 +843,8 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme }: {
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Revenue Hub</div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT, marginTop: 1 }}>{agent.label}</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <NotifToggle status={notifStatus} onSubscribe={onSubscribe} onUnsubscribe={onUnsubscribe} onTest={onTestNotif} />
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <MiniGoalRing earned={earnedGHS} />
         </div>
@@ -871,6 +998,7 @@ function ErrorBanner({ error, onDismiss }: { error: string; onDismiss: () => voi
 export default function Page() {
   const isMobile = useIsMobile()
   const { theme, toggleTheme } = useTheme()
+  const { status: notifStatus, subscribe, unsubscribe, sendTest } = useNotifications()
   const [activeAgent, setActiveAgent] = useState<AgentId>('prospect')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [loading, setLoading] = useState(false)
@@ -968,7 +1096,7 @@ export default function Page() {
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
-        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} />
+        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifStatus={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTestNotif={sendTest} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
@@ -1006,7 +1134,8 @@ export default function Page() {
           })}
         </nav>
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
-          <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
           </div>
           <GoalRing earned={earnedGHS} />
