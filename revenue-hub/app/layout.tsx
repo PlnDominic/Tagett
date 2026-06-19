@@ -34,6 +34,9 @@ export const metadata: Metadata = {
     title: 'Revenue Hub',
     statusBarStyle: 'black-translucent',
   },
+  icons: {
+    apple: '/apple-touch-icon.png',
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
