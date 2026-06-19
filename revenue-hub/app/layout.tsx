@@ -26,12 +26,12 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Revenue Hub',
+  title: 'Tagett',
   description: 'AI operator tools for Ecstasy Technologies, Ghana',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
-    title: 'Revenue Hub',
+    title: 'Tagett',
     statusBarStyle: 'black-translucent',
   },
   icons: {

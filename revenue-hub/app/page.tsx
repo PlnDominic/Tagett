@@ -389,7 +389,7 @@ function useNotifications() {
     const res = await fetch('/api/notify/send', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Revenue Hub', body: 'Push notifications are working!' }),
+      body: JSON.stringify({ title: 'Tagett', body: 'Push notifications are working!' }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -492,6 +492,106 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
     <IconButton onClick={onToggle} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
       {theme === 'dark' ? '☀' : '☽'}
     </IconButton>
+  )
+}
+
+// ─── Onboarding ───────────────────────────────────────────────────────────────
+
+function useOnboarding() {
+  const [done, setDone] = useState<boolean | null>(() =>
+    typeof window !== 'undefined' ? !!localStorage.getItem('tagett-onboarded') : null
+  )
+  const complete = useCallback(() => {
+    localStorage.setItem('tagett-onboarded', '1')
+    setDone(true)
+  }, [])
+  return { done, complete }
+}
+
+function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
+  const [step, setStep] = useState(0)
+
+  const next = () => (step < 1 ? setStep(1) : onComplete())
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: BG, zIndex: 200,
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', padding: '0 40px',
+    }}>
+      {step === 0 ? (
+        <>
+          <div style={{
+            width: 96, height: 96, borderRadius: 24, background: GOLD,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 52, color: '#0B0B0D',
+            marginBottom: 32, boxShadow: `0 0 48px ${GOLD}40`,
+          }}>T</div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 36, color: TEXT, marginBottom: 12, letterSpacing: '-0.02em' }}>
+            Tagett
+          </div>
+          <div style={{ fontSize: 15, color: MUTED, textAlign: 'center', lineHeight: 1.65, marginBottom: 52, fontFamily: FONT_BODY }}>
+            AI operator tools for Ecstasy Technologies. Find leads, write content, scope projects, and track revenue — all in one place.
+          </div>
+        </>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 28, width: '100%', maxWidth: 280 }}>
+            {AGENT_IDS.map((id) => {
+              const a = AGENTS[id]
+              return (
+                <div key={id} style={{
+                  background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 14,
+                  padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 5,
+                }}>
+                  <span style={{ fontSize: 24, lineHeight: 1 }}>{a.icon}</span>
+                  <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{a.short}</div>
+                  <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.45, fontFamily: FONT_BODY }}>{a.description}</div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 22, color: TEXT, marginBottom: 10, textAlign: 'center' }}>
+            Four agents. One mission.
+          </div>
+          <div style={{ fontSize: 14, color: MUTED, textAlign: 'center', lineHeight: 1.65, marginBottom: 44, fontFamily: FONT_BODY }}>
+            Tap any agent below to start. They collaborate — hand off prospects, polish proposals, and log deals automatically.
+          </div>
+        </>
+      )}
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 28 }}>
+        {[0, 1].map((i) => (
+          <div key={i} style={{
+            width: i === step ? 22 : 6, height: 6, borderRadius: 3,
+            background: i === step ? TEXT : BORDER,
+            transition: 'width 0.25s ease, background 0.25s ease',
+          }} />
+        ))}
+      </div>
+
+      <button
+        onClick={next}
+        style={{
+          width: '100%', padding: '16px',
+          background: TEXT, color: BG,
+          borderRadius: 14, border: 'none',
+          fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16,
+          cursor: 'pointer',
+        }}
+      >
+        {step === 0 ? 'Continue' : 'Get Started'}
+      </button>
+
+      {step === 0 && (
+        <button
+          onClick={onComplete}
+          style={{ marginTop: 18, fontSize: 13, color: MUTED, fontFamily: FONT_BODY }}
+        >
+          Skip
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -936,7 +1036,7 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
     <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, paddingTop: 'env(safe-area-inset-top)', flexShrink: 0 }}>
       <div style={{ height: 52, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Revenue Hub</div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tagett</div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT, marginTop: 1 }}>{agent.label}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -963,18 +1063,18 @@ function BottomNav({ activeAgent, allChats, onSelect }: {
         return (
           <button key={id} onClick={() => onSelect(id)} style={{
             flex: 1, minHeight: 56, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
-            borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
-            paddingTop: 8, paddingBottom: 8, transition: 'border-color 0.15s',
+            alignItems: 'center', justifyContent: 'center', gap: 3, background: 'none',
+            borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
+            paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
           }}>
-            <span style={{ fontSize: 18, lineHeight: 1, color: isActive ? GOLD : MUTED, transition: 'color 0.15s' }}>
+            <span style={{ fontSize: 20, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>
               {agent.icon}
             </span>
-            <span style={{ fontFamily: FONT_HEADING, fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? TEXT : MUTED, marginTop: 2 }}>
+            <span style={{ fontFamily: FONT_HEADING, fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, marginTop: 1, letterSpacing: '0.02em' }}>
               {agent.short}
             </span>
             {turnCount > 0 && (
-              <span style={{ fontFamily: FONT_BODY, fontSize: 9, color: isActive ? GOLD : MUTED, background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 5px', borderRadius: 8, minWidth: 16, textAlign: 'center' }}>
+              <span style={{ fontFamily: FONT_BODY, fontSize: 9, color: MUTED, background: SURFACE2, padding: '1px 5px', borderRadius: 8, minWidth: 16, textAlign: 'center' }}>
                 {turnCount}
               </span>
             )}
@@ -1094,6 +1194,7 @@ function ErrorBanner({ error, onDismiss }: { error: string; onDismiss: () => voi
 export default function Page() {
   const isMobile = useIsMobile()
   const { theme, toggleTheme } = useTheme()
+  const { done: onboarded, complete: completeOnboarding } = useOnboarding()
   const { status: notifStatus, subscribe, unsubscribe, sendTest } = useNotifications()
   const [activeAgent, setActiveAgent] = useState<AgentId>('prospect')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
@@ -1172,6 +1273,9 @@ export default function Page() {
     return max
   }, [allChats.revenue])
 
+  if (onboarded === null) return null
+  if (!onboarded) return <OnboardingScreen onComplete={completeOnboarding} />
+
   const AgentSubheader = (
     <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
       <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
@@ -1209,7 +1313,7 @@ export default function Page() {
     <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
       <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Revenue Hub</div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tagett</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Technologies</div>
         </div>
         <nav style={{ padding: '12px 10px', flex: 1 }}>

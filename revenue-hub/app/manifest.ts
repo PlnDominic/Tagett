@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Revenue Hub — Ecstasy Technologies',
-    short_name: 'Revenue Hub',
+    name: 'Tagett — Ecstasy Technologies',
+    short_name: 'Tagett',
     description: 'AI operator tools for Ecstasy Technologies, Ghana',
     start_url: '/',
     display: 'standalone',
