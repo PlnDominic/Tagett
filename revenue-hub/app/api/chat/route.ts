@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const MODEL = 'claude-sonnet-4-6'
+const MODEL = 'gemini-2.0-flash'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -13,9 +13,9 @@ interface ChatRequest {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
-    return NextResponse.json({ error: 'ANTHROPIC_API_KEY not configured' }, { status: 500 })
+    return NextResponse.json({ error: 'GEMINI_API_KEY not configured' }, { status: 500 })
   }
 
   let body: ChatRequest
@@ -30,28 +30,35 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing systemPrompt or messages' }, { status: 400 })
   }
 
-  const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    }),
-  })
+  const geminiRes = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: systemPrompt }],
+        },
+        contents: messages.map((m) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }],
+        })),
+        generationConfig: {
+          maxOutputTokens: 1000,
+        },
+      }),
+    }
+  )
 
-  if (!anthropicRes.ok) {
-    const err = await anthropicRes.json().catch(() => ({}))
-    const message = (err as { error?: { message?: string } })?.error?.message ?? `Anthropic error ${anthropicRes.status}`
-    return NextResponse.json({ error: message }, { status: anthropicRes.status })
+  if (!geminiRes.ok) {
+    const err = await geminiRes.json().catch(() => ({}))
+    const message =
+      (err as { error?: { message?: string } })?.error?.message ??
+      `Gemini API error ${geminiRes.status}`
+    return NextResponse.json({ error: message }, { status: geminiRes.status })
   }
 
-  const data = await anthropicRes.json()
-  const text: string = data.content[0].text
+  const data = await geminiRes.json()
+  const text: string = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
   return NextResponse.json({ text })
 }
