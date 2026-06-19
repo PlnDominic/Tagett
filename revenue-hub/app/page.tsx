@@ -4,13 +4,13 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
-const GOLD = '#C8A96E'
-const BG = '#0B0B0D'
-const SURFACE = '#111114'
-const SURFACE2 = '#18181C'
-const BORDER = '#222226'
-const TEXT = '#F0EDE8'
-const MUTED = '#6B6870'
+const GOLD = '#C8A96E'          // same in both themes
+const BG = 'var(--bg)'
+const SURFACE = 'var(--surface)'
+const SURFACE2 = 'var(--surface2)'
+const BORDER = 'var(--border)'
+const TEXT = 'var(--text)'
+const MUTED = 'var(--muted)'
 const FONT_HEADING = "var(--font-space-grotesk), 'Space Grotesk', sans-serif"
 const FONT_BODY = "var(--font-inter), 'Inter', sans-serif"
 
@@ -298,6 +298,51 @@ function useIsMobile() {
     return () => window.removeEventListener('resize', check)
   }, [])
   return isMobile
+}
+
+// ─── Theme ────────────────────────────────────────────────────────────────────
+
+function useTheme() {
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+
+  useEffect(() => {
+    const saved = localStorage.getItem('revenue-hub-theme') as 'dark' | 'light' | null
+    const initial = saved ?? 'dark'
+    setTheme(initial)
+    document.documentElement.setAttribute('data-theme', initial)
+  }, [])
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === 'dark' ? 'light' : 'dark'
+      document.documentElement.setAttribute('data-theme', next)
+      localStorage.setItem('revenue-hub-theme', next)
+      return next
+    })
+  }, [])
+
+  return { theme, toggleTheme }
+}
+
+function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+      style={{
+        width: 30, height: 30, borderRadius: 8,
+        border: `1px solid ${BORDER}`,
+        background: SURFACE2,
+        color: MUTED,
+        fontSize: 15,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        transition: 'border-color 0.15s',
+      }}
+    >
+      {theme === 'dark' ? '☀' : '☽'}
+    </button>
+  )
 }
 
 // ─── ThinkingDots ─────────────────────────────────────────────────────────────
@@ -659,7 +704,12 @@ function MiniGoalRing({ earned }: { earned: number }) {
 
 // ─── MobileHeader ─────────────────────────────────────────────────────────────
 
-function MobileHeader({ agent, earnedGHS }: { agent: Agent; earnedGHS: number }) {
+function MobileHeader({ agent, earnedGHS, theme, onToggleTheme }: {
+  agent: Agent
+  earnedGHS: number
+  theme: 'dark' | 'light'
+  onToggleTheme: () => void
+}) {
   return (
     <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, paddingTop: 'env(safe-area-inset-top)', flexShrink: 0 }}>
       <div style={{ height: 52, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -667,7 +717,10 @@ function MobileHeader({ agent, earnedGHS }: { agent: Agent; earnedGHS: number })
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Revenue Hub</div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT, marginTop: 1 }}>{agent.label}</div>
         </div>
-        <MiniGoalRing earned={earnedGHS} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+          <MiniGoalRing earned={earnedGHS} />
+        </div>
       </div>
     </div>
   )
@@ -817,6 +870,7 @@ function ErrorBanner({ error, onDismiss }: { error: string; onDismiss: () => voi
 
 export default function Page() {
   const isMobile = useIsMobile()
+  const { theme, toggleTheme } = useTheme()
   const [activeAgent, setActiveAgent] = useState<AgentId>('prospect')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [loading, setLoading] = useState(false)
@@ -914,7 +968,7 @@ export default function Page() {
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
-        <MobileHeader agent={agent} earnedGHS={earnedGHS} />
+        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
@@ -951,7 +1005,12 @@ export default function Page() {
             )
           })}
         </nav>
-        <div style={{ borderTop: `1px solid ${BORDER}` }}><GoalRing earned={earnedGHS} /></div>
+        <div style={{ borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'flex-end' }}>
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          </div>
+          <GoalRing earned={earnedGHS} />
+        </div>
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
