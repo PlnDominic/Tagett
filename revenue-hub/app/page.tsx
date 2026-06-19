@@ -292,12 +292,16 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
   revenue: [],
 }
 
-// ─── WhatsApp helpers ─────────────────────────────────────────────────────────
+// ─── Social & WhatsApp helpers ────────────────────────────────────────────────
 
 const WA_GREEN = '#25D366'
+const X_BLUE = '#000000'
+const LI_BLUE = '#0A66C2'
+const FB_BLUE = '#1877F2'
+const ECSTASY_URL = 'https://ecstasytechnologies.com'
 
-function extractProspects(text: string): Array<{ phone: string; pitch: string }> {
-  const results: Array<{ phone: string; pitch: string }> = []
+function extractProspects(text: string): Array<{ phone: string; pitch: string; name: string }> {
+  const results: Array<{ phone: string; pitch: string; name: string }> = []
   const phoneMatches = [...text.matchAll(/Phone:\s*(\+?233\d{9}|0\d{9})/g)]
   for (let i = 0; i < phoneMatches.length; i++) {
     const m = phoneMatches[i]
@@ -305,11 +309,37 @@ function extractProspects(text: string): Array<{ phone: string; pitch: string }>
     if (phone.startsWith('0')) phone = '+233' + phone.slice(1)
     if (!phone.startsWith('+')) phone = '+' + phone
     const blockEnd = phoneMatches[i + 1]?.index ?? text.length
-    const block = text.slice(m.index!, blockEnd)
-    const pitchMatch = block.match(/Phone pitch:\s*["""'`](.+?)["""'`]/)
-    results.push({ phone, pitch: pitchMatch ? pitchMatch[1] : '' })
+    const nameWindow = text.slice(Math.max(0, m.index! - 600), m.index!)
+    const nameMatch = nameWindow.match(/Business Name\s*[—–-]\s*(.+?)(?:\n|$)/)
+    const name = nameMatch ? nameMatch[1].trim() : ''
+    const afterBlock = text.slice(m.index!, blockEnd)
+    const pitchMatch = afterBlock.match(/Phone pitch:\s*["""'`](.+?)["""'`]/)
+    results.push({ phone, pitch: pitchMatch ? pitchMatch[1] : '', name })
   }
   return results
+}
+
+function extractXPosts(text: string): string[] {
+  const posts: string[] = []
+  const lines = text.split('\n')
+  let current = ''
+  let collecting = false
+  for (const line of lines) {
+    const numMatch = line.match(/^\s*([123])\.\s+(.+)/)
+    if (numMatch) {
+      if (current) posts.push(current.trim())
+      current = numMatch[2]
+      collecting = true
+    } else if (collecting && line.trim() && !/^[A-Z*#—\-]{2}/.test(line)) {
+      if (current.length < 280) current += ' ' + line.trim()
+    } else if (collecting && !line.trim()) {
+      if (current) posts.push(current.trim())
+      current = ''
+      collecting = false
+    }
+  }
+  if (current) posts.push(current.trim())
+  return posts.filter(p => p.length >= 20 && p.length <= 400).slice(0, 3)
 }
 
 // ─── Responsive hook ──────────────────────────────────────────────────────────
@@ -646,65 +676,85 @@ function HandoffChips({ agentId, content, onHandoff }: {
   )
 }
 
-// ─── WhatsAppChips ────────────────────────────────────────────────────────────
+// ─── ProspectActionChips ─────────────────────────────────────────────────────
 
-function WhatsAppChips({ content }: { content: string }) {
+function ProspectActionChips({ content }: { content: string }) {
   const prospects = extractProspects(content)
   if (prospects.length === 0) return null
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8, paddingLeft: 34 }}>
-      {prospects.map(({ phone, pitch }) => {
-        const digits = phone.replace('+', '')
-        const url = `https://wa.me/${digits}${pitch ? `?text=${encodeURIComponent(pitch)}` : ''}`
+    <div style={{ marginTop: 8, paddingLeft: 34, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {prospects.map(({ phone, pitch, name }) => {
+        const waUrl = `https://wa.me/${phone.replace('+', '')}${pitch ? `?text=${encodeURIComponent(pitch)}` : ''}`
+        const liUrl = name
+          ? `https://www.linkedin.com/search/results/companies/?keywords=${encodeURIComponent(name + ' Ghana')}`
+          : null
         return (
-          <a
-            key={phone}
-            href={url}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '5px 12px', borderRadius: 20,
-              border: `1px solid ${WA_GREEN}60`,
-              background: `${WA_GREEN}10`,
-              color: WA_GREEN,
-              fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
-              textDecoration: 'none',
-            }}
-          >
-            📱 {phone}
-          </a>
+          <div key={phone} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+              📱 {phone}
+            </a>
+            {liUrl && (
+              <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${LI_BLUE}60`, background: `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+                in {name}
+              </a>
+            )}
+          </div>
         )
       })}
     </div>
   )
 }
 
-// ─── CopyMessageButton ────────────────────────────────────────────────────────
+// ─── SocialShareBar ───────────────────────────────────────────────────────────
 
-function CopyMessageButton({ content }: { content: string }) {
+function SocialShareBar({ content }: { content: string }) {
   const [copied, setCopied] = useState(false)
+  const posts = extractXPosts(content)
+
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }, [content])
+
+  const liUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(ECSTASY_URL)}`
+  const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(ECSTASY_URL)}&quote=${encodeURIComponent(content.slice(0, 500))}`
+
   return (
-    <div style={{ marginTop: 8, paddingLeft: 34 }}>
-      <button
-        onClick={handleCopy}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-          padding: '5px 12px', borderRadius: 20,
-          border: `1px solid ${copied ? GOLD + '80' : BORDER}`,
-          background: copied ? `${GOLD}18` : SURFACE2,
-          color: copied ? GOLD : MUTED,
-          fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
-          transition: 'all 0.15s',
-        }}
-      >
-        {copied ? '✓ Copied' : '📋 Copy for WhatsApp'}
-      </button>
+    <div style={{ marginTop: 10, paddingLeft: 34 }}>
+      <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_HEADING, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+        Post to social
+      </div>
+
+      {posts.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
+          {posts.map((post, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, minWidth: 12 }}>{i + 1}</span>
+              <a
+                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}
+              >
+                𝕏 Tweet
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${LI_BLUE}60`, background: `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+          in LinkedIn
+        </a>
+        <a href={fbUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${FB_BLUE}60`, background: `${FB_BLUE}10`, color: FB_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+          f Facebook
+        </a>
+        <button onClick={handleCopy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${copied ? GOLD + '80' : BORDER}`, background: copied ? `${GOLD}18` : SURFACE2, color: copied ? GOLD : MUTED, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500 }}>
+          {copied ? '✓ Copied' : '📋 Copy'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -743,10 +793,10 @@ function ChatMessage({ message, agentId, isLast, onHandoff }: {
         </div>
       </div>
       {!isUser && agentId === 'prospect' && (
-        <WhatsAppChips content={message.content} />
+        <ProspectActionChips content={message.content} />
       )}
       {!isUser && isLast && agentId === 'content' && (
-        <CopyMessageButton content={message.content} />
+        <SocialShareBar content={message.content} />
       )}
       {!isUser && isLast && agentId && onHandoff && (
         <HandoffChips agentId={agentId} content={message.content} onHandoff={onHandoff} />
