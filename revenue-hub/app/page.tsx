@@ -250,6 +250,43 @@ async function callChat(systemPrompt: string, messages: Message[]): Promise<stri
   return data.text as string
 }
 
+// ─── Agent handoff map ────────────────────────────────────────────────────────
+
+const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; buildPrompt: (c: string) => string }>> = {
+  prospect: [
+    {
+      label: '→ Scope with ProjectBot',
+      targetAgent: 'scope',
+      buildPrompt: (c) => `I found this lead from ProspectBot. Scope a project and generate a GHS-priced proposal:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Draft Pitch (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `I have this prospect from ProspectBot. Write a personalized WhatsApp message I can send them today to open the conversation:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  scope: [
+    {
+      label: '→ Polish Proposal (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `I have this project scope from ProjectBot. Turn it into a polished client-ready proposal I can send by email or WhatsApp:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Log to RevenueTracker',
+      targetAgent: 'revenue',
+      buildPrompt: (c) => `I have this scoped project from ProjectBot. Add it to my pipeline and show what % of my GHS 120,000 monthly goal it covers:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  content: [
+    {
+      label: '→ Scope with ProjectBot',
+      targetAgent: 'scope',
+      buildPrompt: (c) => `I have this content/proposal from ContentBot. Review the scope and generate a formal project proposal with GHS line items:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  revenue: [],
+}
+
 // ─── Responsive hook ──────────────────────────────────────────────────────────
 
 function useIsMobile() {
@@ -281,9 +318,45 @@ function ThinkingDots() {
   )
 }
 
+// ─── HandoffChips ─────────────────────────────────────────────────────────────
+
+function HandoffChips({ agentId, content, onHandoff }: {
+  agentId: AgentId
+  content: string
+  onHandoff: (targetAgent: AgentId, prompt: string) => void
+}) {
+  const handoffs = HANDOFFS[agentId]
+  if (!handoffs || handoffs.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10, paddingLeft: 34 }}>
+      {handoffs.map((h) => (
+        <button
+          key={h.targetAgent}
+          onClick={() => onHandoff(h.targetAgent, h.buildPrompt(content))}
+          style={{
+            padding: '5px 12px', borderRadius: 20,
+            border: `1px solid ${GOLD}60`,
+            background: `${GOLD}10`,
+            color: GOLD,
+            fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
+            cursor: 'pointer', transition: 'background 0.15s',
+          }}
+        >
+          {h.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
-function ChatMessage({ message }: { message: Message }) {
+function ChatMessage({ message, agentId, isLast, onHandoff }: {
+  message: Message
+  agentId?: AgentId
+  isLast?: boolean
+  onHandoff?: (targetAgent: AgentId, prompt: string) => void
+}) {
   const isUser = message.role === 'user'
 
   return (
@@ -309,6 +382,9 @@ function ChatMessage({ message }: { message: Message }) {
           {message.content}
         </div>
       </div>
+      {!isUser && isLast && agentId && onHandoff && (
+        <HandoffChips agentId={agentId} content={message.content} onHandoff={onHandoff} />
+      )}
     </div>
   )
 }
@@ -674,17 +750,19 @@ function ChatInput({ agentShort, onSend, loading }: {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agent, onSend, onRunBriefing }: {
+function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandoff }: {
   messages: Message[]
   loading: boolean
   agent: Agent
   onSend: (text: string) => void
   onRunBriefing: () => void
+  onHandoff: (targetAgent: AgentId, prompt: string) => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
 
   const isEmpty = messages.length === 0
+  const lastAssistantIdx = messages.reduce((acc, m, i) => m.role === 'assistant' ? i : acc, -1)
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
@@ -702,7 +780,15 @@ function MessageList({ messages, loading, agent, onSend, onRunBriefing }: {
         )
       ) : (
         <div style={{ padding: '16px 12px 8px' }}>
-          {messages.map((m, i) => <ChatMessage key={i} message={m} />)}
+          {messages.map((m, i) => (
+            <ChatMessage
+              key={i}
+              message={m}
+              agentId={agent.id}
+              isLast={i === lastAssistantIdx && !loading}
+              onHandoff={onHandoff}
+            />
+          ))}
           {loading && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
               <div style={{ width: 26, height: 26, borderRadius: '50%', background: GOLD, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: BG, flexShrink: 0 }}>AI</div>
@@ -770,6 +856,29 @@ export default function Page() {
     setError(null)
   }, [activeAgent])
 
+  const handleHandoff = useCallback(async (targetAgent: AgentId, prompt: string) => {
+    setActiveAgent(targetAgent)
+    setError(null)
+    const userMsg: Message = { role: 'user', content: prompt }
+    let messagesForApi: Message[] = []
+    setAllChats((prev) => {
+      messagesForApi = [...(prev[targetAgent] ?? []), userMsg]
+      return { ...prev, [targetAgent]: messagesForApi }
+    })
+    setLoading(true)
+    try {
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, messagesForApi)
+      setAllChats((prev) => ({
+        ...prev,
+        [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }],
+      }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   const handleSelectAgent = useCallback((id: AgentId) => {
     setActiveAgent(id); setError(null)
   }, [])
@@ -809,7 +918,7 @@ export default function Page() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} />
+          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
         </div>
         <BottomNav activeAgent={activeAgent} allChats={allChats} onSelect={handleSelectAgent} />
@@ -862,7 +971,7 @@ export default function Page() {
           </div>
         </div>
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} />
+        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
       </div>
     </div>
