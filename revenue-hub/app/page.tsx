@@ -145,7 +145,7 @@ function saveAllChats(chats: AllChats): void {
   }
 }
 
-// ─── API call (via Next.js API route — key stays server-side) ─────────────────
+// ─── API call ─────────────────────────────────────────────────────────────────
 
 async function callChat(systemPrompt: string, messages: Message[]): Promise<string> {
   const res = await fetch('/api/chat', {
@@ -158,43 +158,17 @@ async function callChat(systemPrompt: string, messages: Message[]): Promise<stri
   return data.text as string
 }
 
-// ─── GoalRing ─────────────────────────────────────────────────────────────────
+// ─── Responsive hook ──────────────────────────────────────────────────────────
 
-function GoalRing({ earned }: { earned: number }) {
-  const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
-  const r = 36
-  const circ = 2 * Math.PI * r
-  const dash = (pct / 100) * circ
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 0' }}>
-      <svg width="88" height="88" viewBox="0 0 88 88">
-        <circle cx="44" cy="44" r={r} fill="none" stroke={BORDER} strokeWidth="5" />
-        <circle
-          cx="44" cy="44" r={r}
-          fill="none"
-          stroke={GOLD}
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeDasharray={`${dash} ${circ}`}
-          strokeDashoffset={0}
-          transform="rotate(-90 44 44)"
-          style={{ transition: 'stroke-dasharray 0.6s ease' }}
-        />
-        <text x="44" y="47" textAnchor="middle" fill={TEXT} fontSize="13" fontFamily={FONT_HEADING} fontWeight="600">
-          {Math.round(pct)}%
-        </text>
-      </svg>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-          Monthly Goal
-        </div>
-        <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
-          GHS {earned.toLocaleString()} / 120,000
-        </div>
-      </div>
-    </div>
-  )
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(true)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+  return isMobile
 }
 
 // ─── ThinkingDots ─────────────────────────────────────────────────────────────
@@ -226,7 +200,7 @@ function ChatMessage({ message }: { message: Message }) {
     <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
       {!isUser && (
         <div style={{
-          width: 24, height: 24, borderRadius: '50%', background: GOLD,
+          width: 26, height: 26, borderRadius: '50%', background: GOLD,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, marginRight: 8, marginTop: 2,
           fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: BG,
@@ -235,12 +209,12 @@ function ChatMessage({ message }: { message: Message }) {
         </div>
       )}
       <div style={{
-        maxWidth: '78%',
+        maxWidth: '80%',
         padding: '10px 14px',
-        borderRadius: isUser ? '14px 14px 2px 14px' : '14px 14px 14px 2px',
+        borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
         background: isUser ? GOLD : SURFACE2,
         color: isUser ? BG : TEXT,
-        fontSize: 14,
+        fontSize: 15,
         lineHeight: 1.6,
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
@@ -252,24 +226,183 @@ function ChatMessage({ message }: { message: Message }) {
   )
 }
 
-// ─── ChatPane ─────────────────────────────────────────────────────────────────
+// ─── GoalRing (desktop sidebar) ───────────────────────────────────────────────
 
-interface ChatPaneProps {
-  agent: Agent
-  messages: Message[]
+function GoalRing({ earned }: { earned: number }) {
+  const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
+  const r = 36
+  const circ = 2 * Math.PI * r
+  const dash = (pct / 100) * circ
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 0' }}>
+      <svg width="88" height="88" viewBox="0 0 88 88">
+        <circle cx="44" cy="44" r={r} fill="none" stroke={BORDER} strokeWidth="5" />
+        <circle
+          cx="44" cy="44" r={r} fill="none"
+          stroke={GOLD} strokeWidth="5" strokeLinecap="round"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeDashoffset={0}
+          transform="rotate(-90 44 44)"
+          style={{ transition: 'stroke-dasharray 0.6s ease' }}
+        />
+        <text x="44" y="47" textAnchor="middle" fill={TEXT} fontSize="13" fontFamily={FONT_HEADING} fontWeight="600">
+          {Math.round(pct)}%
+        </text>
+      </svg>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+          Monthly Goal
+        </div>
+        <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
+          GHS {earned.toLocaleString()} / 120,000
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── MiniGoalRing (mobile header) ─────────────────────────────────────────────
+
+function MiniGoalRing({ earned }: { earned: number }) {
+  const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
+  const r = 13
+  const circ = 2 * Math.PI * r
+  const dash = (pct / 100) * circ
+
+  return (
+    <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+      <svg width="40" height="40" viewBox="0 0 40 40">
+        <circle cx="20" cy="20" r={r} fill="none" stroke={BORDER} strokeWidth="3" />
+        <circle
+          cx="20" cy="20" r={r} fill="none"
+          stroke={GOLD} strokeWidth="3" strokeLinecap="round"
+          strokeDasharray={`${dash} ${circ}`}
+          strokeDashoffset={0}
+          transform="rotate(-90 20 20)"
+          style={{ transition: 'stroke-dasharray 0.6s ease' }}
+        />
+      </svg>
+      <div style={{
+        position: 'absolute', inset: 0,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: TEXT,
+      }}>
+        {Math.round(pct)}%
+      </div>
+    </div>
+  )
+}
+
+// ─── MobileHeader ─────────────────────────────────────────────────────────────
+
+function MobileHeader({ agent, earnedGHS }: { agent: Agent; earnedGHS: number }) {
+  return (
+    <div style={{
+      background: SURFACE,
+      borderBottom: `1px solid ${BORDER}`,
+      paddingTop: 'env(safe-area-inset-top)',
+      flexShrink: 0,
+    }}>
+      <div style={{
+        height: 52,
+        padding: '0 16px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+            Revenue Hub
+          </div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT, marginTop: 1 }}>
+            {agent.label}
+          </div>
+        </div>
+        <MiniGoalRing earned={earnedGHS} />
+      </div>
+    </div>
+  )
+}
+
+// ─── BottomNav ────────────────────────────────────────────────────────────────
+
+interface BottomNavProps {
+  activeAgent: AgentId
+  allChats: AllChats
+  onSelect: (id: AgentId) => void
+}
+
+function BottomNav({ activeAgent, allChats, onSelect }: BottomNavProps) {
+  return (
+    <div style={{
+      background: SURFACE,
+      borderTop: `1px solid ${BORDER}`,
+      display: 'flex',
+      paddingBottom: 'env(safe-area-inset-bottom)',
+      flexShrink: 0,
+    }}>
+      {AGENT_IDS.map((id) => {
+        const agent = AGENTS[id]
+        const isActive = id === activeAgent
+        const turnCount = Math.floor((allChats[id]?.length ?? 0) / 2)
+        const num = agent.label.split(' ')[0]
+
+        return (
+          <button
+            key={id}
+            onClick={() => onSelect(id)}
+            style={{
+              flex: 1,
+              minHeight: 56,
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+              gap: 3,
+              background: 'none',
+              borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
+              paddingTop: 10, paddingBottom: 8,
+              transition: 'border-color 0.15s',
+            }}
+          >
+            <span style={{
+              fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 11,
+              color: isActive ? GOLD : MUTED,
+              letterSpacing: '0.04em',
+            }}>
+              {num}
+            </span>
+            <span style={{
+              fontFamily: FONT_HEADING, fontSize: 12, fontWeight: isActive ? 600 : 400,
+              color: isActive ? TEXT : MUTED,
+            }}>
+              {agent.short}
+            </span>
+            {turnCount > 0 && (
+              <span style={{
+                fontFamily: FONT_BODY, fontSize: 9,
+                color: isActive ? GOLD : MUTED,
+                background: isActive ? `${GOLD}20` : SURFACE2,
+                padding: '1px 5px', borderRadius: 8,
+                minWidth: 16, textAlign: 'center',
+              }}>
+                {turnCount}
+              </span>
+            )}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── ChatInput ────────────────────────────────────────────────────────────────
+
+interface ChatInputProps {
+  agentShort: string
   onSend: (text: string) => void
-  onClear: () => void
   loading: boolean
 }
 
-function ChatPane({ agent, messages, onSend, onClear, loading }: ChatPaneProps) {
+function ChatInput({ agentShort, onSend, loading }: ChatInputProps) {
   const [input, setInput] = useState('')
-  const bottomRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
 
   const handleSend = useCallback(() => {
     const text = input.trim()
@@ -287,113 +420,104 @@ function ChatPane({ agent, messages, onSend, onClear, loading }: ChatPaneProps) 
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Header */}
+    <div style={{ padding: '10px 12px 12px', borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
       <div style={{
-        padding: '16px 20px', borderBottom: `1px solid ${BORDER}`,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+        display: 'flex', gap: 8, alignItems: 'flex-end',
+        background: SURFACE2, border: `1px solid ${BORDER}`,
+        borderRadius: 12, padding: '8px 8px 8px 14px',
       }}>
-        <div>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT }}>
-            {agent.label}
-          </div>
-          <div style={{ fontSize: 12, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>
-            {agent.description}
-          </div>
-        </div>
-        {messages.length > 0 && (
-          <button
-            onClick={onClear}
-            style={{
-              fontSize: 12, color: MUTED, padding: '4px 10px',
-              border: `1px solid ${BORDER}`, borderRadius: 6,
-              fontFamily: FONT_BODY, transition: 'color 0.15s, border-color 0.15s',
-            }}
-            onMouseEnter={(e) => {
-              const t = e.currentTarget
-              t.style.color = TEXT
-              t.style.borderColor = MUTED
-            }}
-            onMouseLeave={(e) => {
-              const t = e.currentTarget
-              t.style.color = MUTED
-              t.style.borderColor = BORDER
-            }}
-          >
-            Clear
-          </button>
-        )}
+        <textarea
+          ref={textareaRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={`Message ${agentShort}…`}
+          rows={1}
+          style={{
+            flex: 1, background: 'none', border: 'none', outline: 'none',
+            color: TEXT,
+            fontSize: 16, // 16px prevents iOS auto-zoom
+            resize: 'none', lineHeight: 1.5,
+            maxHeight: 120, overflowY: 'auto',
+            fontFamily: FONT_BODY,
+          }}
+          onInput={(e) => {
+            const t = e.currentTarget
+            t.style.height = 'auto'
+            t.style.height = Math.min(t.scrollHeight, 120) + 'px'
+          }}
+        />
+        <button
+          onClick={handleSend}
+          disabled={!input.trim() || loading}
+          style={{
+            width: 36, height: 36, borderRadius: 8, flexShrink: 0,
+            background: input.trim() && !loading ? GOLD : SURFACE,
+            color: input.trim() && !loading ? BG : MUTED,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 18, transition: 'background 0.15s, color 0.15s',
+          }}
+        >
+          ↑
+        </button>
       </div>
+    </div>
+  )
+}
 
-      {/* Messages */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 8px' }}>
-        {messages.length === 0 ? (
-          <div style={{
-            height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: MUTED, fontSize: 13, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY,
-          }}>
-            <div>
-              <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.3 }}>◈</div>
-              Start a conversation with {agent.short}.<br />
-              <span style={{ fontSize: 12 }}>Shift+Enter for new line · Enter to send</span>
-            </div>
-          </div>
-        ) : (
-          messages.map((m, i) => <ChatMessage key={i} message={m} />)
-        )}
-        {loading && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: MUTED, fontSize: 13, marginBottom: 12 }}>
-            <div style={{
-              width: 24, height: 24, borderRadius: '50%', background: GOLD,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: BG, flexShrink: 0,
-            }}>AI</div>
-            <ThinkingDots />
-          </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
+// ─── MessageList ──────────────────────────────────────────────────────────────
 
-      {/* Input */}
-      <div style={{ padding: '12px 20px 16px', borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
+function MessageList({ messages, loading, agentShort }: { messages: Message[]; loading: boolean; agentShort: string }) {
+  const bottomRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages, loading])
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px 8px', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+      {messages.length === 0 ? (
         <div style={{
-          display: 'flex', gap: 8, alignItems: 'flex-end',
-          background: SURFACE2, border: `1px solid ${BORDER}`,
-          borderRadius: 10, padding: '8px 8px 8px 14px',
+          height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: MUTED, fontSize: 14, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY,
         }}>
-          <textarea
-            ref={textareaRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`Message ${agent.short}…`}
-            rows={1}
-            style={{
-              flex: 1, background: 'none', border: 'none', outline: 'none',
-              color: TEXT, fontSize: 14, resize: 'none', lineHeight: 1.5,
-              maxHeight: 120, overflowY: 'auto', fontFamily: FONT_BODY,
-            }}
-            onInput={(e) => {
-              const t = e.currentTarget
-              t.style.height = 'auto'
-              t.style.height = Math.min(t.scrollHeight, 120) + 'px'
-            }}
-          />
-          <button
-            onClick={handleSend}
-            disabled={!input.trim() || loading}
-            style={{
-              width: 32, height: 32, borderRadius: 7, flexShrink: 0,
-              background: input.trim() && !loading ? GOLD : SURFACE,
-              color: input.trim() && !loading ? BG : MUTED,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 16, transition: 'background 0.15s, color 0.15s',
-            }}
-          >
-            ↑
-          </button>
+          <div>
+            <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.25 }}>◈</div>
+            Start a conversation with {agentShort}.<br />
+            <span style={{ fontSize: 12 }}>Enter to send · Shift+Enter for new line</span>
+          </div>
         </div>
-      </div>
+      ) : (
+        messages.map((m, i) => <ChatMessage key={i} message={m} />)
+      )}
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{
+            width: 26, height: 26, borderRadius: '50%', background: GOLD,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: BG, flexShrink: 0,
+          }}>AI</div>
+          <ThinkingDots />
+        </div>
+      )}
+      <div ref={bottomRef} />
+    </div>
+  )
+}
+
+// ─── ErrorBanner ──────────────────────────────────────────────────────────────
+
+function ErrorBanner({ error, onDismiss }: { error: string; onDismiss: () => void }) {
+  return (
+    <div style={{
+      padding: '10px 16px', background: '#2a1010', borderBottom: '1px solid #4a2020',
+      color: '#f87171', fontSize: 13, fontFamily: FONT_BODY, flexShrink: 0,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+    }}>
+      <span><strong>Error:</strong> {error}</span>
+      <button onClick={onDismiss} style={{ color: '#f87171', fontSize: 12, textDecoration: 'underline', fontFamily: FONT_BODY, flexShrink: 0 }}>
+        Dismiss
+      </button>
     </div>
   )
 }
@@ -401,32 +525,24 @@ function ChatPane({ agent, messages, onSend, onClear, loading }: ChatPaneProps) 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Page() {
+  const isMobile = useIsMobile()
   const [activeAgent, setActiveAgent] = useState<AgentId>('prospect')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Hydrate from localStorage on mount (avoids SSR mismatch)
-  useEffect(() => {
-    setAllChats(loadAllChats())
-  }, [])
-
-  // Persist on every change
-  useEffect(() => {
-    saveAllChats(allChats)
-  }, [allChats])
+  useEffect(() => { setAllChats(loadAllChats()) }, [])
+  useEffect(() => { saveAllChats(allChats) }, [allChats])
 
   const messages: Message[] = allChats[activeAgent] ?? []
+  const agent = AGENTS[activeAgent]
 
   const handleSend = useCallback(async (text: string) => {
-    const agent = AGENTS[activeAgent]
     const userMsg: Message = { role: 'user', content: text }
     const next = [...messages, userMsg]
-
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
     setLoading(true)
     setError(null)
-
     try {
       const reply = await callChat(agent.systemPrompt, next)
       setAllChats((prev) => ({
@@ -438,20 +554,22 @@ export default function Page() {
     } finally {
       setLoading(false)
     }
-  }, [activeAgent, messages])
+  }, [activeAgent, messages, agent])
 
   const handleClear = useCallback(() => {
     setAllChats((prev) => ({ ...prev, [activeAgent]: [] }))
     setError(null)
   }, [activeAgent])
 
-  // Parse rough earned amount from RevenueTracker chat history
+  const handleSelectAgent = useCallback((id: AgentId) => {
+    setActiveAgent(id)
+    setError(null)
+  }, [])
+
   const earnedGHS = (() => {
-    const revenueChats = allChats.revenue ?? []
     let max = 0
-    for (const m of revenueChats) {
-      const matches = m.content.match(/GHS\s*([\d,]+)/gi) ?? []
-      for (const match of matches) {
+    for (const m of allChats.revenue ?? []) {
+      for (const match of m.content.match(/GHS\s*([\d,]+)/gi) ?? []) {
         const val = parseInt(match.replace(/[^0-9]/g, ''), 10)
         if (val < MONTHLY_GOAL_GHS && val > max) max = val
       }
@@ -459,37 +577,70 @@ export default function Page() {
     return max
   })()
 
+  // ── Mobile layout ──────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
+        <MobileHeader agent={agent} earnedGHS={earnedGHS} />
+
+        {/* Chat area */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Agent subtitle + clear */}
+          <div style={{
+            padding: '10px 16px 8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY }}>{agent.description}</span>
+            {messages.length > 0 && (
+              <button
+                onClick={handleClear}
+                style={{
+                  fontSize: 12, color: MUTED, padding: '4px 10px',
+                  border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY,
+                  minHeight: 30,
+                }}
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+
+          <MessageList messages={messages} loading={loading} agentShort={agent.short} />
+          <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
+        </div>
+
+        <BottomNav activeAgent={activeAgent} allChats={allChats} onSelect={handleSelectAgent} />
+      </div>
+    )
+  }
+
+  // ── Desktop layout ─────────────────────────────────────────────────────────
   return (
     <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
-
-      {/* ── Sidebar ── */}
+      {/* Sidebar */}
       <div style={{
         width: 240, flexShrink: 0, background: SURFACE,
         borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column',
       }}>
-        {/* Wordmark */}
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
-          <div style={{
-            fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14,
-            color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase',
-          }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
             Revenue Hub
           </div>
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>
-            Ecstasy Geospatial
-          </div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Geospatial</div>
         </div>
 
-        {/* Agent tabs */}
         <nav style={{ padding: '12px 10px', flex: 1 }}>
           {AGENT_IDS.map((id) => {
-            const agent = AGENTS[id]
+            const a = AGENTS[id]
             const isActive = id === activeAgent
             const msgCount = (allChats[id] ?? []).length
             return (
               <button
                 key={id}
-                onClick={() => { setActiveAgent(id); setError(null) }}
+                onClick={() => handleSelectAgent(id)}
                 style={{
                   width: '100%', display: 'block', textAlign: 'left',
                   padding: '9px 12px', borderRadius: 8, marginBottom: 2,
@@ -500,61 +651,58 @@ export default function Page() {
                 onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{
-                    fontFamily: FONT_HEADING, fontSize: 13,
-                    fontWeight: isActive ? 600 : 400,
-                    color: isActive ? GOLD : TEXT,
-                  }}>
-                    {agent.label}
+                  <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : TEXT }}>
+                    {a.label}
                   </span>
                   {msgCount > 0 && (
                     <span style={{
-                      fontSize: 10, fontFamily: FONT_BODY,
-                      color: isActive ? GOLD : MUTED,
-                      background: isActive ? `${GOLD}20` : SURFACE2,
-                      padding: '1px 6px', borderRadius: 10,
+                      fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED,
+                      background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10,
                     }}>
                       {Math.floor(msgCount / 2)}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>
-                  {agent.description}
-                </div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{a.description}</div>
               </button>
             )
           })}
         </nav>
 
-        {/* Goal ring */}
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
           <GoalRing earned={earnedGHS} />
         </div>
       </div>
 
-      {/* ── Chat pane ── */}
+      {/* Chat pane */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {error && (
-          <div style={{
-            padding: '10px 20px', background: '#2a1010', borderBottom: '1px solid #4a2020',
-            color: '#f87171', fontSize: 13, fontFamily: FONT_BODY,
-          }}>
-            <strong>Error:</strong> {error}
-            <button
-              onClick={() => setError(null)}
-              style={{ marginLeft: 12, color: '#f87171', fontSize: 12, textDecoration: 'underline', fontFamily: FONT_BODY }}
-            >
-              Dismiss
-            </button>
+        <div style={{
+          padding: '16px 20px', borderBottom: `1px solid ${BORDER}`,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+        }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT }}>{agent.label}</div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{agent.description}</div>
           </div>
-        )}
-        <ChatPane
-          agent={AGENTS[activeAgent]}
-          messages={messages}
-          onSend={handleSend}
-          onClear={handleClear}
-          loading={loading}
-        />
+          {messages.length > 0 && (
+            <button
+              onClick={handleClear}
+              style={{
+                fontSize: 12, color: MUTED, padding: '4px 10px',
+                border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY,
+                transition: 'color 0.15s, border-color 0.15s',
+              }}
+              onMouseEnter={(e) => { const t = e.currentTarget; t.style.color = TEXT; t.style.borderColor = MUTED }}
+              onMouseLeave={(e) => { const t = e.currentTarget; t.style.color = MUTED; t.style.borderColor = BORDER }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
+        <MessageList messages={messages} loading={loading} agentShort={agent.short} />
+        <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
       </div>
     </div>
   )
