@@ -105,9 +105,9 @@ const AGENTS: Record<AgentId, Agent> = {
     description: 'Find businesses without websites in Ghana',
     briefingLabel: "Today's Prospect List",
     dailyPrompt: '',
-    systemPrompt: `You are ProspectBot, a lead generation AI for Ecstasy Geospatial Services based in Kumasi, Ghana.
+    systemPrompt: `You are ProspectBot, a lead generation AI for Ecstasy Technologies based in Ghana (ecstasytechnologies.com).
 
-Your job is to find businesses in Ghana that do NOT have a website and qualify them as leads for web development services.
+Your job is to find businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
 
 IMPORTANT: Always include phone numbers for every prospect in Ghanaian format (+233XXXXXXXXX or 0XXXXXXXXX).
 
@@ -117,7 +117,7 @@ Output format for each prospect:
    Address: [specific location in Ghana]
    Phone: +233XXXXXXXXX
    Why they need a website: [specific reason]
-   Service to pitch: [web dev / GIS / social media]
+   Service to pitch: [web design / mobile app / business software / GIS]
    Estimated value: GHS [amount]
    Phone pitch: "[one sentence to say when they pick up]"
 
@@ -129,27 +129,27 @@ Cover all industries and business types. Be specific about Ghanaian towns, stree
     short: 'Content',
     description: 'X posts & client proposals',
     briefingLabel: "Today's Content Pack",
-    dailyPrompt: `Generate today's content package for Ecstasy Geospatial Services. Deliver:
+    dailyPrompt: `Generate today's content package for Ecstasy Technologies (ecstasytechnologies.com). Deliver:
 
-1. Three ready-to-post X (Twitter) posts — each showcasing a different service (GIS mapping, web development, or UAV surveys). Make them specific and compelling to attract Ghanaian clients. No hashtag spam. Under 280 characters each.
+1. Three ready-to-post X (Twitter) posts — each showcasing a different service (web development, mobile apps, or business software). Make them specific and compelling to attract Ghanaian clients. No hashtag spam. Under 280 characters each.
 
 2. One professional WhatsApp follow-up message I can send to a warm prospect today — confident, brief, with a clear call to action.
 
-Keep everything on-brand: premium, confident, no filler phrases.`,
-    systemPrompt: `You are ContentBot, a content writing AI for Ecstasy Geospatial Services based in Kumasi, Ghana. You write two types of content:
+Keep everything on-brand: premium, confident, no filler phrases. Tagline: "Building software Africa trusts."`,
+    systemPrompt: `You are ContentBot, a content writing AI for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You write two types of content:
 
-1. X (Twitter) posts — concise, professional, GIS/tech/urban planning focus. Aimed at attracting Ghanaian clients and showcasing expertise. No hashtag spam. Max 280 characters unless thread requested.
+1. X (Twitter) posts — concise, professional, software/tech focus. Aimed at attracting Ghanaian and African clients. No hashtag spam. Max 280 characters unless thread requested.
 
 2. Client proposals — formal business proposals for Ghanaian clients. Include: executive summary, scope of work, deliverables, timeline, pricing in GHS, and terms.
 
 Services offered:
-- Web development: GHS 5,000–18,000
-- GIS mapping: GHS 3,000–10,000
-- UAV surveys: GHS 5,000–12,000
-- Social media packages: GHS 1,200–2,500/month
-- Planning documents: GHS 1,500–4,000
+- Web design & development: GHS 5,000–18,000
+- Web applications: GHS 8,000–25,000
+- Mobile apps: GHS 10,000–30,000
+- Business software: GHS 15,000–40,000
+- GIS solutions: GHS 3,000–10,000
 
-Write in a confident, premium tone. Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.`,
+Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.`,
   },
   scope: {
     id: 'scope',
@@ -167,7 +167,7 @@ Include:
 - Payment terms (deposit + milestones)
 
 Make it professional enough to forward directly to a client. All amounts in GHS.`,
-    systemPrompt: `You are ProjectBot, a project scoping AI for Ecstasy Geospatial Services based in Kumasi, Ghana. When given a project brief, you:
+    systemPrompt: `You are ProjectBot, a project scoping AI for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). When given a project brief, you:
 
 1. Ask clarifying questions if needed
 2. Define clear scope, deliverables, and milestones
@@ -175,13 +175,13 @@ Make it professional enough to forward directly to a client. All amounts in GHS.
 4. Flag risks and assumptions
 
 Service pricing ranges (always in GHS):
-- Web development: GHS 5,000–18,000 (complexity-dependent)
-- GIS mapping & spatial analysis: GHS 3,000–10,000
-- UAV/drone surveys: GHS 5,000–12,000 (area and deliverable dependent)
-- Social media management: GHS 1,200–2,500/month
-- Urban planning documents: GHS 1,500–4,000
+- Web design & development: GHS 5,000–18,000 (complexity-dependent)
+- Web applications: GHS 8,000–25,000
+- Mobile apps (iOS/Android): GHS 10,000–30,000
+- Business software & automation: GHS 15,000–40,000
+- GIS solutions: GHS 3,000–10,000
 
-Consider Ghanaian project realities: site access, data availability, GNSS accuracy, internet reliability, client capacity. Reference local standards and agencies (Lands Commission, EPA Ghana, GSGDA, etc.) where applicable.`,
+Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.`,
   },
   revenue: {
     id: 'revenue',
@@ -196,7 +196,7 @@ Tell me:
 2. The fastest path to GHS 120,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
 3. Three specific revenue actions I should take today — be direct and tactical, not generic.
 4. What a realistic week-by-week milestone breakdown looks like to hit GHS 120,000 by month end.`,
-    systemPrompt: `You are RevenueTracker, a business analytics AI for Ecstasy Geospatial Services based in Kumasi, Ghana. You help track and analyse monthly revenue against a GHS 120,000/month target (~$10,000 USD).
+    systemPrompt: `You are RevenueTracker, a business analytics AI for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You help track and analyse monthly revenue against a GHS 120,000/month target (~$10,000 USD).
 
 When given revenue data, you:
 1. Calculate total earnings and % of monthly goal achieved
@@ -206,11 +206,11 @@ When given revenue data, you:
 5. Project the month-end total based on current pace
 
 Service pricing context:
-- Web development: GHS 5,000–18,000
-- GIS mapping: GHS 3,000–10,000
-- UAV surveys: GHS 5,000–12,000
-- Social media packages: GHS 1,200–2,500/month
-- Planning documents: GHS 1,500–4,000
+- Web design & development: GHS 5,000–18,000
+- Web applications: GHS 8,000–25,000
+- Mobile apps: GHS 10,000–30,000
+- Business software: GHS 15,000–40,000
+- GIS solutions: GHS 3,000–10,000
 
 Always express amounts in GHS. Give clear, actionable analysis.`,
   },
@@ -392,7 +392,7 @@ function ChatMessage({ message }: { message: Message }) {
 function buildProspectPrompt(industries: string[], city: string, area: string): string {
   const industryStr = industries.join(', ')
   const locationStr = area ? `${area}, ${city}` : city
-  return `Find me 5 specific ${industryStr} businesses in ${locationStr}, Ghana that do NOT currently have a website. I will be calling them today to offer web development services from Ecstasy Geospatial Services.
+  return `Find me 5 specific ${industryStr} businesses in ${locationStr}, Ghana that do NOT currently have a website. I will be calling them today to offer web and software services from Ecstasy Technologies (ecstasytechnologies.com).
 
 For each business provide exactly in this format:
 
@@ -401,7 +401,7 @@ For each business provide exactly in this format:
    Address: [specific street or area in ${locationStr}]
    Phone: +233XXXXXXXXX
    Why they need a website: [specific reason relevant to their industry]
-   Service to pitch: [web development / social media / GIS]
+   Service to pitch: [web development / mobile app / business software / GIS]
    Estimated value: GHS [amount]
    Phone pitch: "[one sentence I say when they answer the phone]"
 
@@ -897,7 +897,7 @@ export default function Page() {
       <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Revenue Hub</div>
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Geospatial</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Technologies</div>
         </div>
         <nav style={{ padding: '12px 10px', flex: 1 }}>
           {AGENT_IDS.map((id) => {

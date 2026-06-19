@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'Revenue Hub',
-  description: 'AI operator tools for Ecstasy Geospatial Services, Kumasi Ghana',
+  description: 'AI operator tools for Ecstasy Technologies, Ghana',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
     capable: true,
