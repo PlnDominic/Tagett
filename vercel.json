@@ -1,7 +1,4 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "revenue-hub/dist",
-  "installCommand": "npm install",
-  "framework": "vite",
-  "rootDirectory": "revenue-hub"
+  "rootDirectory": "revenue-hub",
+  "framework": "nextjs"
 }

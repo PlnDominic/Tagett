@@ -1,6 +1,8 @@
+'use client'
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
 
 const GOLD = '#C8A96E'
 const BG = '#0B0B0D'
@@ -9,12 +11,33 @@ const SURFACE2 = '#18181C'
 const BORDER = '#222226'
 const TEXT = '#F0EDE8'
 const MUTED = '#6B6870'
-const MODEL = 'claude-sonnet-4-6'
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
+const FONT_HEADING = "var(--font-space-grotesk), 'Space Grotesk', sans-serif"
+const FONT_BODY = "var(--font-inter), 'Inter', sans-serif"
 
-const MONTHLY_GOAL_GHS = 120000
+const MONTHLY_GOAL_GHS = 120_000
 
-const AGENTS = {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+type AgentId = 'prospect' | 'content' | 'scope' | 'revenue'
+
+interface Agent {
+  id: AgentId
+  label: string
+  short: string
+  description: string
+  systemPrompt: string
+}
+
+type AllChats = Record<AgentId, Message[]>
+
+// ─── Agents ───────────────────────────────────────────────────────────────────
+
+const AGENTS: Record<AgentId, Agent> = {
   prospect: {
     id: 'prospect',
     label: '01 ProspectBot',
@@ -98,20 +121,23 @@ Always express amounts in GHS. Reference the monthly goal of GHS 120,000. Give c
   },
 }
 
+const AGENT_IDS = Object.keys(AGENTS) as AgentId[]
+
 // ─── localStorage helpers ──────────────────────────────────────────────────────
 
 const STORAGE_KEY = 'revenue-hub-chats-v1'
 
-function loadAllChats() {
+function loadAllChats(): AllChats {
+  if (typeof window === 'undefined') return {} as AllChats
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? JSON.parse(raw) : {}
+    return raw ? (JSON.parse(raw) as AllChats) : ({} as AllChats)
   } catch {
-    return {}
+    return {} as AllChats
   }
 }
 
-function saveAllChats(chats) {
+function saveAllChats(chats: AllChats): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
   } catch {
@@ -119,37 +145,22 @@ function saveAllChats(chats) {
   }
 }
 
-// ─── API call ─────────────────────────────────────────────────────────────────
+// ─── API call (via Next.js API route — key stays server-side) ─────────────────
 
-async function callClaude(systemPrompt, messages) {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
+async function callChat(systemPrompt: string, messages: Message[]): Promise<string> {
+  const res = await fetch('/api/chat', {
     method: 'POST',
-    headers: {
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      'anthropic-dangerous-allow-browser': 'true',
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 1000,
-      system: systemPrompt,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-    }),
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ systemPrompt, messages }),
   })
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}))
-    throw new Error(err?.error?.message || `API error ${response.status}`)
-  }
-
-  const data = await response.json()
-  return data.content[0].text
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
+  return data.text as string
 }
 
 // ─── GoalRing ─────────────────────────────────────────────────────────────────
 
-function GoalRing({ earned }) {
+function GoalRing({ earned }: { earned: number }) {
   const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
   const r = 36
   const circ = 2 * Math.PI * r
@@ -170,15 +181,15 @@ function GoalRing({ earned }) {
           transform="rotate(-90 44 44)"
           style={{ transition: 'stroke-dasharray 0.6s ease' }}
         />
-        <text x="44" y="47" textAnchor="middle" fill={TEXT} fontSize="13" fontFamily="'Space Grotesk', sans-serif" fontWeight="600">
+        <text x="44" y="47" textAnchor="middle" fill={TEXT} fontSize="13" fontFamily={FONT_HEADING} fontWeight="600">
           {Math.round(pct)}%
         </text>
       </svg>
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
           Monthly Goal
         </div>
-        <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
+        <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
           GHS {earned.toLocaleString()} / 120,000
         </div>
       </div>
@@ -186,23 +197,39 @@ function GoalRing({ earned }) {
   )
 }
 
+// ─── ThinkingDots ─────────────────────────────────────────────────────────────
+
+function ThinkingDots() {
+  return (
+    <span style={{ display: 'inline-flex', gap: 3, alignItems: 'center' }}>
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          style={{
+            width: 5, height: 5, borderRadius: '50%', background: MUTED,
+            display: 'inline-block',
+            animation: 'rhPulse 1.2s ease-in-out infinite',
+            animationDelay: `${i * 0.2}s`,
+          }}
+        />
+      ))}
+      <style>{`@keyframes rhPulse { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }`}</style>
+    </span>
+  )
+}
+
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
-function ChatMessage({ message }) {
+function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === 'user'
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: isUser ? 'flex-end' : 'flex-start',
-      marginBottom: 12,
-    }}>
+    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
       {!isUser && (
         <div style={{
           width: 24, height: 24, borderRadius: '50%', background: GOLD,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, marginRight: 8, marginTop: 2,
-          fontFamily: "'Space Grotesk', sans-serif", fontSize: 9, fontWeight: 700,
-          color: BG,
+          fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: BG,
         }}>
           AI
         </div>
@@ -217,7 +244,7 @@ function ChatMessage({ message }) {
         lineHeight: 1.6,
         whiteSpace: 'pre-wrap',
         wordBreak: 'break-word',
-        fontFamily: "'Inter', sans-serif",
+        fontFamily: FONT_BODY,
       }}>
         {message.content}
       </div>
@@ -227,10 +254,18 @@ function ChatMessage({ message }) {
 
 // ─── ChatPane ─────────────────────────────────────────────────────────────────
 
-function ChatPane({ agent, messages, onSend, onClear, loading }) {
+interface ChatPaneProps {
+  agent: Agent
+  messages: Message[]
+  onSend: (text: string) => void
+  onClear: () => void
+  loading: boolean
+}
+
+function ChatPane({ agent, messages, onSend, onClear, loading }: ChatPaneProps) {
   const [input, setInput] = useState('')
-  const bottomRef = useRef(null)
-  const textareaRef = useRef(null)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -240,10 +275,11 @@ function ChatPane({ agent, messages, onSend, onClear, loading }) {
     const text = input.trim()
     if (!text || loading) return
     setInput('')
+    if (textareaRef.current) textareaRef.current.style.height = 'auto'
     onSend(text)
   }, [input, loading, onSend])
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -254,32 +290,35 @@ function ChatPane({ agent, messages, onSend, onClear, loading }) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       {/* Header */}
       <div style={{
-        padding: '16px 20px',
-        borderBottom: `1px solid ${BORDER}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
+        padding: '16px 20px', borderBottom: `1px solid ${BORDER}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
       }}>
         <div>
-          <div style={{ fontFamily: "'Space Grotesk', sans-serif", fontWeight: 600, fontSize: 15, color: TEXT }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT }}>
             {agent.label}
           </div>
-          <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{agent.description}</div>
+          <div style={{ fontSize: 12, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>
+            {agent.description}
+          </div>
         </div>
         {messages.length > 0 && (
           <button
             onClick={onClear}
             style={{
-              fontSize: 12,
-              color: MUTED,
-              padding: '4px 10px',
-              border: `1px solid ${BORDER}`,
-              borderRadius: 6,
-              transition: 'color 0.15s, border-color 0.15s',
+              fontSize: 12, color: MUTED, padding: '4px 10px',
+              border: `1px solid ${BORDER}`, borderRadius: 6,
+              fontFamily: FONT_BODY, transition: 'color 0.15s, border-color 0.15s',
             }}
-            onMouseEnter={e => { e.target.style.color = TEXT; e.target.style.borderColor = MUTED }}
-            onMouseLeave={e => { e.target.style.color = MUTED; e.target.style.borderColor = BORDER }}
+            onMouseEnter={(e) => {
+              const t = e.currentTarget
+              t.style.color = TEXT
+              t.style.borderColor = MUTED
+            }}
+            onMouseLeave={(e) => {
+              const t = e.currentTarget
+              t.style.color = MUTED
+              t.style.borderColor = BORDER
+            }}
           >
             Clear
           </button>
@@ -291,7 +330,7 @@ function ChatPane({ agent, messages, onSend, onClear, loading }) {
         {messages.length === 0 ? (
           <div style={{
             height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: MUTED, fontSize: 13, textAlign: 'center', lineHeight: 1.7,
+            color: MUTED, fontSize: 13, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY,
           }}>
             <div>
               <div style={{ fontSize: 28, marginBottom: 12, opacity: 0.3 }}>◈</div>
@@ -304,7 +343,11 @@ function ChatPane({ agent, messages, onSend, onClear, loading }) {
         )}
         {loading && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: MUTED, fontSize: 13, marginBottom: 12 }}>
-            <div style={{ width: 24, height: 24, borderRadius: '50%', background: GOLD, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Space Grotesk', sans-serif", fontSize: 9, fontWeight: 700, color: BG, flexShrink: 0 }}>AI</div>
+            <div style={{
+              width: 24, height: 24, borderRadius: '50%', background: GOLD,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: BG, flexShrink: 0,
+            }}>AI</div>
             <ThinkingDots />
           </div>
         )}
@@ -321,19 +364,19 @@ function ChatPane({ agent, messages, onSend, onClear, loading }) {
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={`Message ${agent.short}…`}
             rows={1}
             style={{
               flex: 1, background: 'none', border: 'none', outline: 'none',
               color: TEXT, fontSize: 14, resize: 'none', lineHeight: 1.5,
-              maxHeight: 120, overflowY: 'auto',
-              '::placeholder': { color: MUTED },
+              maxHeight: 120, overflowY: 'auto', fontFamily: FONT_BODY,
             }}
-            onInput={e => {
-              e.target.style.height = 'auto'
-              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px'
+            onInput={(e) => {
+              const t = e.currentTarget
+              t.style.height = 'auto'
+              t.style.height = Math.min(t.scrollHeight, 120) + 'px'
             }}
           />
           <button
@@ -355,72 +398,59 @@ function ChatPane({ agent, messages, onSend, onClear, loading }) {
   )
 }
 
-function ThinkingDots() {
-  return (
-    <span style={{ display: 'inline-flex', gap: 3 }}>
-      {[0, 1, 2].map(i => (
-        <span
-          key={i}
-          style={{
-            width: 5, height: 5, borderRadius: '50%', background: MUTED,
-            animation: 'pulse 1.2s ease-in-out infinite',
-            animationDelay: `${i * 0.2}s`,
-          }}
-        />
-      ))}
-      <style>{`@keyframes pulse { 0%,80%,100%{opacity:0.2} 40%{opacity:1} }`}</style>
-    </span>
-  )
-}
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
-// ─── App ──────────────────────────────────────────────────────────────────────
-
-export default function App() {
-  const [activeAgent, setActiveAgent] = useState('prospect')
-  const [allChats, setAllChats] = useState(loadAllChats)
+export default function Page() {
+  const [activeAgent, setActiveAgent] = useState<AgentId>('prospect')
+  const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState(null)
+  const [error, setError] = useState<string | null>(null)
 
-  // Persist chats to localStorage whenever they change
+  // Hydrate from localStorage on mount (avoids SSR mismatch)
+  useEffect(() => {
+    setAllChats(loadAllChats())
+  }, [])
+
+  // Persist on every change
   useEffect(() => {
     saveAllChats(allChats)
   }, [allChats])
 
-  const messages = allChats[activeAgent] || []
+  const messages: Message[] = allChats[activeAgent] ?? []
 
-  const handleSend = useCallback(async (text) => {
+  const handleSend = useCallback(async (text: string) => {
     const agent = AGENTS[activeAgent]
-    const userMsg = { role: 'user', content: text }
-    const updatedMessages = [...messages, userMsg]
+    const userMsg: Message = { role: 'user', content: text }
+    const next = [...messages, userMsg]
 
-    setAllChats(prev => ({ ...prev, [activeAgent]: updatedMessages }))
+    setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
     setLoading(true)
     setError(null)
 
     try {
-      const reply = await callClaude(agent.systemPrompt, updatedMessages)
-      setAllChats(prev => ({
+      const reply = await callChat(agent.systemPrompt, next)
+      setAllChats((prev) => ({
         ...prev,
-        [activeAgent]: [...(prev[activeAgent] || []), { role: 'assistant', content: reply }],
+        [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }],
       }))
     } catch (err) {
-      setError(err.message)
+      setError(err instanceof Error ? err.message : 'Unknown error')
     } finally {
       setLoading(false)
     }
   }, [activeAgent, messages])
 
   const handleClear = useCallback(() => {
-    setAllChats(prev => ({ ...prev, [activeAgent]: [] }))
+    setAllChats((prev) => ({ ...prev, [activeAgent]: [] }))
     setError(null)
   }, [activeAgent])
 
-  // Rough earned estimate from revenue agent chat (parse GHS amounts mentioned)
+  // Parse rough earned amount from RevenueTracker chat history
   const earnedGHS = (() => {
-    const revenueChats = allChats.revenue || []
+    const revenueChats = allChats.revenue ?? []
     let max = 0
     for (const m of revenueChats) {
-      const matches = m.content.match(/GHS\s*([\d,]+)/gi) || []
+      const matches = m.content.match(/GHS\s*([\d,]+)/gi) ?? []
       for (const match of matches) {
         const val = parseInt(match.replace(/[^0-9]/g, ''), 10)
         if (val < MONTHLY_GOAL_GHS && val > max) max = val
@@ -431,44 +461,47 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
+
       {/* ── Sidebar ── */}
       <div style={{
         width: 240, flexShrink: 0, background: SURFACE,
-        borderRight: `1px solid ${BORDER}`,
-        display: 'flex', flexDirection: 'column',
+        borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column',
       }}>
         {/* Wordmark */}
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
           <div style={{
-            fontFamily: "'Space Grotesk', sans-serif", fontWeight: 700,
-            fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase',
+            fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14,
+            color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase',
           }}>
             Revenue Hub
           </div>
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>Ecstasy Geospatial</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>
+            Ecstasy Geospatial
+          </div>
         </div>
 
         {/* Agent tabs */}
         <nav style={{ padding: '12px 10px', flex: 1 }}>
-          {Object.values(AGENTS).map(agent => {
-            const isActive = agent.id === activeAgent
-            const msgCount = (allChats[agent.id] || []).length
+          {AGENT_IDS.map((id) => {
+            const agent = AGENTS[id]
+            const isActive = id === activeAgent
+            const msgCount = (allChats[id] ?? []).length
             return (
               <button
-                key={agent.id}
-                onClick={() => { setActiveAgent(agent.id); setError(null) }}
+                key={id}
+                onClick={() => { setActiveAgent(id); setError(null) }}
                 style={{
                   width: '100%', display: 'block', textAlign: 'left',
                   padding: '9px 12px', borderRadius: 8, marginBottom: 2,
                   background: isActive ? `${GOLD}18` : 'transparent',
                   transition: 'background 0.15s',
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
-                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
+                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
+                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <span style={{
-                    fontFamily: "'Space Grotesk', sans-serif", fontSize: 13,
+                    fontFamily: FONT_HEADING, fontSize: 13,
                     fontWeight: isActive ? 600 : 400,
                     color: isActive ? GOLD : TEXT,
                   }}>
@@ -476,7 +509,8 @@ export default function App() {
                   </span>
                   {msgCount > 0 && (
                     <span style={{
-                      fontSize: 10, color: isActive ? GOLD : MUTED,
+                      fontSize: 10, fontFamily: FONT_BODY,
+                      color: isActive ? GOLD : MUTED,
                       background: isActive ? `${GOLD}20` : SURFACE2,
                       padding: '1px 6px', borderRadius: 10,
                     }}>
@@ -484,7 +518,9 @@ export default function App() {
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{agent.description}</div>
+                <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>
+                  {agent.description}
+                </div>
               </button>
             )
           })}
@@ -500,11 +536,14 @@ export default function App() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {error && (
           <div style={{
-            padding: '10px 20px', background: '#2a1010', borderBottom: `1px solid #4a2020`,
-            color: '#f87171', fontSize: 13, fontFamily: "'Inter', sans-serif",
+            padding: '10px 20px', background: '#2a1010', borderBottom: '1px solid #4a2020',
+            color: '#f87171', fontSize: 13, fontFamily: FONT_BODY,
           }}>
             <strong>Error:</strong> {error}
-            <button onClick={() => setError(null)} style={{ marginLeft: 12, color: '#f87171', fontSize: 12, textDecoration: 'underline' }}>
+            <button
+              onClick={() => setError(null)}
+              style={{ marginLeft: 12, color: '#f87171', fontSize: 12, textDecoration: 'underline', fontFamily: FONT_BODY }}
+            >
               Dismiss
             </button>
           </div>
