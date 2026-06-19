@@ -521,12 +521,13 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
     }}>
       {step === 0 ? (
         <>
-          <div style={{
-            width: 96, height: 96, borderRadius: 24, background: GOLD,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 52, color: '#0B0B0D',
-            marginBottom: 32, boxShadow: `0 0 48px ${GOLD}40`,
-          }}>T</div>
+          <img
+            src="/icon-192.png"
+            alt="Tagett"
+            width={96}
+            height={96}
+            style={{ borderRadius: 22, marginBottom: 32, boxShadow: `0 0 48px ${GOLD}40` }}
+          />
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 36, color: TEXT, marginBottom: 12, letterSpacing: '-0.02em' }}>
             Tagett
           </div>
