@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -84,6 +84,7 @@ type AgentId = 'prospect' | 'content' | 'scope' | 'revenue'
 
 interface Agent {
   id: AgentId
+  icon: string
   label: string
   short: string
   description: string
@@ -99,6 +100,7 @@ type AllChats = Record<AgentId, Message[]>
 const AGENTS: Record<AgentId, Agent> = {
   prospect: {
     id: 'prospect',
+    icon: '◎',
     label: '01 ProspectBot',
     short: 'Prospect',
     description: 'Find businesses without websites in Ghana',
@@ -124,6 +126,7 @@ Cover all industries and business types. Be specific about Ghanaian towns, stree
   },
   content: {
     id: 'content',
+    icon: '✦',
     label: '02 ContentBot',
     short: 'Content',
     description: 'X posts & client proposals',
@@ -152,6 +155,7 @@ Write in a confident, premium tone. Tagline is "Building software Africa trusts.
   },
   scope: {
     id: 'scope',
+    icon: '◈',
     label: '03 ProjectBot',
     short: 'Project',
     description: 'Scope projects & generate proposals',
@@ -184,6 +188,7 @@ Consider Ghanaian project realities: internet reliability, client capacity, paym
   },
   revenue: {
     id: 'revenue',
+    icon: '◐',
     label: '04 RevenueTracker',
     short: 'Revenue',
     description: 'Track earnings vs GHS 120,000/month goal',
@@ -375,50 +380,66 @@ function useNotifications() {
   return { status, subscribe, unsubscribe, sendTest }
 }
 
+// ─── IconButton ───────────────────────────────────────────────────────────────
+
+function IconButton({ active = false, activeColor = GOLD, onClick, onPointerDown, onPointerUp, onPointerLeave, title, disabled, children }: {
+  active?: boolean
+  activeColor?: string
+  onClick?: () => void
+  onPointerDown?: () => void
+  onPointerUp?: () => void
+  onPointerLeave?: () => void
+  title?: string
+  disabled?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
+      title={title}
+      disabled={disabled}
+      style={{
+        width: 30, height: 30, borderRadius: 8, fontSize: 15,
+        border: `1px solid ${active ? activeColor + '80' : BORDER}`,
+        background: active ? `${activeColor}18` : SURFACE2,
+        color: active ? activeColor : MUTED,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0, opacity: disabled ? 0.4 : 1,
+        transition: 'border-color 0.15s, background 0.15s',
+      }}
+    >
+      {children}
+    </button>
+  )
+}
+
 function NotifToggle({ status, onSubscribe, onUnsubscribe, onTest }: {
   status: NotifStatus
   onSubscribe: () => void
   onUnsubscribe: () => void
   onTest: () => void
 }) {
+  const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   if (status === 'unknown' || status === 'unsupported') return null
   const isOn = status === 'subscribed'
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      <button
-        onClick={isOn ? onUnsubscribe : status === 'denied' ? undefined : onSubscribe}
-        disabled={status === 'denied'}
-        title={
-          status === 'denied' ? 'Notifications blocked — enable in browser settings'
-            : isOn ? 'Disable notifications' : 'Enable daily briefing notifications'
-        }
-        style={{
-          width: 30, height: 30, borderRadius: 8,
-          border: `1px solid ${isOn ? GOLD + '80' : BORDER}`,
-          background: isOn ? `${GOLD}18` : SURFACE2,
-          color: isOn ? GOLD : status === 'denied' ? MUTED : MUTED,
-          fontSize: 14,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0, opacity: status === 'denied' ? 0.4 : 1,
-          transition: 'border-color 0.15s, background 0.15s',
-        }}
-      >
-        {isOn ? '🔔' : '🔕'}
-      </button>
-      {isOn && (
-        <button
-          onClick={onTest}
-          title="Send a test notification"
-          style={{
-            fontSize: 10, fontFamily: FONT_BODY, color: MUTED,
-            padding: '3px 7px', border: `1px solid ${BORDER}`,
-            borderRadius: 6, whiteSpace: 'nowrap',
-          }}
-        >
-          Test
-        </button>
-      )}
-    </div>
+    <IconButton
+      active={isOn}
+      onClick={isOn ? onUnsubscribe : onSubscribe}
+      disabled={status === 'denied'}
+      title={
+        status === 'denied' ? 'Notifications blocked — enable in browser settings'
+          : isOn ? 'Disable notifications · hold to test' : 'Enable daily briefing notifications'
+      }
+      onPointerDown={() => { if (isOn) longPressRef.current = setTimeout(onTest, 700) }}
+      onPointerUp={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
+      onPointerLeave={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
+    >
+      {isOn ? '🔔' : '🔕'}
+    </IconButton>
   )
 }
 
@@ -448,22 +469,9 @@ function useTheme() {
 
 function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: () => void }) {
   return (
-    <button
-      onClick={onToggle}
-      title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-      style={{
-        width: 30, height: 30, borderRadius: 8,
-        border: `1px solid ${BORDER}`,
-        background: SURFACE2,
-        color: MUTED,
-        fontSize: 15,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        flexShrink: 0,
-        transition: 'border-color 0.15s',
-      }}
-    >
+    <IconButton onClick={onToggle} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
       {theme === 'dark' ? '☀' : '☽'}
-    </button>
+    </IconButton>
   )
 }
 
@@ -778,22 +786,44 @@ function BriefingButton({ label, onClick, loading, size = 'large' }: {
 
 // ─── GoalRing ─────────────────────────────────────────────────────────────────
 
-function GoalRing({ earned }: { earned: number }) {
+function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) {
   const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
-  const r = 36
+  const r = mini ? 13 : 36
+  const sz = mini ? 40 : 88
+  const cx = sz / 2
+  const sw = mini ? 3 : 5
   const circ = 2 * Math.PI * r
   const dash = (pct / 100) * circ
+  const pctStr = `${Math.round(pct)}%`
+
+  const arc = (
+    <svg width={sz} height={sz} viewBox={`0 0 ${sz} ${sz}`}>
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke={BORDER} strokeWidth={sw} />
+      <circle cx={cx} cy={cx} r={r} fill="none" stroke={GOLD} strokeWidth={sw} strokeLinecap="round"
+        strokeDasharray={`${dash} ${circ}`} transform={`rotate(-90 ${cx} ${cx})`}
+        style={{ transition: 'stroke-dasharray 0.6s ease' }} />
+      {!mini && (
+        <text x={cx} y={cx + 3} textAnchor="middle" fill={TEXT} fontSize="13" fontFamily={FONT_HEADING} fontWeight="600">
+          {pctStr}
+        </text>
+      )}
+    </svg>
+  )
+
+  if (mini) {
+    return (
+      <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
+        {arc}
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: TEXT }}>
+          {pctStr}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 0' }}>
-      <svg width="88" height="88" viewBox="0 0 88 88">
-        <circle cx="44" cy="44" r={r} fill="none" stroke={BORDER} strokeWidth="5" />
-        <circle cx="44" cy="44" r={r} fill="none" stroke={GOLD} strokeWidth="5" strokeLinecap="round"
-          strokeDasharray={`${dash} ${circ}`} transform="rotate(-90 44 44)"
-          style={{ transition: 'stroke-dasharray 0.6s ease' }} />
-        <text x="44" y="47" textAnchor="middle" fill={TEXT} fontSize="13" fontFamily={FONT_HEADING} fontWeight="600">
-          {Math.round(pct)}%
-        </text>
-      </svg>
+      {arc}
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Monthly Goal</div>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
@@ -804,37 +834,14 @@ function GoalRing({ earned }: { earned: number }) {
   )
 }
 
-// ─── MiniGoalRing ─────────────────────────────────────────────────────────────
-
-function MiniGoalRing({ earned }: { earned: number }) {
-  const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
-  const r = 13, circ = 2 * Math.PI * r, dash = (pct / 100) * circ
-  return (
-    <div style={{ position: 'relative', width: 40, height: 40, flexShrink: 0 }}>
-      <svg width="40" height="40" viewBox="0 0 40 40">
-        <circle cx="20" cy="20" r={r} fill="none" stroke={BORDER} strokeWidth="3" />
-        <circle cx="20" cy="20" r={r} fill="none" stroke={GOLD} strokeWidth="3" strokeLinecap="round"
-          strokeDasharray={`${dash} ${circ}`} transform="rotate(-90 20 20)"
-          style={{ transition: 'stroke-dasharray 0.6s ease' }} />
-      </svg>
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: FONT_HEADING, fontSize: 9, fontWeight: 700, color: TEXT }}>
-        {Math.round(pct)}%
-      </div>
-    </div>
-  )
-}
-
 // ─── MobileHeader ─────────────────────────────────────────────────────────────
 
-function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifStatus, onSubscribe, onUnsubscribe, onTestNotif }: {
+function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
   agent: Agent
   earnedGHS: number
   theme: 'dark' | 'light'
   onToggleTheme: () => void
-  notifStatus: NotifStatus
-  onSubscribe: () => void
-  onUnsubscribe: () => void
-  onTestNotif: () => void
+  notifToggle: React.ReactNode
 }) {
   return (
     <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, paddingTop: 'env(safe-area-inset-top)', flexShrink: 0 }}>
@@ -844,9 +851,9 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifStatus, onS
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT, marginTop: 1 }}>{agent.label}</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <NotifToggle status={notifStatus} onSubscribe={onSubscribe} onUnsubscribe={onUnsubscribe} onTest={onTestNotif} />
+          {notifToggle}
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
-          <MiniGoalRing earned={earnedGHS} />
+          <GoalRing earned={earnedGHS} mini />
         </div>
       </div>
     </div>
@@ -867,14 +874,14 @@ function BottomNav({ activeAgent, allChats, onSelect }: {
         return (
           <button key={id} onClick={() => onSelect(id)} style={{
             flex: 1, minHeight: 56, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 3, background: 'none',
+            alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
             borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
-            paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
+            paddingTop: 8, paddingBottom: 8, transition: 'border-color 0.15s',
           }}>
-            <span style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 11, color: isActive ? GOLD : MUTED, letterSpacing: '0.04em' }}>
-              {agent.label.split(' ')[0]}
+            <span style={{ fontSize: 18, lineHeight: 1, color: isActive ? GOLD : MUTED, transition: 'color 0.15s' }}>
+              {agent.icon}
             </span>
-            <span style={{ fontFamily: FONT_HEADING, fontSize: 12, fontWeight: isActive ? 600 : 400, color: isActive ? TEXT : MUTED }}>
+            <span style={{ fontFamily: FONT_HEADING, fontSize: 11, fontWeight: isActive ? 600 : 400, color: isActive ? TEXT : MUTED, marginTop: 2 }}>
               {agent.short}
             </span>
             {turnCount > 0 && (
@@ -1065,7 +1072,7 @@ export default function Page() {
     setActiveAgent(id); setError(null)
   }, [])
 
-  const earnedGHS = (() => {
+  const earnedGHS = useMemo(() => {
     let max = 0
     for (const m of allChats.revenue ?? []) {
       for (const match of m.content.match(/GHS\s*([\d,]+)/gi) ?? []) {
@@ -1074,7 +1081,7 @@ export default function Page() {
       }
     }
     return max
-  })()
+  }, [allChats.revenue])
 
   const AgentSubheader = (
     <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
@@ -1096,7 +1103,7 @@ export default function Page() {
   if (isMobile) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
-        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifStatus={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTestNotif={sendTest} />
+        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={<NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
@@ -1140,6 +1147,7 @@ export default function Page() {
           </div>
           <GoalRing earned={earnedGHS} />
         </div>
+
       </div>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
