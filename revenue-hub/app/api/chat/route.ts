@@ -79,7 +79,18 @@ export async function POST(req: NextRequest) {
   ]
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const res = await callLLM(apiUrl, apiKey, model, chatMessages, tools)
+    let res = await callLLM(apiUrl, apiKey, model, chatMessages, tools)
+
+    // Gemini rate-limited (429) — fall back to Groq immediately
+    if (useGemini && res.status === 429) {
+      res = await callLLM(
+        'https://api.groq.com/openai/v1/chat/completions',
+        groqKey,
+        GROQ_MODEL,
+        chatMessages,
+        tools
+      )
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -88,8 +99,14 @@ export async function POST(req: NextRequest) {
         `API error ${res.status}`
 
       // Groq/llama occasionally produces malformed tool calls — retry without tools
-      if (!useGemini && tools.length > 0 && message.includes('tool call validation failed')) {
-        const fallback = await callLLM(apiUrl, apiKey, model, chatMessages, [])
+      if (tools.length > 0 && message.includes('tool call validation failed')) {
+        const fallback = await callLLM(
+          'https://api.groq.com/openai/v1/chat/completions',
+          groqKey,
+          GROQ_MODEL,
+          chatMessages,
+          []
+        )
         if (fallback.ok) {
           const fd = await fallback.json()
           return NextResponse.json({ text: (fd.choices?.[0]?.message?.content as string) ?? '' })
