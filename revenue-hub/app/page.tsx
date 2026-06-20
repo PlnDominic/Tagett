@@ -80,7 +80,7 @@ interface Message {
   content: string
 }
 
-type AgentId = 'prospect' | 'content' | 'scope' | 'revenue'
+type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral'
 
 interface Agent {
   id: AgentId
@@ -218,6 +218,79 @@ Service pricing context:
 
 Always express amounts in GHS. Give clear, actionable analysis.`,
   },
+  viral: {
+    id: 'viral',
+    icon: '✺',
+    label: '05 ViralBot',
+    short: 'Viral',
+    description: 'Go viral on X, LinkedIn, TikTok & Instagram',
+    briefingLabel: "Today's Viral Strategy",
+    dailyPrompt: `Give me today's complete viral content strategy for Ecstasy Technologies (ecstasytechnologies.com). I need content that builds a massive following AND attracts inbound clients in Ghana and across Africa.
+
+Deliver:
+
+1. VIRAL X THREAD (6 tweets)
+   — Tweet 1 must be an irresistible hook (no preamble, no "In today's world")
+   — Each tweet must make you want to read the next
+   — End with a CTA pointing to ecstasytechnologies.com
+
+2. LINKEDIN AUTHORITY POST
+   — Share a specific insight, number, or story from building software in Ghana
+   — Position Ecstasy Technologies as the best software studio in West Africa
+   — No corporate speak. Write like a founder, not a brand
+
+3. TIKTOK / REELS SCRIPT (60 seconds)
+   — Hook in the first 3 seconds or it's dead
+   — Show the value of having a website / app for a Ghanaian business
+   — End with a strong CTA
+
+4. TRENDING ANGLE TO HIJACK TODAY
+   — One current topic (tech, business, Africa, Ghana) I can tie Ecstasy Technologies to
+   — Give me the exact hook sentence
+
+Write everything as Dominic Agyapong, founder of Ecstasy Technologies. Make it real, specific, and immediately postable.`,
+    systemPrompt: `You are ViralBot, a viral social media strategist for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You help Dominic Agyapong build a massive online following that converts to inbound software clients.
+
+YOUR CONTENT PHILOSOPHY:
+- Hook in the first line — no preamble, no "In today's world", no "Did you know"
+- Specificity beats generality: numbers, names, places, prices
+- Story over promotion: share the journey, the struggle, the win — not the pitch
+- Ghanaian pride: celebrate African tech excellence unapologetically
+- Controversy without offense: challenge assumptions that hold African businesses back
+
+FORMATS YOU MASTER:
+
+X (Twitter) Threads:
+- Tweet 1 = the hook (bold claim, surprising stat, or story opener)
+- Tweets 2-5 = the value (teach, reveal, break down)
+- Tweet 6 = the CTA (soft sell or follow prompt)
+- Each tweet must stand alone AND make you want the next one
+
+LinkedIn Posts:
+- First line = hook (stops the scroll)
+- Body = story or insight with specific details
+- End = question or CTA that invites engagement
+- Tone: confident founder, not corporate brand
+
+TikTok / Instagram Reels Scripts:
+- 0-3 seconds: hook (visual or verbal pattern interrupt)
+- 3-45 seconds: value delivery (show, don't tell)
+- 45-60 seconds: CTA
+- Write as a shot-by-shot or line-by-line script
+
+Viral Angles That Work for Ecstasy Technologies:
+- "We built [X] for a Ghanaian [business type] and here's what happened"
+- "Why Ghanaian businesses are losing money without a website"
+- Revenue reveals and client transformation stories
+- "Unpopular opinion: [challenge the status quo of tech in Africa]"
+- "Nobody talks about building software in Ghana — so I will"
+- Before/after stories of client digital transformations
+- Day-in-the-life of a Ghanaian software studio
+
+GHANA CONTEXT: Always ground content in real Ghanaian business culture — chop bars, mobile money, markets, Accra traffic, load shedding resilience, the hustle. This makes content authentic and shareable.
+
+Always write as Dominic Agyapong. No placeholders. No [your name]. Make it immediately postable.`,
+  },
 }
 
 const AGENT_IDS = Object.keys(AGENTS) as AgentId[]
@@ -288,8 +361,25 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       targetAgent: 'scope',
       buildPrompt: (c) => `I have this content/proposal from ContentBot. Review the scope and generate a formal project proposal with GHS line items:\n\n${c.slice(0, 1500)}`,
     },
+    {
+      label: '→ Make it go viral (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `I have this content from ContentBot. Turn it into a viral X thread, LinkedIn post, and TikTok script that will blow up for Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
+    },
   ],
   revenue: [],
+  viral: [
+    {
+      label: '→ Polish Post (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `I have this viral content from ViralBot. Polish it, tighten the copy, and make it ready to publish immediately for Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Track Revenue Impact',
+      targetAgent: 'revenue',
+      buildPrompt: (c) => `I ran this viral campaign from ViralBot. Help me estimate the pipeline value and track it against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
 }
 
 // ─── Social & WhatsApp helpers ────────────────────────────────────────────────
