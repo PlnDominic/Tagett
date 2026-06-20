@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 
-const MODEL = 'llama-3.3-70b-versatile'
+const GROQ_MODEL   = 'llama-3.3-70b-versatile'
+const GEMINI_MODEL = 'gemini-2.0-flash'
 const MAX_TOOL_ITERATIONS = 5
 
 interface Message {
@@ -15,20 +16,38 @@ interface ChatRequest {
   agentId?: string
 }
 
-interface GroqToolCall {
+interface ToolCall {
   id: string
   type: 'function'
   function: { name: string; arguments: string }
 }
 
-type GroqMessage =
+type ChatMessage =
   | { role: 'system' | 'user' | 'assistant'; content: string }
-  | { role: 'assistant'; content: null; tool_calls: GroqToolCall[] }
+  | { role: 'assistant'; content: null; tool_calls: ToolCall[] }
   | { role: 'tool'; tool_call_id: string; content: string }
 
+async function callLLM(
+  url: string,
+  authKey: string,
+  model: string,
+  messages: ChatMessage[],
+  tools: ToolDefinition[]
+): Promise<Response> {
+  const body: Record<string, unknown> = { model, max_tokens: 2000, messages }
+  if (tools.length > 0) body.tools = tools
+  return fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${authKey}`, 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}
+
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.GROQ_API_KEY
-  if (!apiKey) {
+  const groqKey   = process.env.GROQ_API_KEY
+  const geminiKey = process.env.GEMINI_API_KEY
+
+  if (!groqKey) {
     return NextResponse.json({ error: 'GROQ_API_KEY not configured' }, { status: 500 })
   }
 
@@ -46,52 +65,41 @@ export async function POST(req: NextRequest) {
 
   const tools: ToolDefinition[] = agentId ? getAgentTools(agentId) : []
 
-  const groqMessages: GroqMessage[] = [
+  // Use Gemini for tool-using agents (Scout, Prospect, etc.) when key is available
+  const useGemini = tools.length > 0 && !!geminiKey
+  const apiUrl = useGemini
+    ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+    : 'https://api.groq.com/openai/v1/chat/completions'
+  const apiKey = useGemini ? geminiKey! : groqKey
+  const model  = useGemini ? GEMINI_MODEL : GROQ_MODEL
+
+  const chatMessages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
-    ...messages.map((m) => ({ role: m.role, content: m.content } as GroqMessage)),
+    ...messages.map((m) => ({ role: m.role, content: m.content } as ChatMessage)),
   ]
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    const reqBody: Record<string, unknown> = {
-      model: MODEL,
-      max_tokens: 2000,
-      messages: groqMessages,
-    }
-    if (tools.length > 0) reqBody.tools = tools
+    const res = await callLLM(apiUrl, apiKey, model, chatMessages, tools)
 
-    const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(reqBody),
-    })
-
-    if (!groqRes.ok) {
-      const err = await groqRes.json().catch(() => ({}))
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
       const message =
         (err as { error?: { message?: string } })?.error?.message ??
-        `Groq API error ${groqRes.status}`
+        `API error ${res.status}`
 
-      // llama occasionally produces malformed tool calls (name contains args);
-      // retry once without tools so the model falls back to plain text.
-      if (tools.length > 0 && message.includes('tool call validation failed')) {
-        const fallbackRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages: groqMessages }),
-        })
-        if (fallbackRes.ok) {
-          const fd = await fallbackRes.json()
+      // Groq/llama occasionally produces malformed tool calls — retry without tools
+      if (!useGemini && tools.length > 0 && message.includes('tool call validation failed')) {
+        const fallback = await callLLM(apiUrl, apiKey, model, chatMessages, [])
+        if (fallback.ok) {
+          const fd = await fallback.json()
           return NextResponse.json({ text: (fd.choices?.[0]?.message?.content as string) ?? '' })
         }
       }
 
-      return NextResponse.json({ error: message }, { status: groqRes.status })
+      return NextResponse.json({ error: message }, { status: res.status })
     }
 
-    const data = await groqRes.json()
+    const data = await res.json()
     const choice = data.choices?.[0]
     const finishReason: string = choice?.finish_reason ?? 'stop'
     const msg = choice?.message
@@ -100,14 +108,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ text: (msg?.content as string) ?? '' })
     }
 
-    // Append assistant message with tool_calls, then execute each
-    groqMessages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls as GroqToolCall[] })
+    chatMessages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls as ToolCall[] })
 
-    for (const tc of msg.tool_calls as GroqToolCall[]) {
+    for (const tc of msg.tool_calls as ToolCall[]) {
       let args: Record<string, string> = {}
       try { args = JSON.parse(tc.function.arguments) } catch { /* ignore */ }
       const result = await executeTool(tc.function.name, args)
-      groqMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
+      chatMessages.push({ role: 'tool', tool_call_id: tc.id, content: result })
     }
   }
 
