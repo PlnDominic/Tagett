@@ -2934,8 +2934,17 @@ export default function Page() {
   )
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
+
+  // Load pinned notes from Supabase on mount (localStorage shows immediately)
   useEffect(() => {
-    // Show local data immediately, then hydrate from KV
+    fetch('/api/notes')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.value) { setPinnedNotes(d.value); localStorage.setItem('tagett-pinned-notes-v1', d.value) } })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    // Show local data immediately, then hydrate from Supabase
     const local = loadDeals()
     if (local.length > 0) setDeals(local)
     fetch('/api/deals')
@@ -2971,13 +2980,25 @@ export default function Page() {
     localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified))
   }, [deals])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
-  useEffect(() => { localStorage.setItem('tagett-pinned-notes-v1', pinnedNotes) }, [pinnedNotes])
 
-  const kvSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const notesSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    localStorage.setItem('tagett-pinned-notes-v1', pinnedNotes)
+    if (notesSyncRef.current) clearTimeout(notesSyncRef.current)
+    notesSyncRef.current = setTimeout(() => {
+      fetch('/api/notes', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ value: pinnedNotes }),
+      }).catch(() => {})
+    }, 1500)
+  }, [pinnedNotes])
+
+  const dbSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     saveDeals(deals) // Always write to localStorage immediately
-    if (kvSyncRef.current) clearTimeout(kvSyncRef.current)
-    kvSyncRef.current = setTimeout(() => {
+    if (dbSyncRef.current) clearTimeout(dbSyncRef.current)
+    dbSyncRef.current = setTimeout(() => {
       fetch('/api/deals', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },

@@ -1,38 +1,39 @@
 import { NextResponse } from 'next/server'
+import { getSupabase } from '@/lib/supabase'
 
-const TOKEN = process.env.GITHUB_WEBSITE_TOKEN
-const REPO = process.env.GITHUB_WEBSITE_REPO ?? 'PlnDominic/Ecstasy-Technologies'
-const BRANCH = process.env.GITHUB_WEBSITE_BRANCH ?? 'main'
+const BUCKET = 'project-images'
 
 export async function POST(req: Request) {
-  if (!TOKEN) return NextResponse.json({ error: 'GITHUB_WEBSITE_TOKEN not set' }, { status: 500 })
   try {
+    const sb = getSupabase()
     const { base64, filename } = await req.json()
-    if (!base64 || !filename) return NextResponse.json({ error: 'base64 and filename required' }, { status: 400 })
+    if (!base64 || !filename) {
+      return NextResponse.json({ error: 'base64 and filename required' }, { status: 400 })
+    }
+
     const content = base64.includes(',') ? base64.split(',')[1] : base64
     const ext = filename.split('.').pop()?.toLowerCase() ?? 'jpg'
     const safeName = `tagett-${Date.now()}.${ext}`
-    const path = `public/images/projects/${safeName}`
-    const res = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${TOKEN}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-      body: JSON.stringify({
-        message: `[Tagett] Upload project image: ${safeName}`,
-        content,
-        branch: BRANCH,
-      }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      return NextResponse.json({ error: err.message ?? 'Upload failed' }, { status: res.status })
+
+    const buffer = Buffer.from(content, 'base64')
+    const mimeMap: Record<string, string> = {
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png',
+      gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
     }
-    return NextResponse.json({ path: `/images/projects/${safeName}` })
+    const contentType = mimeMap[ext] ?? 'application/octet-stream'
+
+    const { error } = await sb.storage
+      .from(BUCKET)
+      .upload(safeName, buffer, { contentType, upsert: false })
+
+    if (error) throw error
+
+    const { data } = sb.storage.from(BUCKET).getPublicUrl(safeName)
+    return NextResponse.json({ path: data.publicUrl })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Upload failed' },
+      { status: 500 }
+    )
   }
 }

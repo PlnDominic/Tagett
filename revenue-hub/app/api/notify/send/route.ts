@@ -1,17 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import webpush from 'web-push'
-
-const KV_URL = process.env.UPSTASH_REDIS_REST_URL
-const KV_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
-
-async function kvGet(key: string): Promise<string | null> {
-  if (!KV_URL || !KV_TOKEN) return null
-  const res = await fetch(`${KV_URL}/get/${key}`, {
-    headers: { Authorization: `Bearer ${KV_TOKEN}` },
-  })
-  const data = await res.json()
-  return data.result ?? null
-}
+import { getSupabase } from '@/lib/supabase'
 
 function configured() {
   return (
@@ -53,18 +42,36 @@ async function sendPush(payload: { title: string; body: string }) {
     )
   }
 
+  let subscriptions: { subscription: unknown }[]
+  try {
+    const sb = getSupabase()
+    const { data, error } = await sb.from('push_subscriptions').select('subscription')
+    if (error) throw error
+    subscriptions = data ?? []
+  } catch {
+    return NextResponse.json({ error: 'Could not load subscriptions from Supabase.' }, { status: 500 })
+  }
+
+  if (subscriptions.length === 0) {
+    return NextResponse.json({ error: 'No push subscriptions saved.' }, { status: 404 })
+  }
+
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT!,
     process.env.VAPID_PUBLIC_KEY!,
     process.env.VAPID_PRIVATE_KEY!,
   )
 
-  const raw = await kvGet('push_subscription')
-  if (!raw) {
-    return NextResponse.json({ error: 'No push subscription saved.' }, { status: 404 })
-  }
+  const results = await Promise.allSettled(
+    subscriptions.map(row =>
+      webpush.sendNotification(
+        row.subscription as webpush.PushSubscription,
+        JSON.stringify(payload)
+      )
+    )
+  )
 
-  const subscription = JSON.parse(raw)
-  await webpush.sendNotification(subscription, JSON.stringify(payload))
-  return NextResponse.json({ success: true })
+  const sent = results.filter(r => r.status === 'fulfilled').length
+  const failed = results.length - sent
+  return NextResponse.json({ success: true, sent, failed })
 }
