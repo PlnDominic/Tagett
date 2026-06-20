@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 
-const MODEL_TOOLS = 'llama3-groq-70b-8192-tool-use-preview'
-const MODEL_CHAT  = 'llama-3.3-70b-versatile'
+const MODEL = 'llama-3.3-70b-versatile'
 const MAX_TOOL_ITERATIONS = 5
 
 interface Message {
@@ -54,7 +53,7 @@ export async function POST(req: NextRequest) {
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     const reqBody: Record<string, unknown> = {
-      model: tools.length > 0 ? MODEL_TOOLS : MODEL_CHAT,
+      model: MODEL,
       max_tokens: 2000,
       messages: groqMessages,
     }
@@ -81,7 +80,7 @@ export async function POST(req: NextRequest) {
         const fallbackRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
           method: 'POST',
           headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ model: MODEL_CHAT, max_tokens: 2000, messages: groqMessages }),
+          body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages: groqMessages }),
         })
         if (fallbackRes.ok) {
           const fd = await fallbackRes.json()
