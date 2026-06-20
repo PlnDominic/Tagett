@@ -4,6 +4,10 @@
     {
       "path": "/api/notify/send",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/agents/run",
+      "schedule": "0 */3 * * *"
     }
   ]
 }
