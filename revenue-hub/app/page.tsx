@@ -2787,7 +2787,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
   const divider = (key: string) => <div key={key} style={{ width: 1, background: BORDER, flexShrink: 0, margin: '8px 2px', alignSelf: 'stretch' }} />
 
   return (
-    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingTop: 6, paddingBottom: 0, flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
       <style>{`.tn::-webkit-scrollbar{display:none}`}</style>
       <div className="tn" style={{ display: 'flex', minWidth: 'max-content' }}>
         {renderViewBtn('home', '⌂', 'Home')}
