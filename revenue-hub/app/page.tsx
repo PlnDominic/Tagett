@@ -55,6 +55,39 @@ const IconBellSmall = ({ size = 11, color = 'currentColor' }: { size?: number; c
   </svg>
 )
 
+// Bottom tab icons
+const TabIconHome = ({ active }: { active: boolean }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
+    <path d="M7.5 18V12h5v6" />
+  </svg>
+)
+const TabIconWork = ({ active }: { active: boolean }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="7" width="16" height="11" rx="2" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.12 : 0} />
+    <path d="M7 7V5.5A2.5 2.5 0 0112.5 5.5V7" />
+    <line x1="2" y1="11" x2="18" y2="11" />
+  </svg>
+)
+const TabIconAgents = ({ active }: { active: boolean }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="8" width="12" height="9" rx="2" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.12 : 0} />
+    <circle cx="8" cy="13" r="1.2" fill="currentColor" stroke="none" />
+    <circle cx="12" cy="13" r="1.2" fill="currentColor" stroke="none" />
+    <path d="M10 8V5.5" />
+    <path d="M7.5 5.5h5" />
+    <path d="M2 12h2M16 12h2" />
+  </svg>
+)
+const TabIconMore = ({ active }: { active: boolean }) => (
+  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="6" height="6" rx="1.5" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
+    <rect x="11" y="3" width="6" height="6" rx="1.5" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
+    <rect x="3" y="11" width="6" height="6" rx="1.5" />
+    <rect x="11" y="11" width="6" height="6" rx="1.5" />
+  </svg>
+)
+
 // ─── Prospect intake data ─────────────────────────────────────────────────────
 
 const INDUSTRIES = [
@@ -679,6 +712,18 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
 const AGENT_IDS = Object.keys(AGENTS) as AgentId[]
 const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'viral', 'scout']
 const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'outsider', 'executor']
+
+// ─── Mobile tab groupings ─────────────────────────────────────────────────────
+type MobileTab = 'home' | 'work' | 'agents' | 'more'
+const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients']
+const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
+const MORE_VIEWS: ViewId[]  = ['website', 'history']
+function getMobileTab(view: ViewId): MobileTab {
+  if (WORK_VIEWS.includes(view))  return 'work'
+  if (AGENT_VIEWS.includes(view)) return 'agents'
+  if (MORE_VIEWS.includes(view))  return 'more'
+  return 'home'
+}
 
 // ─── Website project seed data ─────────────────────────────────────────────────
 
@@ -3410,59 +3455,66 @@ function AgentRunHistory() {
   )
 }
 
-// ─── BottomNav ────────────────────────────────────────────────────────────────
+// ─── BottomNav (4 tabs) ───────────────────────────────────────────────────────
 
-function BottomNav({ activeView, allChats, onSelect }: {
-  activeView: ViewId; allChats: AllChats; onSelect: (v: ViewId) => void
+function BottomNav({ activeView, onSelect }: {
+  activeView: ViewId
+  onSelect: (tab: MobileTab) => void
 }) {
-  const renderViewBtn = (v: ViewId, icon: string, label: string) => {
-    const isActive = v === activeView
-    return (
-      <button key={v} onClick={() => onSelect(v)} style={{
-        width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
-        borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
-        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
-      }}>
-        <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? GOLD : MUTED, transition: 'color 0.15s' }}>{icon}</span>
-        <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? GOLD : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
-      </button>
-    )
-  }
-
-  const renderAgentBtn = (id: AgentId) => {
-    const a = AGENTS[id]
-    const isActive = id === activeView
-    const turnCount = Math.floor((allChats[id]?.length ?? 0) / 2)
-    return (
-      <button key={id} onClick={() => onSelect(id)} style={{
-        width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
-        borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
-        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
-      }}>
-        <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>{a.icon}</span>
-        <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{a.short}</span>
-        {turnCount > 0 && <span style={{ fontFamily: FONT_BODY, fontSize: 8, color: MUTED, background: SURFACE2, padding: '1px 4px', borderRadius: 6 }}>{turnCount}</span>}
-      </button>
-    )
-  }
-
-  const divider = (key: string) => <div key={key} style={{ width: 1, background: BORDER, flexShrink: 0, margin: '8px 2px', alignSelf: 'stretch' }} />
-
+  const activeTab = getMobileTab(activeView)
+  const tabs: Array<{ id: MobileTab; label: string; icon: (a: boolean) => React.ReactNode }> = [
+    { id: 'home',   label: 'Home',   icon: (a) => <TabIconHome active={a} /> },
+    { id: 'work',   label: 'Work',   icon: (a) => <TabIconWork active={a} /> },
+    { id: 'agents', label: 'Agents', icon: (a) => <TabIconAgents active={a} /> },
+    { id: 'more',   label: 'More',   icon: (a) => <TabIconMore active={a} /> },
+  ]
   return (
-    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingTop: 6, paddingBottom: 0, flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
-      <style>{`.tn::-webkit-scrollbar{display:none}`}</style>
-      <div className="tn" style={{ display: 'flex', minWidth: 'max-content' }}>
-        {renderViewBtn('home', '⌂', 'Home')}
-        {renderViewBtn('pipeline', '◫', 'Deals')}
-        {renderViewBtn('website', '↑', 'Website')}
-        {renderViewBtn('council', '⊙', 'Council')}
-        {renderViewBtn('history', '◷', 'History')}
-        {renderViewBtn('clients', '👥', 'Clients')}
-        {divider('d1')}
-        {MAIN_AGENT_IDS.map(renderAgentBtn)}
+    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0 }}>
+      <div style={{ display: 'flex', height: 56 }}>
+        {tabs.map(tab => {
+          const isActive = tab.id === activeTab
+          return (
+            <button key={tab.id} onClick={() => onSelect(tab.id)} style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', justifyContent: 'center', gap: 3,
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: isActive ? GOLD : MUTED,
+              borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
+              paddingTop: 10, paddingBottom: 6, transition: 'color 0.15s',
+            }}>
+              {tab.icon(isActive)}
+              <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, letterSpacing: '0.04em' }}>{tab.label}</span>
+            </button>
+          )
+        })}
       </div>
+    </div>
+  )
+}
+
+// ─── SubTabs (horizontal tab bar used inside Work / More) ─────────────────────
+
+function SubTabs({ items, active, onSelect }: {
+  items: Array<{ id: ViewId; label: string }>
+  active: ViewId
+  onSelect: (id: ViewId) => void
+}) {
+  return (
+    <div style={{ display: 'flex', background: SURFACE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+      {items.map(item => {
+        const isActive = item.id === active
+        return (
+          <button key={item.id} onClick={() => onSelect(item.id)} style={{
+            flex: 1, padding: '10px 8px', fontSize: 13, fontFamily: FONT_HEADING,
+            fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : MUTED,
+            background: 'none', border: 'none', cursor: 'pointer',
+            borderBottom: `2px solid ${isActive ? GOLD : 'transparent'}`,
+            marginBottom: -1, transition: 'color 0.15s',
+          }}>
+            {item.label}
+          </button>
+        )
+      })}
     </div>
   )
 }
@@ -3897,10 +3949,19 @@ export default function Page() {
 
   // ── Mobile ─────────────────────────────────────────────────────────────────
   if (isMobile) {
+    // Maps a tab tap to the right ViewId, staying on current sub-view if already there
+    const handleTabSelect = (tab: MobileTab) => {
+      if (tab === 'home') { setActiveView('home'); setError(null); return }
+      if (tab === 'work'   && !WORK_VIEWS.includes(activeView))  { setActiveView('pipeline'); setError(null); return }
+      if (tab === 'agents' && !AGENT_VIEWS.includes(activeView)) { setActiveView('council');  setError(null); return }
+      if (tab === 'more'   && !MORE_VIEWS.includes(activeView))  { setActiveView('website');  setError(null); return }
+      setError(null)
+    }
+
     const shell = (content: React.ReactNode) => (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
         {content}
-        <BottomNav activeView={activeView} allChats={allChats} onSelect={(v) => { setActiveView(v); setError(null) }} />
+        <BottomNav activeView={activeView} onSelect={handleTabSelect} />
       </div>
     )
 
@@ -3920,24 +3981,74 @@ export default function Page() {
       </div>
     )
 
+    // ── Home ──────────────────────────────────────────────────────────────────
     if (activeView === 'home') return shell(
       <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
     )
 
-    if (activeView === 'pipeline') return shell(
-      <>{viewHeader('Deal Pipeline')}<DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} /></>
+    // ── Work tab (Deals + Clients) ────────────────────────────────────────────
+    if (WORK_VIEWS.includes(activeView)) return shell(
+      <>
+        {viewHeader('Work')}
+        <SubTabs
+          items={[{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }]}
+          active={activeView as ViewId}
+          onSelect={(v) => { setActiveView(v); setError(null) }}
+        />
+        {activeView === 'pipeline' && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
+        {activeView === 'clients'  && <ClientsView onOpenAgent={handleOpenAgent} />}
+      </>
     )
 
-    if (activeView === 'website') return shell(
-      <>{viewHeader('Website Projects')}<WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} /></>
+    // ── More tab (Website + History) ──────────────────────────────────────────
+    if (MORE_VIEWS.includes(activeView)) return shell(
+      <>
+        {viewHeader('More')}
+        <SubTabs
+          items={[{ id: 'website', label: 'Website Projects' }, { id: 'history', label: 'Run History' }]}
+          active={activeView as ViewId}
+          onSelect={(v) => { setActiveView(v); setError(null) }}
+        />
+        {activeView === 'website' && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />}
+        {activeView === 'history' && <AgentRunHistory />}
+      </>
+    )
+
+    // ── Agents tab (Council + 6 operators) ───────────────────────────────────
+    // Horizontal agent selector pill bar
+    const AgentPicker = (
+      <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+        <style>{`.ap::-webkit-scrollbar{display:none}`}</style>
+        <div className="ap" style={{ display: 'flex', gap: 6, padding: '7px 12px', minWidth: 'max-content' }}>
+          {(['council', ...MAIN_AGENT_IDS] as ViewId[]).map(id => {
+            const isActive = id === activeView
+            const label = id === 'council' ? 'Council' : AGENTS[id as AgentId].short
+            const count = id !== 'council' ? Math.floor((allChats[id as AgentId]?.length ?? 0) / 2) : 0
+            return (
+              <button key={id} onClick={() => { setActiveView(id); setError(null) }} style={{
+                padding: '4px 12px', borderRadius: 20,
+                border: `1px solid ${isActive ? GOLD : BORDER}`,
+                background: isActive ? `${GOLD}15` : 'transparent',
+                color: isActive ? GOLD : MUTED,
+                fontSize: 12, fontFamily: FONT_HEADING, fontWeight: isActive ? 600 : 400,
+                whiteSpace: 'nowrap', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                {label}
+                {count > 0 && <span style={{ fontSize: 9, background: isActive ? `${GOLD}30` : SURFACE2, padding: '1px 5px', borderRadius: 8, color: isActive ? GOLD : MUTED }}>{count}</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
     )
 
     if (activeView === 'council') return shell(
-      <>{viewHeader('Council Chamber')}<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} /></>
+      <>
+        {viewHeader('Council Chamber')}
+        {AgentPicker}
+        <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+      </>
     )
-
-    if (activeView === 'history') return shell(<>{viewHeader('Run History')}<AgentRunHistory /></>)
-    if (activeView === 'clients') return shell(<>{viewHeader('Clients')}<ClientsView onOpenAgent={handleOpenAgent} /></>)
 
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
@@ -3952,6 +4063,7 @@ export default function Page() {
     return shell(
       <>
         <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onOpenNotes={() => setNotesOpen(true)} hasNotes={!!pinnedNotes.trim()} />
+        {AgentPicker}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
