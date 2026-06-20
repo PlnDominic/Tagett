@@ -1,46 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-const KV_URL = process.env.UPSTASH_REDIS_REST_URL
-const KV_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN
-const KV_KEY = 'push_subscription'
-
-async function kvSet(value: string) {
-  if (!KV_URL || !KV_TOKEN) throw new Error('Redis not configured')
-  const res = await fetch(`${KV_URL}/set/${KV_KEY}`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${KV_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(value),
-  })
-  if (!res.ok) throw new Error('Redis write failed')
-}
-
-async function kvDel() {
-  if (!KV_URL || !KV_TOKEN) throw new Error('Redis not configured')
-  await fetch(`${KV_URL}/del/${KV_KEY}`, {
-    headers: { Authorization: `Bearer ${KV_TOKEN}` },
-  })
-}
+import { getSupabase } from '@/lib/supabase'
 
 export async function POST(req: NextRequest) {
-  if (!KV_URL || !KV_TOKEN) {
-    return NextResponse.json(
-      { error: 'Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN to enable push notifications.' },
-      { status: 503 }
-    )
-  }
   try {
     const subscription = await req.json()
-    await kvSet(JSON.stringify(subscription))
+    const endpoint: string = subscription?.endpoint
+    if (!endpoint) return NextResponse.json({ error: 'Invalid subscription' }, { status: 400 })
+
+    const sb = getSupabase()
+    const { error } = await sb
+      .from('push_subscriptions')
+      .upsert({ endpoint, subscription }, { onConflict: 'endpoint' })
+    if (error) throw error
+
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })
   }
 }
 
-export async function DELETE() {
-  if (!KV_URL || !KV_TOKEN) return NextResponse.json({ success: true })
+export async function DELETE(req: NextRequest) {
   try {
-    await kvDel()
+    const { endpoint } = await req.json().catch(() => ({}))
+    if (!endpoint) return NextResponse.json({ success: true })
+
+    const sb = getSupabase()
+    await sb.from('push_subscriptions').delete().eq('endpoint', endpoint)
     return NextResponse.json({ success: true })
   } catch (err) {
     return NextResponse.json({ error: String(err) }, { status: 500 })

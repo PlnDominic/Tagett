@@ -1,0 +1,38 @@
+-- Run this in Supabase → SQL Editor → New Query
+
+-- 1. Deals table
+create table if not exists deals (
+  id              text primary key,
+  name            text not null,
+  industry        text not null,
+  value_ghs       numeric not null default 0,
+  stage           text not null default 'found',
+  phone           text,
+  created_at      bigint not null,
+  stage_changed_at bigint,
+  updated_at      timestamptz default now()
+);
+
+-- 2. Push notification subscriptions (one row per browser/device)
+create table if not exists push_subscriptions (
+  endpoint        text primary key,
+  subscription    jsonb not null,
+  created_at      timestamptz default now()
+);
+
+-- 3. Key-value settings (pinned notes, preferences)
+create table if not exists settings (
+  key        text primary key,
+  value      text,
+  updated_at timestamptz default now()
+);
+
+-- 4. Storage bucket for project images
+--    Create via: Supabase Dashboard → Storage → New bucket
+--    Name: project-images
+--    Public: YES (so image URLs work without auth)
+--
+--    Or run:
+insert into storage.buckets (id, name, public)
+values ('project-images', 'project-images', true)
+on conflict (id) do nothing;
