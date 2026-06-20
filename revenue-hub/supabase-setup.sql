@@ -10,8 +10,12 @@ create table if not exists deals (
   phone           text,
   created_at      bigint not null,
   stage_changed_at bigint,
+  follow_up_at    bigint,
   updated_at      timestamptz default now()
 );
+
+-- Add follow_up_at to existing deals table if upgrading
+alter table deals add column if not exists follow_up_at bigint;
 
 -- 2. Push notification subscriptions (one row per browser/device)
 create table if not exists push_subscriptions (
@@ -55,7 +59,21 @@ create table if not exists agent_runs (
 -- create extension if not exists pg_cron;
 -- select cron.schedule('delete-old-runs', '0 0 * * *', $$delete from agent_runs where run_at < now() - interval '30 days'$$);
 
--- 5. Storage bucket for project images
+-- 6. Client contact database
+create table if not exists clients (
+  id          uuid default gen_random_uuid() primary key,
+  name        text not null,
+  phone       text,
+  whatsapp    text,
+  email       text,
+  website     text,
+  industry    text,
+  notes       text,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+-- 7. Storage bucket for project images
 --    Create via: Supabase Dashboard → Storage → New bucket
 --    Name: project-images
 --    Public: YES (so image URLs work without auth)

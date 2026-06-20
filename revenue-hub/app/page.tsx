@@ -131,7 +131,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -1157,6 +1157,7 @@ interface Deal {
   phone?: string
   createdAt: number
   stageChangedAt?: number
+  followUpAt?: number
 }
 
 const DEALS_KEY = 'tagett-deals-v1'
@@ -2260,16 +2261,28 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
 
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite }: {
+function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite, onSetFollowUp }: {
   deal: Deal
   onMove: (id: string, stage: DealStage) => void
   onDelete: (id: string) => void
   onOpenAgent: (agentId: AgentId, prompt: string) => void
   onPublishToWebsite: (deal: Deal) => void
+  onSetFollowUp: (id: string, ts: number | undefined) => void
 }) {
   const idx = STAGES.indexOf(deal.stage)
+  const now = Date.now()
+  const isOverdue = deal.followUpAt && deal.followUpAt < now
+  const isDueSoon = deal.followUpAt && deal.followUpAt >= now && deal.followUpAt - now < 24 * 60 * 60 * 1000
+  const followUpColor = isOverdue ? '#e05c5c' : isDueSoon ? '#d4a04a' : MUTED
+
+  const followUpLabel = deal.followUpAt
+    ? isOverdue
+      ? `Overdue · ${new Date(deal.followUpAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+      : `Follow up · ${new Date(deal.followUpAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+    : null
+
   return (
-    <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${deal.stage === 'closed' ? GOLD + '60' : BORDER}`, background: deal.stage === 'closed' ? `${GOLD}08` : SURFACE2 }}>
+    <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${isOverdue ? '#e05c5c60' : deal.stage === 'closed' ? GOLD + '60' : BORDER}`, background: deal.stage === 'closed' ? `${GOLD}08` : SURFACE2 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{deal.name}</div>
@@ -2289,6 +2302,28 @@ function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite }: {
           📱 {deal.phone}
         </a>
       )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
+        {followUpLabel && (
+          <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: followUpColor, fontWeight: isOverdue ? 700 : 400 }}>
+            {isOverdue ? '⚠ ' : '🔔 '}{followUpLabel}
+          </span>
+        )}
+        <label style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', marginLeft: followUpLabel ? 'auto' : 0 }}>
+          {followUpLabel ? 'Change' : '+ Follow-up'}
+          <input
+            type="date"
+            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+            value={deal.followUpAt ? new Date(deal.followUpAt).toISOString().split('T')[0] : ''}
+            onChange={(e) => {
+              const val = e.target.value
+              onSetFollowUp(deal.id, val ? new Date(val).getTime() : undefined)
+            }}
+          />
+        </label>
+        {deal.followUpAt && (
+          <button onClick={() => onSetFollowUp(deal.id, undefined)} style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕</button>
+        )}
+      </div>
       <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
         <button onClick={() => onOpenAgent('content', `Write a pitch or follow-up for this deal:\nBusiness: ${deal.name}\nIndustry: ${deal.industry}\nValue: GHS ${deal.valueGHS}\nStage: ${deal.stage}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           ✦ Write Pitch
@@ -2311,13 +2346,14 @@ function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite }: {
 
 // ─── DealPipeline ─────────────────────────────────────────────────────────────
 
-function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishToWebsite }: {
+function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishToWebsite, onSetFollowUp }: {
   deals: Deal[]
   onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void
   onMove: (id: string, stage: DealStage) => void
   onDelete: (id: string) => void
   onOpenAgent: (agentId: AgentId, prompt: string) => void
   onPublishToWebsite: (deal: Deal) => void
+  onSetFollowUp: (id: string, ts: number | undefined) => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '' })
@@ -2374,7 +2410,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishTo
               <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, padding: '4px 0', opacity: 0.5 }}>No deals yet</div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {stageDeals.map(deal => <DealCard key={deal.id} deal={deal} onMove={onMove} onDelete={onDelete} onOpenAgent={onOpenAgent} onPublishToWebsite={onPublishToWebsite} />)}
+              {stageDeals.map(deal => <DealCard key={deal.id} deal={deal} onMove={onMove} onDelete={onDelete} onOpenAgent={onOpenAgent} onPublishToWebsite={onPublishToWebsite} onSetFollowUp={onSetFollowUp} />)}
             </div>
           </div>
         )
@@ -2963,6 +2999,238 @@ function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; work
   )
 }
 
+// ─── ClientsView ─────────────────────────────────────────────────────────────
+
+interface Client {
+  id: string
+  name: string
+  phone?: string
+  whatsapp?: string
+  email?: string
+  website?: string
+  industry?: string
+  notes?: string
+  created_at?: string
+}
+
+const BLANK_CLIENT: Omit<Client, 'id' | 'created_at'> = { name: '', phone: '', whatsapp: '', email: '', website: '', industry: '', notes: '' }
+
+function ClientsView({ onOpenAgent }: { onOpenAgent: (agentId: AgentId, prompt: string) => void }) {
+  const [clients, setClients] = useState<Client[]>([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState<string | 'new' | null>(null)
+  const [form, setForm] = useState<typeof BLANK_CLIENT>(BLANK_CLIENT)
+  const [saving, setSaving] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/clients')
+      const data = await res.json()
+      if (Array.isArray(data)) setClients(data)
+    } catch { /* non-fatal */ }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load() }, [])
+
+  const openNew = () => { setForm(BLANK_CLIENT); setEditing('new') }
+  const openEdit = (c: Client) => { setForm({ name: c.name, phone: c.phone ?? '', whatsapp: c.whatsapp ?? '', email: c.email ?? '', website: c.website ?? '', industry: c.industry ?? '', notes: c.notes ?? '' }); setEditing(c.id) }
+  const set = (k: keyof typeof BLANK_CLIENT, v: string) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return
+    setSaving(true)
+    try {
+      if (editing === 'new') {
+        const res = await fetch('/api/clients', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(form) })
+        const data = await res.json()
+        if (res.ok) setClients(p => [data, ...p])
+      } else {
+        await fetch('/api/clients', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: editing, ...form }) })
+        setClients(p => p.map(c => c.id === editing ? { ...c, ...form } : c))
+      }
+      setEditing(null)
+    } catch { /* non-fatal */ }
+    finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    await fetch('/api/clients', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
+    setClients(p => p.filter(c => c.id !== id))
+  }
+
+  const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
+  const labelStyle: React.CSSProperties = { fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, display: 'block' }
+
+  const visible = clients.filter(c =>
+    !searchQ || c.name.toLowerCase().includes(searchQ.toLowerCase()) || (c.industry ?? '').toLowerCase().includes(searchQ.toLowerCase())
+  )
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
+      <div style={{ maxWidth: 680, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Clients</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{clients.length} contact{clients.length !== 1 ? 's' : ''}</div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder="Search…" style={{ ...inputStyle, width: 140, padding: '6px 10px', fontSize: 12 }} />
+            <button onClick={openNew} style={{ padding: '7px 14px', background: GOLD, border: 'none', borderRadius: 8, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>+ Add Client</button>
+          </div>
+        </div>
+
+        {editing && (
+          <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, padding: '16px', marginBottom: 14, background: SURFACE }}>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 12 }}>{editing === 'new' ? 'New Client' : 'Edit Client'}</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              {([['name', 'Client Name *'], ['industry', 'Industry'], ['phone', 'Phone'], ['whatsapp', 'WhatsApp'], ['email', 'Email'], ['website', 'Website URL']] as [keyof typeof BLANK_CLIENT, string][]).map(([k, label]) => (
+                <div key={k} style={{ gridColumn: k === 'name' ? 'span 2' : undefined }}>
+                  <label style={labelStyle}>{label}</label>
+                  <input value={form[k]} onChange={e => set(k, e.target.value)} style={inputStyle} placeholder={label.replace(' *', '')} />
+                </div>
+              ))}
+              <div style={{ gridColumn: 'span 2' }}>
+                <label style={labelStyle}>Notes</label>
+                <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} style={{ ...inputStyle, resize: 'vertical' }} placeholder="Project history, preferences, key contacts…" />
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+              <button onClick={handleSave} disabled={saving || !form.name.trim()} style={{ flex: 1, padding: '9px 0', background: GOLD, border: 'none', borderRadius: 8, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: saving ? 'default' : 'pointer', opacity: saving || !form.name.trim() ? 0.6 : 1 }}>
+                {saving ? 'Saving…' : 'Save Client'}
+              </button>
+              <button onClick={() => setEditing(null)} style={{ padding: '9px 16px', background: 'none', border: `1px solid ${BORDER}`, borderRadius: 8, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {loading && <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}><ThinkingDots /></div>}
+
+        {!loading && visible.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '64px 0', color: MUTED, fontFamily: FONT_BODY }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>👥</div>
+            <div style={{ fontSize: 14, marginBottom: 6 }}>{searchQ ? 'No clients match your search' : 'No clients yet'}</div>
+            {!searchQ && <div style={{ fontSize: 12 }}>Add your first client to keep all contact info in one place.</div>}
+          </div>
+        )}
+
+        {visible.map(c => (
+          <div key={c.id} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: '12px 14px', marginBottom: 8, background: SURFACE }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{c.name}</div>
+                {c.industry && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{c.industry}</div>}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 7 }}>
+                  {c.phone && <a href={`tel:${c.phone}`} style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>📞 {c.phone}</a>}
+                  {c.whatsapp && <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: WA_GREEN, fontFamily: FONT_BODY, textDecoration: 'none' }}>💬 WhatsApp</a>}
+                  {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>✉ {c.email}</a>}
+                  {c.website && <a href={c.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: GOLD, fontFamily: FONT_BODY, textDecoration: 'none' }}>↗ Website</a>}
+                </div>
+                {c.notes && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 7, lineHeight: 1.5 }}>{c.notes.slice(0, 120)}{c.notes.length > 120 ? '…' : ''}</div>}
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                <button onClick={() => openEdit(c)} style={{ fontSize: 11, padding: '4px 9px', border: `1px solid ${BORDER}`, borderRadius: 6, background: 'none', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Edit</button>
+                <button onClick={() => handleDelete(c.id)} style={{ fontSize: 11, padding: '4px 9px', border: `1px solid ${BORDER}`, borderRadius: 6, background: 'none', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>✕</button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 5, marginTop: 10, flexWrap: 'wrap' }}>
+              <button onClick={() => onOpenAgent('content', `Write a professional follow-up or proposal for this client:\nName: ${c.name}\nIndustry: ${c.industry ?? 'unknown'}\n${c.notes ? 'Notes: ' + c.notes : ''}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+                ✦ Write Pitch
+              </button>
+              <button onClick={() => onOpenAgent('scope', `Scope a project for this client:\nName: ${c.name}\nIndustry: ${c.industry ?? 'unknown'}\n${c.notes ? 'Notes: ' + c.notes : ''}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+                ◈ Scope Project
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── ConversationSearch ───────────────────────────────────────────────────────
+
+interface SearchHit {
+  agent_id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+function ConversationSearch({ onClose }: { onClose: () => void }) {
+  const [query, setQuery] = useState('')
+  const [results, setResults] = useState<SearchHit[]>([])
+  const [searching, setSearching] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => { inputRef.current?.focus() }, [])
+
+  const search = async (q: string) => {
+    if (!q.trim()) { setResults([]); return }
+    setSearching(true)
+    try {
+      const res = await fetch(`/api/conversations?q=${encodeURIComponent(q)}`)
+      const data = await res.json()
+      setResults(Array.isArray(data) ? data : [])
+    } catch { setResults([]) }
+    finally { setSearching(false) }
+  }
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleChange = (v: string) => {
+    setQuery(v)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => search(v), 400)
+  }
+
+  const agentLabel = (id: string) => AGENTS[id as AgentId]?.label ?? id
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 60 }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ width: '100%', maxWidth: 600, background: SURFACE, borderRadius: 14, border: `1px solid ${BORDER}`, overflow: 'hidden', maxHeight: '75vh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: `1px solid ${BORDER}` }}>
+          <span style={{ color: MUTED, fontSize: 16 }}>⌕</span>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={e => handleChange(e.target.value)}
+            placeholder="Search all conversations…"
+            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: TEXT, fontSize: 15, fontFamily: FONT_BODY }}
+          />
+          {searching && <ThinkingDots />}
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 18, cursor: 'pointer', padding: 0 }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {results.length === 0 && query && !searching && (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>No messages found for &ldquo;{query}&rdquo;</div>
+          )}
+          {results.length === 0 && !query && (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Type a keyword to search across all agent conversations</div>
+          )}
+          {results.map((hit, i) => {
+            const dt = new Date(hit.created_at)
+            const dateStr = dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' · ' + dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+            const excerpt = hit.content.length > 200 ? hit.content.slice(0, 200) + '…' : hit.content
+            return (
+              <div key={i} style={{ padding: '12px 16px', borderBottom: `1px solid ${BORDER}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                  <span style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: GOLD, background: `${GOLD}18`, padding: '2px 7px', borderRadius: 10 }}>{agentLabel(hit.agent_id)}</span>
+                  <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, textTransform: 'capitalize' }}>{hit.role}</span>
+                  <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginLeft: 'auto' }}>{dateStr}</span>
+                </div>
+                <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.6 }}>{excerpt}</div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── AgentRunHistory ──────────────────────────────────────────────────────────
 
 interface AgentRun {
@@ -3151,6 +3419,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {renderViewBtn('website', '↑', 'Website')}
         {renderViewBtn('council', '⊙', 'Council')}
         {renderViewBtn('history', '◷', 'History')}
+        {renderViewBtn('clients', '👥', 'Clients')}
         {divider('d1')}
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
@@ -3356,6 +3625,7 @@ export default function Page() {
   const [websitePrefill, setWebsitePrefill] = useState<Partial<WebsiteProject> | null>(null)
   const [viralPrefill, setViralPrefill] = useState<string | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
   const [pinnedNotes, setPinnedNotes] = useState(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tagett-pinned-notes-v1') ?? '') : ''
   )
@@ -3537,6 +3807,10 @@ export default function Page() {
     setDeals(prev => prev.filter(d => d.id !== id))
   }, [])
 
+  const handleSetFollowUp = useCallback((id: string, ts: number | undefined) => {
+    setDeals(prev => prev.map(d => d.id === id ? { ...d, followUpAt: ts } : d))
+  }, [])
+
   const handlePublishDealToWebsite = useCallback((deal: Deal) => {
     setWebsitePrefill({
       title: deal.name,
@@ -3594,7 +3868,7 @@ export default function Page() {
     )
 
     if (activeView === 'pipeline') return shell(
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} />
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
     )
 
     if (activeView === 'website') return shell(
@@ -3604,6 +3878,7 @@ export default function Page() {
     if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />)
 
     if (activeView === 'history') return shell(<AgentRunHistory />)
+    if (activeView === 'clients') return shell(<ClientsView onOpenAgent={handleOpenAgent} />)
 
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
@@ -3668,13 +3943,14 @@ export default function Page() {
       <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
     )
     if (activeView === 'pipeline') return (
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} />
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
     )
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
     if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
     if (activeView === 'history') return <AgentRunHistory />
+    if (activeView === 'clients') return <ClientsView onOpenAgent={handleOpenAgent} />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -3683,6 +3959,7 @@ export default function Page() {
             <div style={{ fontSize: 12, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{agent.description}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button onClick={() => setSearchOpen(true)} title="Search conversations" style={{ fontSize: 15, color: MUTED, padding: '4px 8px', border: `1px solid ${BORDER}`, borderRadius: 6, background: 'none', cursor: 'pointer' }}>⌕</button>
             {agent.id !== 'prospect' && <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />}
             {messages.length > 0 && (
               <button onClick={handleClear} style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, transition: 'color 0.15s, border-color 0.15s' }}
@@ -3726,6 +4003,7 @@ export default function Page() {
           {renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
           {renderDesktopNavBtn('council', '⊙', 'Council Chamber', 'All 5 advisors respond together')}
           {renderDesktopNavBtn('history', '◷', 'Run History', 'Browse every autonomous agent run')}
+          {renderDesktopNavBtn('clients', '👥', 'Clients', 'Contact database')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
             <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
@@ -3751,6 +4029,7 @@ export default function Page() {
         {renderMainContent()}
       </div>
       <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
+      {searchOpen && <ConversationSearch onClose={() => setSearchOpen(false)} />}
     </div>
   )
 }

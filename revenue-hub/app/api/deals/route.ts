@@ -10,6 +10,7 @@ interface Deal {
   phone?: string
   createdAt: number
   stageChangedAt?: number
+  followUpAt?: number
 }
 
 function toRow(d: Deal) {
@@ -22,6 +23,7 @@ function toRow(d: Deal) {
     phone: d.phone ?? null,
     created_at: d.createdAt,
     stage_changed_at: d.stageChangedAt ?? null,
+    follow_up_at: d.followUpAt ?? null,
   }
 }
 
@@ -35,6 +37,7 @@ function fromRow(r: Record<string, unknown>): Deal {
     phone: (r.phone as string | null) ?? undefined,
     createdAt: r.created_at as number,
     stageChangedAt: (r.stage_changed_at as number | null) ?? undefined,
+    followUpAt: (r.follow_up_at as number | null) ?? undefined,
   }
 }
 

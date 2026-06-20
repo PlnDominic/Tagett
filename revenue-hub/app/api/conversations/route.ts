@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
+    const q = new URL(req.url).searchParams.get('q')?.trim()
     const sb = getSupabase()
+
+    if (q) {
+      // Search mode: full-text keyword match across all conversations
+      const { data, error } = await sb
+        .from('conversations')
+        .select('agent_id, role, content, created_at')
+        .ilike('content', `%${q}%`)
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) throw error
+      return NextResponse.json(data ?? [])
+    }
+
+    // Default: return all conversations grouped by agent
     const { data, error } = await sb
       .from('conversations')
       .select('agent_id, role, content')
