@@ -203,7 +203,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -717,7 +717,7 @@ const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'o
 type MobileTab = 'home' | 'work' | 'agents' | 'more'
 const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
-const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history']
+const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality']
 function getMobileTab(view: ViewId): MobileTab {
   if (WORK_VIEWS.includes(view))  return 'work'
   if (AGENT_VIEWS.includes(view)) return 'agents'
@@ -3323,6 +3323,306 @@ function SocialCalendarView() {
   )
 }
 
+// ─── DataQualityView ─────────────────────────────────────────────────────────
+
+function normalizeGhanaPhone(raw: string): string {
+  const d = raw.replace(/\D/g, '')
+  if (d.startsWith('233') && d.length === 12) return '+' + d
+  if (d.startsWith('0') && d.length === 10) return '+233' + d.slice(1)
+  if (d.length === 9) return '+233' + d
+  return raw
+}
+
+function dealCompleteness(d: Deal): number {
+  let s = 0
+  if (d.phone) s += 25
+  if (d.industry && d.industry !== 'Unknown') s += 25
+  if (d.valueGHS > 0) s += 25
+  if (d.followUpAt || d.stage === 'closed' || d.stage === 'lost') s += 25
+  return s
+}
+
+function DataQualityView({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
+  const [tab, setTab] = useState<'health' | 'duplicates' | 'issues'>('health')
+  const [clients, setClients] = useState<Client[]>([])
+  const [fixingPhone, setFixingPhone] = useState(false)
+  const [dismissedDups, setDismissedDups] = useState<Set<string>>(new Set())
+  const [confirmMerge, setConfirmMerge] = useState<Deal[] | null>(null)
+
+  useEffect(() => {
+    fetch('/api/clients').then(r => r.ok ? r.json() : []).then(setClients).catch(() => {})
+  }, [])
+
+  // ── Health metrics ──
+  const withPhone    = deals.filter(d => !!d.phone).length
+  const withValue    = deals.filter(d => d.valueGHS > 0).length
+  const withIndustry = deals.filter(d => !!d.industry && d.industry !== 'Unknown').length
+  const withFollowUp = deals.filter(d => !!d.followUpAt || d.stage === 'closed' || d.stage === 'lost').length
+  const avgScore = deals.length === 0 ? 100 : Math.round(deals.reduce((s, d) => s + dealCompleteness(d), 0) / deals.length)
+
+  // ── Phone normalization candidates ──
+  const needsNorm = deals.filter(d => {
+    if (!d.phone) return false
+    const norm = normalizeGhanaPhone(d.phone)
+    return norm !== d.phone && norm.startsWith('+233')
+  })
+
+  // ── Duplicates: same phone digits ──
+  const byPhone = new Map<string, Deal[]>()
+  for (const d of deals) {
+    if (!d.phone) continue
+    const key = d.phone.replace(/\D/g, '')
+    if (!byPhone.has(key)) byPhone.set(key, [])
+    byPhone.get(key)!.push(d)
+  }
+  const phoneDups = [...byPhone.values()].filter(arr => {
+    if (arr.length < 2) return false
+    const key = arr.map(x => x.id).sort().join(',')
+    return !dismissedDups.has(key)
+  })
+
+  // ── Duplicates: similar name (share same first word, more than 1 deal) ──
+  const byFirstWord = new Map<string, Deal[]>()
+  for (const d of deals) {
+    const word = d.name.trim().toLowerCase().split(/\s+/)[0]
+    if (word.length < 3) continue
+    if (!byFirstWord.has(word)) byFirstWord.set(word, [])
+    byFirstWord.get(word)!.push(d)
+  }
+  const nameDups = [...byFirstWord.values()].filter(arr => {
+    if (arr.length < 2) return false
+    // Only flag if at least two have different full names (not exact same name repeated)
+    const unique = new Set(arr.map(d => d.name.toLowerCase()))
+    if (unique.size < 2) return false
+    const key = arr.map(x => x.id).sort().join(',')
+    if (dismissedDups.has(key)) return false
+    // Exclude if already caught by phone dups
+    return !phoneDups.some(g => g.some(d => arr.some(a => a.id === d.id)))
+  })
+
+  const totalDups = phoneDups.length + nameDups.length
+
+  // ── Per-deal issues ──
+  const issueDeals = deals.map(d => {
+    const issues: string[] = []
+    if (!d.phone) issues.push('No phone number')
+    if (d.valueGHS === 0) issues.push('Deal value ₵0')
+    if (!d.industry || d.industry === 'Unknown') issues.push('Industry not set')
+    if (!d.followUpAt && d.stage !== 'closed' && d.stage !== 'lost') issues.push('No follow-up date')
+    if (d.phone && normalizeGhanaPhone(d.phone) !== d.phone && normalizeGhanaPhone(d.phone).startsWith('+233')) issues.push('Phone not in +233 format')
+    return { deal: d, issues }
+  }).filter(x => x.issues.length > 0).sort((a, b) => b.issues.length - a.issues.length)
+
+  const scoreColor = (s: number) => s >= 75 ? '#10B981' : s >= 50 ? '#F59E0B' : '#EF4444'
+
+  const handleNormalizeAll = () => {
+    setFixingPhone(true)
+    for (const d of needsNorm) onUpdate(d.id, { phone: normalizeGhanaPhone(d.phone!) })
+    setTimeout(() => setFixingPhone(false), 600)
+  }
+
+  const handleMerge = (keep: Deal, remove: Deal) => {
+    const updates: Partial<Deal> = {}
+    if (!keep.phone && remove.phone) updates.phone = remove.phone
+    if ((!keep.industry || keep.industry === 'Unknown') && remove.industry) updates.industry = remove.industry
+    if (keep.valueGHS === 0 && remove.valueGHS > 0) updates.valueGHS = remove.valueGHS
+    if (!keep.followUpAt && remove.followUpAt) updates.followUpAt = remove.followUpAt
+    if (!keep.whatsappHistory?.length && remove.whatsappHistory?.length) updates.whatsappHistory = remove.whatsappHistory
+    if (Object.keys(updates).length) onUpdate(keep.id, updates)
+    onUpdate(remove.id, { stage: 'lost', name: `[MERGED] ${remove.name}` })
+    setConfirmMerge(null)
+  }
+
+  const StatBar = ({ label, count, total }: { label: string; count: number; total: number }) => {
+    const pct = total === 0 ? 0 : Math.round((count / total) * 100)
+    const col = pct >= 75 ? '#10B981' : pct >= 50 ? '#F59E0B' : '#EF4444'
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+          <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY }}>{label}</span>
+          <span style={{ fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, color: col }}>{count}/{total} ({pct}%)</span>
+        </div>
+        <div style={{ height: 5, background: SURFACE2, borderRadius: 3, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, background: col, borderRadius: 3, transition: 'width 0.4s' }} />
+        </div>
+      </div>
+    )
+  }
+
+  const DupGroup = ({ group, label, borderColor }: { group: Deal[]; label: string; borderColor: string }) => {
+    const key = group.map(x => x.id).sort().join(',')
+    return (
+      <div style={{ background: SURFACE, border: `1px solid ${borderColor}`, borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 8 }}>{label}</div>
+        {group.map(d => (
+          <div key={d.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
+            <div>
+              <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, color: TEXT }}>{d.name}</div>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{STAGE_LABELS[d.stage]} · ₵{d.valueGHS.toLocaleString()}{d.phone ? ` · ${d.phone}` : ''}</div>
+            </div>
+            <button onClick={() => setConfirmMerge(group)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY, flexShrink: 0 }}>Merge</button>
+          </div>
+        ))}
+        <button onClick={() => setDismissedDups(prev => new Set([...prev, key]))} style={{ marginTop: 6, fontSize: 11, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_BODY }}>Dismiss</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Data Quality</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, fontFamily: FONT_HEADING, color: scoreColor(avgScore) }}>{avgScore}%</span>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>health</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}><span style={{ color: issueDeals.length > 0 ? GOLD : MUTED, fontWeight: 600 }}>{issueDeals.length}</span> issues</span>
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}><span style={{ color: totalDups > 0 ? '#EF4444' : MUTED, fontWeight: 600 }}>{totalDups}</span> duplicates</span>
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}><span style={{ color: needsNorm.length > 0 ? '#F59E0B' : MUTED, fontWeight: 600 }}>{needsNorm.length}</span> phone fixes</span>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        {(['health', 'duplicates', 'issues'] as const).map(t => {
+          const badge = t === 'duplicates' ? totalDups : t === 'issues' ? issueDeals.length : 0
+          return (
+            <button key={t} onClick={() => setTab(t)} style={{ flex: 1, padding: '9px 4px', fontSize: 12, fontFamily: FONT_HEADING, fontWeight: tab === t ? 600 : 400, color: tab === t ? GOLD : MUTED, background: 'none', border: 'none', borderBottom: `2px solid ${tab === t ? GOLD : 'transparent'}`, cursor: 'pointer' }}>
+              {t === 'health' ? 'Health' : t === 'duplicates' ? 'Duplicates' : 'Issues'}
+              {badge > 0 && <span style={{ marginLeft: 4, fontSize: 10, background: tab === t ? `${GOLD}25` : SURFACE2, color: tab === t ? GOLD : MUTED, padding: '1px 5px', borderRadius: 8 }}>{badge}</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px' }}>
+
+        {/* ── Health tab ── */}
+        {tab === 'health' && (
+          <>
+            <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+              <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 12 }}>Deal Pipeline ({deals.length} deals)</div>
+              <StatBar label="Has phone number" count={withPhone} total={deals.length} />
+              <StatBar label="Has deal value set" count={withValue} total={deals.length} />
+              <StatBar label="Has industry" count={withIndustry} total={deals.length} />
+              <StatBar label="Has follow-up / resolved" count={withFollowUp} total={deals.length} />
+            </div>
+
+            {needsNorm.length > 0 && (
+              <div style={{ background: `${GOLD}0A`, border: `1px solid ${GOLD}35`, borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+                <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>Phone Normalization</div>
+                <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>
+                  {needsNorm.length} deal{needsNorm.length > 1 ? 's' : ''} not in Ghana +233 format
+                </div>
+                {needsNorm.slice(0, 4).map(d => (
+                  <div key={d.id} style={{ fontSize: 11, fontFamily: FONT_BODY, color: MUTED, marginBottom: 3 }}>
+                    {d.name}: <span style={{ color: '#EF4444' }}>{d.phone}</span> → <span style={{ color: '#10B981' }}>{normalizeGhanaPhone(d.phone!)}</span>
+                  </div>
+                ))}
+                {needsNorm.length > 4 && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 4 }}>+{needsNorm.length - 4} more</div>}
+                <button onClick={handleNormalizeAll} disabled={fixingPhone} style={{ marginTop: 8, padding: '6px 14px', background: GOLD, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: fixingPhone ? 'default' : 'pointer', opacity: fixingPhone ? 0.6 : 1 }}>
+                  {fixingPhone ? 'Fixing…' : `Normalize All (${needsNorm.length})`}
+                </button>
+              </div>
+            )}
+
+            {clients.length > 0 && (
+              <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px' }}>
+                <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 12 }}>Client Database ({clients.length} clients)</div>
+                <StatBar label="Has phone" count={clients.filter(c => !!c.phone).length} total={clients.length} />
+                <StatBar label="Has email" count={clients.filter(c => !!c.email).length} total={clients.length} />
+                <StatBar label="Has website" count={clients.filter(c => !!c.website).length} total={clients.length} />
+                <StatBar label="Has industry" count={clients.filter(c => !!c.industry).length} total={clients.length} />
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Duplicates tab ── */}
+        {tab === 'duplicates' && (
+          <>
+            {totalDups === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>✓ No duplicate deals detected</div>
+            ) : (
+              <>
+                {phoneDups.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Phone Duplicates</div>
+                    {phoneDups.map(group => (
+                      <DupGroup key={group.map(x => x.id).sort().join(',')} group={group} label={`Same phone: ${group[0].phone}`} borderColor="#EF444428" />
+                    ))}
+                  </>
+                )}
+                {nameDups.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8, marginTop: phoneDups.length > 0 ? 16 : 0 }}>Name Duplicates</div>
+                    {nameDups.map(group => (
+                      <DupGroup key={group.map(x => x.id).sort().join(',')} group={group} label={`Similar name: "${group[0].name.split(' ')[0]}…" (${group.length} deals)`} borderColor="#F59E0B28" />
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+          </>
+        )}
+
+        {/* ── Issues tab ── */}
+        {tab === 'issues' && (
+          <>
+            {issueDeals.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>✓ All deals have complete data</div>
+            ) : issueDeals.map(({ deal, issues }) => (
+              <div key={deal.id} style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '12px 14px', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, color: TEXT }}>{deal.name}</div>
+                    <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{STAGE_LABELS[deal.stage]} · ₵{deal.valueGHS.toLocaleString()}</div>
+                  </div>
+                  <span style={{ fontSize: 10, background: `${GOLD}18`, color: GOLD, padding: '2px 8px', borderRadius: 10, fontFamily: FONT_HEADING, fontWeight: 600, flexShrink: 0 }}>{issues.length}</span>
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {issues.map(issue => {
+                    const canFix = issue === 'Phone not in +233 format' && deal.phone
+                    return (
+                      <span key={issue} onClick={canFix ? () => onUpdate(deal.id, { phone: normalizeGhanaPhone(deal.phone!) }) : undefined}
+                        style={{ fontSize: 10, background: '#EF444412', color: '#EF4444', padding: '2px 8px', borderRadius: 10, fontFamily: FONT_BODY, cursor: canFix ? 'pointer' : 'default', textDecoration: canFix ? 'underline' : 'none' }}>
+                        {canFix ? `Fix: ${issue}` : issue}
+                      </span>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+
+      {/* Merge modal */}
+      {confirmMerge && (
+        <div style={{ position: 'fixed', inset: 0, background: '#00000088', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200, padding: 20 }}>
+          <div style={{ background: SURFACE, borderRadius: 12, padding: 20, maxWidth: 360, width: '100%', border: `1px solid ${BORDER}` }}>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, marginBottom: 6 }}>Merge Duplicates</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 16 }}>Choose which deal to keep. Missing fields will be copied from the other; it will be marked [MERGED] and moved to Lost.</div>
+            {confirmMerge.map((d, i) => (
+              <button key={d.id} onClick={() => handleMerge(d, confirmMerge[i === 0 ? 1 : 0])}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', marginBottom: 8, border: `1px solid ${BORDER}`, borderRadius: 8, background: SURFACE2, cursor: 'pointer' }}>
+                <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{d.name}</div>
+                <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{STAGE_LABELS[d.stage]} · ₵{d.valueGHS.toLocaleString()} · {d.phone || 'no phone'}</div>
+                <div style={{ fontSize: 11, color: GOLD, fontFamily: FONT_BODY, marginTop: 3 }}>Keep this one →</div>
+              </button>
+            ))}
+            <button onClick={() => setConfirmMerge(null)} style={{ width: '100%', padding: '8px 0', border: `1px solid ${BORDER}`, borderRadius: 8, background: 'none', color: MUTED, fontSize: 13, fontFamily: FONT_BODY, cursor: 'pointer', marginTop: 4 }}>Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── WebsiteProjectsView ─────────────────────────────────────────────────────
 
 const BLANK_PROJECT = (): Partial<WebsiteProject> => ({
@@ -4831,13 +5131,14 @@ export default function Page() {
       <>
         {viewHeader('More')}
         <SubTabs
-          items={[{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'history', label: 'History' }]}
+          items={[{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'history', label: 'History' }, { id: 'data-quality', label: 'Data' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'social'   && <SocialCalendarView />}
-        {activeView === 'website'  && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />}
-        {activeView === 'history'  && <AgentRunHistory />}
+        {activeView === 'social'        && <SocialCalendarView />}
+        {activeView === 'website'       && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />}
+        {activeView === 'history'       && <AgentRunHistory />}
+        {activeView === 'data-quality'  && <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />}
       </>
     )
 
@@ -4949,8 +5250,9 @@ export default function Page() {
     if (activeView === 'council')   return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
     if (activeView === 'history')   return <AgentRunHistory />
     if (activeView === 'clients')   return <ClientsView onOpenAgent={handleOpenAgent} />
-    if (activeView === 'invoices')  return <InvoicesView deals={deals} />
-    if (activeView === 'social')    return <SocialCalendarView />
+    if (activeView === 'invoices')     return <InvoicesView deals={deals} />
+    if (activeView === 'social')       return <SocialCalendarView />
+    if (activeView === 'data-quality') return <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -5006,6 +5308,7 @@ export default function Page() {
           {renderDesktopNavBtn('clients', '👥', 'Clients', 'Contact database')}
           {renderDesktopNavBtn('invoices', '◎', 'Invoices', 'Billing & payment tracking')}
           {renderDesktopNavBtn('social', '⌖', 'Social Calendar', 'Schedule & publish content')}
+          {renderDesktopNavBtn('data-quality', '◈', 'Data Quality', 'Deduplicate & clean CRM')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
             <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
