@@ -73,6 +73,21 @@ export async function POST(req: NextRequest) {
       const message =
         (err as { error?: { message?: string } })?.error?.message ??
         `Groq API error ${groqRes.status}`
+
+      // llama occasionally produces malformed tool calls (name contains args);
+      // retry once without tools so the model falls back to plain text.
+      if (tools.length > 0 && message.includes('tool call validation failed')) {
+        const fallbackRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${apiKey}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ model: MODEL, max_tokens: 2000, messages: groqMessages }),
+        })
+        if (fallbackRes.ok) {
+          const fd = await fallbackRes.json()
+          return NextResponse.json({ text: (fd.choices?.[0]?.message?.content as string) ?? '' })
+        }
+      }
+
       return NextResponse.json({ error: message }, { status: groqRes.status })
     }
 
