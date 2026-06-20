@@ -3422,8 +3422,6 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {renderViewBtn('clients', '👥', 'Clients')}
         {divider('d1')}
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
-        {divider('d2')}
-        {COUNCIL_AGENT_IDS.map(renderAgentBtn)}
       </div>
     </div>
   )
@@ -4010,12 +4008,6 @@ export default function Page() {
             <div style={{ flex: 1, height: 1, background: BORDER }} />
           </div>
           {MAIN_AGENT_IDS.map(renderAgentNavBtn)}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 8px' }}>
-            <div style={{ flex: 1, height: 1, background: BORDER }} />
-            <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>The Council</span>
-            <div style={{ flex: 1, height: 1, background: BORDER }} />
-          </div>
-          {COUNCIL_AGENT_IDS.map(renderAgentNavBtn)}
         </nav>
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
           <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
