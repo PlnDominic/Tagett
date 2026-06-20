@@ -827,10 +827,40 @@ function saveAllChats(chats: AllChats): void {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
-async function callChat(systemPrompt: string, messages: Message[], pinnedNotes?: string, agentId?: string): Promise<string> {
-  const fullPrompt = pinnedNotes?.trim()
-    ? `${systemPrompt}\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
-    : systemPrompt
+const TEAM_LABELS: Record<string, string> = {
+  prospect: 'ProspectBot', content: 'ContentBot', scope: 'ProjectBot',
+  revenue: 'RevenueBot', viral: 'ViralBot', scout: 'SocialScout',
+}
+
+function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): string {
+  return Object.entries(workspace)
+    .filter(([id, v]) => id !== excludeId && v?.trim())
+    .map(([id, v]) => `[${TEAM_LABELS[id] ?? id}]: ${v.slice(0, 500)}`)
+    .join('\n\n')
+}
+
+const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Shared goal: GHS 120,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.\n\n`
+
+async function callChat(
+  systemPrompt: string,
+  messages: Message[],
+  pinnedNotes?: string,
+  agentId?: string,
+  workspace?: Record<string, string>
+): Promise<string> {
+  let fullPrompt = TEAM_MISSION_HEADER + systemPrompt
+
+  if (pinnedNotes?.trim()) {
+    fullPrompt += `\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
+  }
+
+  if (workspace) {
+    const intel = buildTeamIntel(workspace, agentId)
+    if (intel) {
+      fullPrompt += `\n\n— TEAM INTEL (your colleagues' latest outputs — reference and build on these) —\n${intel}\n— END TEAM INTEL —`
+    }
+  }
+
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -2801,7 +2831,7 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle, onO
 
 // ─── CouncilChamber ──────────────────────────────────────────────────────────
 
-function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
+function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; workspace?: Record<string, string> }) {
   const [input, setInput] = useState('')
   const [topic, setTopic] = useState('')
   const [responses, setResponses] = useState<Partial<Record<AgentId, string>>>({})
@@ -2822,7 +2852,7 @@ function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
     await Promise.allSettled(
       COUNCIL_AGENT_IDS.map(async (agentId) => {
         try {
-          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes, agentId)
+          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes, agentId, workspace)
           setResponses(prev => ({ ...prev, [agentId]: text }))
         } catch (err) {
           setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
@@ -2970,6 +3000,46 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
         {COUNCIL_AGENT_IDS.map(renderAgentBtn)}
+      </div>
+    </div>
+  )
+}
+
+// ─── MissionBar ───────────────────────────────────────────────────────────────
+
+const MISSION_AGENTS: Array<{ id: AgentId; label: string }> = [
+  { id: 'scout', label: 'Scout' },
+  { id: 'prospect', label: 'Prospect' },
+  { id: 'content', label: 'Content' },
+  { id: 'scope', label: 'Scope' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'viral', label: 'Viral' },
+]
+
+function MissionBar({ workspace, earnedGHS, pipelineGHS, onClearWorkspace }: {
+  workspace: Record<string, string>
+  earnedGHS: number
+  pipelineGHS: number
+  onClearWorkspace: () => void
+}) {
+  const pct = Math.min(100, Math.round((earnedGHS / MONTHLY_GOAL_GHS) * 100))
+  const hasAny = MISSION_AGENTS.some(a => workspace[a.id]?.trim())
+  return (
+    <div style={{ padding: '5px 12px', background: SURFACE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 30 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+        <span style={{ fontSize: 10, color: GOLD, fontFamily: FONT_BODY, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>Mission</span>
+        <span style={{ fontSize: 11, color: TEXT, fontFamily: FONT_BODY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          GHS {earnedGHS.toLocaleString()} closed · GHS {pipelineGHS.toLocaleString()} pipeline · {pct}% of GHS 120k
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {MISSION_AGENTS.map(a => (
+          <div key={a.id} title={`${a.label}: ${workspace[a.id]?.trim() ? 'has context' : 'no output yet'}`}
+            style={{ width: 7, height: 7, borderRadius: '50%', background: workspace[a.id]?.trim() ? GOLD : BORDER, transition: 'background 0.3s' }} />
+        ))}
+        {hasAny && (
+          <button onClick={onClearWorkspace} title="Clear team context" style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, marginLeft: 2 }}>✕</button>
+        )}
       </div>
     </div>
   )
@@ -3134,6 +3204,11 @@ export default function Page() {
   const [pinnedNotes, setPinnedNotes] = useState(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tagett-pinned-notes-v1') ?? '') : ''
   )
+  const [workspace, setWorkspace] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('tagett-workspace-v1') ?? '{}') }
+    catch { return {} }
+  })
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
 
@@ -3182,6 +3257,7 @@ export default function Page() {
     localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified))
   }, [deals])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
+  useEffect(() => { localStorage.setItem('tagett-workspace-v1', JSON.stringify(workspace)) }, [workspace])
 
   const notesSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -3220,12 +3296,13 @@ export default function Page() {
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
     setLoading(true); setError(null)
     try {
-      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent)
+      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, workspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
+      setWorkspace((prev) => ({ ...prev, [activeAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [activeAgent, allChats])
+  }, [activeAgent, allChats, workspace, pinnedNotes])
 
   const handleRunBriefing = useCallback(() => {
     if (agent.dailyPrompt) handleSend(agent.dailyPrompt)
@@ -3234,12 +3311,12 @@ export default function Page() {
   const handleRunBrief = useCallback(async () => {
     setBriefLoading(true); setBriefResult('')
     try {
-      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes, 'executor')
+      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes, 'executor', workspace)
       setBriefResult(reply)
     } catch (err) {
       setBriefResult('Error: ' + (err instanceof Error ? err.message : 'Unknown'))
     } finally { setBriefLoading(false) }
-  }, [])
+  }, [pinnedNotes, workspace])
 
   const handleClear = useCallback(() => {
     if (!activeAgent) return
@@ -3254,12 +3331,13 @@ export default function Page() {
     setAllChats((prev) => { msgs = [...(prev[targetAgent] ?? []), userMsg]; return { ...prev, [targetAgent]: msgs } })
     setLoading(true)
     try {
-      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent)
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent, workspace)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
+      setWorkspace((prev) => ({ ...prev, [targetAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [])
+  }, [pinnedNotes, workspace])
 
   const handleOpenAgent = useCallback((agentId: AgentId, prompt: string) => {
     handleHandoff(agentId, prompt)
@@ -3320,6 +3398,11 @@ export default function Page() {
     return max
   }, [deals, allChats.revenue])
 
+  const pipelineGHS = useMemo(
+    () => deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0),
+    [deals]
+  )
+
   const notifToggle = <NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
 
   if (onboarded === null) return null
@@ -3346,7 +3429,7 @@ export default function Page() {
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
 
-    if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} />)
+    if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />)
 
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
@@ -3363,6 +3446,7 @@ export default function Page() {
         <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onOpenNotes={() => setNotesOpen(true)} hasNotes={!!pinnedNotes.trim()} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
+          <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
           {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
@@ -3415,7 +3499,7 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
-    if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} />
+    if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -3434,6 +3518,7 @@ export default function Page() {
             )}
           </div>
         </div>
+        <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
         <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
         {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
