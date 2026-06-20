@@ -1228,9 +1228,24 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
 
 // ─── Deal pipeline model & storage ───────────────────────────────────────────
 
-type DealStage = 'found' | 'called' | 'scoped' | 'proposal' | 'closed'
-const STAGES: DealStage[] = ['found', 'called', 'scoped', 'proposal', 'closed']
-const STAGE_LABELS: Record<DealStage, string> = { found: 'Found', called: 'Called', scoped: 'Scoped', proposal: 'Proposal Sent', closed: 'Closed ✓' }
+type DealStage = 'found' | 'contacted' | 'interested' | 'proposal' | 'negotiating' | 'closed' | 'lost'
+const STAGES: DealStage[] = ['found', 'contacted', 'interested', 'proposal', 'negotiating', 'closed', 'lost']
+const STAGE_LABELS: Record<DealStage, string> = {
+  found: 'Found', contacted: 'Contacted', interested: 'Interested',
+  proposal: 'Proposal Sent', negotiating: 'Negotiating', closed: 'Closed', lost: 'Lost',
+}
+const STAGE_WEIGHT: Record<DealStage, number> = {
+  found: 0.10, contacted: 0.20, interested: 0.40,
+  proposal: 0.60, negotiating: 0.75, closed: 1.00, lost: 0,
+}
+const STAGE_COLOR: Record<DealStage, string> = {
+  found: '#8B5CF6', contacted: '#3B82F6', interested: '#10B981',
+  proposal: '#F59E0B', negotiating: '#EF4444', closed: '#E84040', lost: '#9CA3AF',
+}
+const STAGE_STALE_MS: Record<DealStage, number> = {
+  found: 3 * 86400000, contacted: 5 * 86400000, interested: 7 * 86400000,
+  proposal: 10 * 86400000, negotiating: 14 * 86400000, closed: 0, lost: 0,
+}
 
 interface Deal {
   id: string
@@ -1242,12 +1257,22 @@ interface Deal {
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
+  lastContactedAt?: number
+  whatsappHistory?: Array<{ text: string; sentAt: number }>
 }
 
 const DEALS_KEY = 'tagett-deals-v1'
+const STAGE_MIGRATE: Record<string, DealStage> = { called: 'contacted', scoped: 'interested' }
 function loadDeals(): Deal[] {
   if (typeof window === 'undefined') return []
-  try { const r = localStorage.getItem(DEALS_KEY); return r ? JSON.parse(r) : [] } catch { return [] }
+  try {
+    const r = localStorage.getItem(DEALS_KEY)
+    if (!r) return []
+    return (JSON.parse(r) as Deal[]).map(d => ({
+      ...d,
+      stage: (STAGE_MIGRATE[d.stage as string] ?? d.stage) as DealStage,
+    }))
+  } catch { return [] }
 }
 function saveDeals(d: Deal[]): void {
   try { localStorage.setItem(DEALS_KEY, JSON.stringify(d)) } catch {}
@@ -2213,7 +2238,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
   briefLoading: boolean
 }) {
   const stageCounts = useMemo(() => {
-    const c: Record<DealStage, number> = { found: 0, called: 0, scoped: 0, proposal: 0, closed: 0 }
+    const c: Record<DealStage, number> = { found: 0, contacted: 0, interested: 0, proposal: 0, negotiating: 0, closed: 0, lost: 0 }
     deals.forEach(d => c[d.stage]++)
     return c
   }, [deals])
@@ -2341,87 +2366,197 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
   )
 }
 
+// ─── WhatsAppModal ────────────────────────────────────────────────────────────
+
+function WhatsAppModal({ deal, onClose, onSent }: {
+  deal: Deal
+  onClose: () => void
+  onSent: (id: string, text: string) => void
+}) {
+  const [message, setMessage] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const generate = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are ContentBot for Ecstasy Technologies, a web design and development company in Accra, Ghana. Write concise, friendly WhatsApp messages for prospect outreach. Output only the message body — no subject line, no labels.',
+          messages: [{ role: 'user', content: `Write a WhatsApp cold-open message for this prospect:\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\nStage: ${STAGE_LABELS[deal.stage]}\n\nRequirements:\n- 3–4 sentences, friendly and direct\n- Briefly introduce Ecstasy Technologies\n- Reference something specific to their industry\n- End with a soft CTA (not pushy)\n- No emojis unless natural` }],
+        }),
+      })
+      const d = await res.json()
+      setMessage(d.text ?? '')
+    } finally { setLoading(false) }
+  }
+
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(message) } catch { /* fallback: user copies manually */ }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const send = () => {
+    if (!deal.phone) return
+    const digits = deal.phone.replace(/\D/g, '')
+    const num = digits.startsWith('0') ? '233' + digits.slice(1) : digits
+    const url = message ? `https://wa.me/${num}?text=${encodeURIComponent(message)}` : `https://wa.me/${num}`
+    window.open(url, '_blank')
+    if (message) onSent(deal.id, message)
+    onClose()
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>WhatsApp Message</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+        </div>
+
+        <textarea
+          value={message}
+          onChange={e => setMessage(e.target.value)}
+          placeholder="Type or generate a WhatsApp message…"
+          rows={6}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 12 }}
+        />
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={generate} disabled={loading} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: loading ? 'wait' : 'pointer', opacity: loading ? 0.6 : 1 }}>
+            {loading ? 'Generating…' : '✦ Generate'}
+          </button>
+          <button onClick={copy} disabled={!message} style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${BORDER}`, background: copied ? `${GOLD}15` : SURFACE2, color: copied ? GOLD : TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: 'pointer', opacity: message ? 1 : 0.4 }}>
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+          <button onClick={send} disabled={!deal.phone} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: 'none', background: WA_GREEN, color: '#fff', fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 700, cursor: deal.phone ? 'pointer' : 'not-allowed', opacity: deal.phone ? 1 : 0.5 }}>
+            Send on WhatsApp
+          </button>
+        </div>
+
+        {!deal.phone && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>No phone number — add one to this deal to send directly.</div>
+        )}
+
+        {(deal.whatsappHistory?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 16, borderTop: `1px solid ${BORDER}`, paddingTop: 12, overflowY: 'auto' }}>
+            <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>Sent</div>
+            {deal.whatsappHistory!.slice().reverse().map((h, i) => (
+              <div key={i} style={{ marginBottom: 8, padding: '8px 10px', borderRadius: 8, background: SURFACE2, border: `1px solid ${BORDER}` }}>
+                <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginBottom: 3 }}>
+                  {new Date(h.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </div>
+                <div style={{ fontSize: 13, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.5 }}>{h.text}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite, onSetFollowUp }: {
+function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, isDragging, onDragStart, onDragEnd }: {
   deal: Deal
-  onMove: (id: string, stage: DealStage) => void
   onDelete: (id: string) => void
+  onUpdate: (id: string, updates: Partial<Deal>) => void
   onOpenAgent: (agentId: AgentId, prompt: string) => void
   onPublishToWebsite: (deal: Deal) => void
   onSetFollowUp: (id: string, ts: number | undefined) => void
+  onWhatsApp: (deal: Deal) => void
+  isDragging: boolean
+  onDragStart: () => void
+  onDragEnd: () => void
 }) {
-  const idx = STAGES.indexOf(deal.stage)
   const now = Date.now()
-  const isOverdue = deal.followUpAt && deal.followUpAt < now
-  const isDueSoon = deal.followUpAt && deal.followUpAt >= now && deal.followUpAt - now < 24 * 60 * 60 * 1000
-  const followUpColor = isOverdue ? '#e05c5c' : isDueSoon ? '#d4a04a' : MUTED
-
+  const isOverdue = !!deal.followUpAt && deal.followUpAt < now
+  const staleMs = STAGE_STALE_MS[deal.stage]
+  const isStale = staleMs > 0 && (now - (deal.stageChangedAt ?? deal.createdAt)) > staleMs
   const followUpLabel = deal.followUpAt
-    ? isOverdue
-      ? `Overdue · ${new Date(deal.followUpAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
-      : `Follow up · ${new Date(deal.followUpAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
+    ? new Date(deal.followUpAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     : null
 
   return (
-    <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${isOverdue ? '#e05c5c60' : deal.stage === 'closed' ? GOLD + '60' : BORDER}`, background: deal.stage === 'closed' ? `${GOLD}08` : SURFACE2 }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('dealId', deal.id)
+        e.dataTransfer.effectAllowed = 'move'
+        onDragStart()
+      }}
+      onDragEnd={onDragEnd}
+      style={{
+        padding: '10px 11px', borderRadius: 10, cursor: 'grab',
+        border: `1px solid ${isStale ? '#e05c5c50' : deal.stage === 'closed' ? `${GOLD}60` : BORDER}`,
+        background: deal.stage === 'lost' ? SURFACE2 : deal.stage === 'closed' ? `${GOLD}08` : SURFACE,
+        opacity: isDragging ? 0.35 : 1,
+        transition: 'opacity 0.15s',
+        userSelect: 'none', WebkitUserSelect: 'none',
+      } as React.CSSProperties}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{deal.name}</div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: deal.stage === 'lost' ? MUTED : TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.name}</div>
           {deal.industry && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{deal.industry}</div>}
-          <div style={{ fontFamily: FONT_HEADING, fontSize: 14, fontWeight: 700, color: deal.stage === 'closed' ? GOLD : TEXT, marginTop: 4 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, color: deal.stage === 'closed' ? GOLD : deal.stage === 'lost' ? MUTED : TEXT, marginTop: 3 }}>
             GHS {deal.valueGHS.toLocaleString()}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-          {idx > 0 && <button onClick={() => onMove(deal.id, STAGES[idx - 1])} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 13, cursor: 'pointer' }}>←</button>}
-          {idx < STAGES.length - 1 && <button onClick={() => onMove(deal.id, STAGES[idx + 1])} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 13, cursor: 'pointer' }}>→</button>}
-          <button onClick={() => onDelete(deal.id)} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer' }}>✕</button>
-        </div>
+        <button onClick={() => onDelete(deal.id)} style={{ width: 22, height: 22, flexShrink: 0, borderRadius: 5, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 10, cursor: 'pointer' }}>✕</button>
       </div>
-      {deal.phone && (
-        <a href={`https://wa.me/${deal.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: WA_GREEN, fontFamily: FONT_BODY, textDecoration: 'none' }}>
-          📱 {deal.phone}
-        </a>
+
+      {isStale && (
+        <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#e05c5c', fontFamily: FONT_BODY }}>
+          <IconWarning size={10} color="#e05c5c" /> Stale — no movement
+        </div>
       )}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
-        {followUpLabel && (
-          <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: followUpColor, fontWeight: isOverdue ? 700 : 400 }}>
-            {isOverdue
-              ? <><IconWarning size={11} color={followUpColor} /> {followUpLabel}</>
-              : <><IconBellSmall color={followUpColor} /> {followUpLabel}</>
-            }
+
+      <button
+        onClick={() => onWhatsApp(deal)}
+        style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+      >
+        <span style={{ fontSize: 11, color: deal.phone ? WA_GREEN : MUTED, fontFamily: FONT_BODY }}>
+          {deal.phone ?? '+ Add WhatsApp'}
+        </span>
+        {deal.lastContactedAt && (
+          <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>
+            · {new Date(deal.lastContactedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
           </span>
         )}
-        <label style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', marginLeft: followUpLabel ? 'auto' : 0 }}>
-          {followUpLabel ? 'Change' : '+ Follow-up'}
-          <input
-            type="date"
-            style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
+      </button>
+
+      {followUpLabel && (
+        <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: isOverdue ? '#e05c5c' : MUTED, fontFamily: FONT_BODY }}>
+          {isOverdue ? <IconWarning size={10} color="#e05c5c" /> : <IconBellSmall color={MUTED} />}
+          {isOverdue ? 'Overdue · ' : ''}{followUpLabel}
+          <button onClick={() => onSetFollowUp(deal.id, undefined)} style={{ marginLeft: 2, fontSize: 9, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕</button>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => onOpenAgent('content', `Write a WhatsApp pitch for:\nBusiness: ${deal.name}\nIndustry: ${deal.industry}\nValue: GHS ${deal.valueGHS}\nStage: ${STAGE_LABELS[deal.stage]}`)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          Pitch
+        </button>
+        <button onClick={() => onOpenAgent('scope', `Scope this: ${deal.name} (${deal.industry || 'general'}, GHS ${deal.valueGHS})`)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          Scope
+        </button>
+        <label style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          {followUpLabel ? '+ Change' : '+ Follow-up'}
+          <input type="date" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
             value={deal.followUpAt ? new Date(deal.followUpAt).toISOString().split('T')[0] : ''}
-            onChange={(e) => {
-              const val = e.target.value
-              onSetFollowUp(deal.id, val ? new Date(val).getTime() : undefined)
-            }}
-          />
+            onChange={e => onSetFollowUp(deal.id, e.target.value ? new Date(e.target.value).getTime() : undefined)} />
         </label>
-        {deal.followUpAt && (
-          <button onClick={() => onSetFollowUp(deal.id, undefined)} style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✕</button>
-        )}
-      </div>
-      <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => onOpenAgent('content', `Write a pitch or follow-up for this deal:\nBusiness: ${deal.name}\nIndustry: ${deal.industry}\nValue: GHS ${deal.valueGHS}\nStage: ${deal.stage}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
-          ✦ Write Pitch
-        </button>
-        <button onClick={() => onOpenAgent('scope', `Scope this deal:\nBusiness: ${deal.name}\nIndustry: ${deal.industry}\nBudget: GHS ${deal.valueGHS}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
-          ◈ Scope It
-        </button>
-        <button onClick={() => onOpenAgent('executor', `Deal at stage "${deal.stage}": ${deal.name} (${deal.industry}, GHS ${deal.valueGHS}). What is the single most important action to move it forward right now?`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
-          ▸ Next Action
-        </button>
         {deal.stage === 'closed' && (
-          <button onClick={() => onPublishToWebsite(deal)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
-            ↑ Website
+          <button onClick={() => onPublishToWebsite(deal)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+            ↑ Portfolio
           </button>
         )}
       </div>
@@ -2429,77 +2564,150 @@ function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite, onS
   )
 }
 
-// ─── DealPipeline ─────────────────────────────────────────────────────────────
+// ─── DealPipeline (Kanban) ────────────────────────────────────────────────────
 
-function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishToWebsite, onSetFollowUp }: {
+function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp }: {
   deals: Deal[]
   onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void
   onMove: (id: string, stage: DealStage) => void
   onDelete: (id: string) => void
+  onUpdate: (id: string, updates: Partial<Deal>) => void
   onOpenAgent: (agentId: AgentId, prompt: string) => void
   onPublishToWebsite: (deal: Deal) => void
   onSetFollowUp: (id: string, ts: number | undefined) => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '' })
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropStage, setDropStage] = useState<DealStage | null>(null)
+  const [waModal, setWaModal] = useState<Deal | null>(null)
 
   const handleSubmit = () => {
-    if (!form.name || !form.valueGHS) return
-    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone })
+    if (!form.name) return
+    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone || undefined })
     setForm({ name: '', industry: '', valueGHS: '', phone: '' })
     setShowForm(false)
   }
 
+  const handleWaSent = (id: string, text: string) => {
+    const deal = deals.find(d => d.id === id)
+    if (!deal) return
+    onUpdate(id, {
+      lastContactedAt: Date.now(),
+      whatsappHistory: [...(deal.whatsappHistory ?? []), { text, sentAt: Date.now() }],
+    })
+  }
+
   const closedValue = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.valueGHS, 0)
+  const forecast = Math.round(deals.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0))
   const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Deal Pipeline</div>
-          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
-            GHS {closedValue.toLocaleString()} closed · {deals.filter(d => d.stage !== 'closed').length} open
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 10px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16, color: TEXT }}>Pipeline</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>
+              GHS {closedValue.toLocaleString()} closed · Forecast GHS {forecast.toLocaleString()}
+            </div>
           </div>
+          <button onClick={() => setShowForm(v => !v)} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            + Deal
+          </button>
         </div>
-        <button onClick={() => setShowForm(!showForm)} style={{ padding: '8px 14px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-          + Deal
-        </button>
+
+        {showForm && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}06`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Business name *" style={inputStyle} />
+            <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="Industry" style={inputStyle} />
+            <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder="Value (GHS)" type="number" style={inputStyle} />
+            <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone (+233…)" style={inputStyle} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleSubmit} style={{ flex: 1, padding: '9px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Add</button>
+              <button onClick={() => setShowForm(false)} style={{ padding: '9px 14px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {showForm && (
-        <div style={{ marginBottom: 16, padding: 14, borderRadius: 12, border: `1px solid ${GOLD}40`, background: `${GOLD}08`, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Business name *" style={inputStyle} />
-          <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="Industry" style={inputStyle} />
-          <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder="Value (GHS) *" type="number" style={inputStyle} />
-          <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone (+233…)" style={inputStyle} />
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={handleSubmit} style={{ flex: 1, padding: '9px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Add Deal</button>
-            <button onClick={() => setShowForm(false)} style={{ padding: '9px 14px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
-          </div>
-        </div>
-      )}
+      {/* Kanban board */}
+      <div style={{ flex: 1, minHeight: 0, overflowX: 'auto', overflowY: 'hidden', display: 'flex', padding: '0 12px 16px', gap: 10, WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+        {STAGES.map(stage => {
+          const stageDeals = deals.filter(d => d.stage === stage)
+          const stageValue = stageDeals.reduce((s, d) => s + d.valueGHS, 0)
+          const col = STAGE_COLOR[stage]
+          const isTarget = dropStage === stage
 
-      {STAGES.map(stage => {
-        const stageDeals = deals.filter(d => d.stage === stage)
-        return (
-          <div key={stage} style={{ marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: stage === 'closed' ? GOLD : MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
-                {STAGE_LABELS[stage]}
+          return (
+            <div
+              key={stage}
+              onDragOver={e => { e.preventDefault(); setDropStage(stage) }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setDropStage(null) }}
+              onDrop={e => {
+                e.preventDefault()
+                const id = e.dataTransfer.getData('dealId')
+                if (id) onMove(id, stage)
+                setDragId(null); setDropStage(null)
+              }}
+              style={{
+                flexShrink: 0, width: 204, display: 'flex', flexDirection: 'column',
+                borderRadius: 12,
+                border: `1.5px solid ${isTarget ? col : BORDER}`,
+                background: isTarget ? `${col}0C` : SURFACE2,
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              {/* Column header */}
+              <div style={{ padding: '10px 12px 8px', flexShrink: 0, borderBottom: `1px solid ${BORDER}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: col, flexShrink: 0 }} />
+                  <div style={{ fontFamily: FONT_HEADING, fontSize: 10, fontWeight: 700, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.07em', flex: 1 }}>
+                    {STAGE_LABELS[stage]}
+                  </div>
+                  <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, background: SURFACE, borderRadius: 10, padding: '1px 6px', border: `1px solid ${BORDER}` }}>
+                    {stageDeals.length}
+                  </span>
+                </div>
+                {stageValue > 0 && (
+                  <div style={{ fontSize: 11, color: col, fontFamily: FONT_HEADING, fontWeight: 600, marginTop: 4 }}>
+                    GHS {stageValue.toLocaleString()}
+                  </div>
+                )}
               </div>
-              <div style={{ flex: 1, height: 1, background: BORDER }} />
-              <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>{stageDeals.length}</div>
+
+              {/* Cards */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {stageDeals.length === 0 && (
+                  <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, padding: '12px 4px', opacity: 0.4, textAlign: 'center' }}>
+                    Drop here
+                  </div>
+                )}
+                {stageDeals.map(deal => (
+                  <DealCard
+                    key={deal.id}
+                    deal={deal}
+                    onDelete={onDelete}
+                    onUpdate={onUpdate}
+                    onOpenAgent={onOpenAgent}
+                    onPublishToWebsite={onPublishToWebsite}
+                    onSetFollowUp={onSetFollowUp}
+                    onWhatsApp={d => setWaModal(d)}
+                    isDragging={dragId === deal.id}
+                    onDragStart={() => setDragId(deal.id)}
+                    onDragEnd={() => { setDragId(null); setDropStage(null) }}
+                  />
+                ))}
+              </div>
             </div>
-            {stageDeals.length === 0 && (
-              <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, padding: '4px 0', opacity: 0.5 }}>No deals yet</div>
-            )}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {stageDeals.map(deal => <DealCard key={deal.id} deal={deal} onMove={onMove} onDelete={onDelete} onOpenAgent={onOpenAgent} onPublishToWebsite={onPublishToWebsite} onSetFollowUp={onSetFollowUp} />)}
-            </div>
-          </div>
-        )
-      })}
+          )
+        })}
+      </div>
+
+      {waModal && (
+        <WhatsAppModal deal={waModal} onClose={() => setWaModal(null)} onSent={handleWaSent} />
+      )}
     </div>
   )
 }
@@ -3900,6 +4108,10 @@ export default function Page() {
     setDeals(prev => prev.filter(d => d.id !== id))
   }, [])
 
+  const handleUpdateDeal = useCallback((id: string, updates: Partial<Deal>) => {
+    setDeals(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))
+  }, [])
+
   const handleSetFollowUp = useCallback((id: string, ts: number | undefined) => {
     setDeals(prev => prev.map(d => d.id === id ? { ...d, followUpAt: ts } : d))
   }, [])
@@ -3997,7 +4209,7 @@ export default function Page() {
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'pipeline' && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
+        {activeView === 'pipeline' && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
         {activeView === 'clients'  && <ClientsView onOpenAgent={handleOpenAgent} />}
       </>
     )
@@ -4116,7 +4328,7 @@ export default function Page() {
       <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
     )
     if (activeView === 'pipeline') return (
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
     )
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
