@@ -711,9 +711,38 @@ function ProspectActionChips({ content }: { content: string }) {
 
 // ─── SocialShareBar ───────────────────────────────────────────────────────────
 
+type PostStatus = 'idle' | 'posting' | 'done' | 'error'
+type BufferProfile = { id: string; service: string; username: string }
+
 function SocialShareBar({ content }: { content: string }) {
   const [copied, setCopied] = useState(false)
+  const [statuses, setStatuses] = useState<Record<number, PostStatus>>({})
+  const [profiles, setProfiles] = useState<BufferProfile[]>([])
+
+  useEffect(() => {
+    fetch('/api/social/buffer')
+      .then(r => r.ok ? r.json() : [])
+      .then(data => { if (Array.isArray(data)) setProfiles(data) })
+      .catch(() => {})
+  }, [])
+
   const posts = extractXPosts(content)
+
+  const postToBuffer = useCallback(async (post: string, idx: number) => {
+    setStatuses(prev => ({ ...prev, [idx]: 'posting' }))
+    try {
+      const res = await fetch('/api/social/buffer', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: post, profileIds: profiles.map(p => p.id), now: true }),
+      })
+      const next: PostStatus = res.ok ? 'done' : 'error'
+      setStatuses(prev => ({ ...prev, [idx]: next }))
+      if (next === 'done') setTimeout(() => setStatuses(prev => ({ ...prev, [idx]: 'idle' })), 3000)
+    } catch {
+      setStatuses(prev => ({ ...prev, [idx]: 'error' }))
+    }
+  }, [profiles])
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content)
@@ -724,27 +753,59 @@ function SocialShareBar({ content }: { content: string }) {
   const liUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(ECSTASY_URL)}`
   const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(ECSTASY_URL)}&quote=${encodeURIComponent(content.slice(0, 500))}`
 
+  const bufferBtnStyle = (s: PostStatus): React.CSSProperties => ({
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    padding: '5px 10px', borderRadius: 20,
+    border: `1px solid ${s === 'done' ? GOLD + '80' : s === 'error' ? '#f8717160' : BORDER}`,
+    background: s === 'done' ? `${GOLD}18` : s === 'error' ? '#f8717110' : SURFACE2,
+    color: s === 'done' ? GOLD : s === 'error' ? '#f87171' : MUTED,
+    fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500,
+    opacity: s === 'posting' ? 0.6 : 1,
+  })
+
   return (
     <div style={{ marginTop: 10, paddingLeft: 34 }}>
-      <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_HEADING, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
-        Post to social
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_HEADING, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          Post to social
+        </div>
+        {profiles.length > 0 && (
+          <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>
+            Buffer: {profiles.map(p => p.service).join(' · ')}
+          </div>
+        )}
       </div>
 
       {posts.length > 0 && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
-          {posts.map((post, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, minWidth: 12 }}>{i + 1}</span>
-              <a
-                href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}
-              >
-                𝕏 Tweet
-              </a>
-            </div>
-          ))}
+          {posts.map((post, i) => {
+            const s = statuses[i] ?? 'idle'
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, minWidth: 12 }}>{i + 1}</span>
+                <a
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}
+                >
+                  𝕏 Tweet
+                </a>
+                {profiles.length > 0 && (
+                  <button
+                    onClick={() => postToBuffer(post, i)}
+                    disabled={s === 'posting'}
+                    style={bufferBtnStyle(s)}
+                  >
+                    {s === 'idle' && '↑ Post'}
+                    {s === 'posting' && '…'}
+                    {s === 'done' && '✓ Posted'}
+                    {s === 'error' && '✗ Failed'}
+                  </button>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
