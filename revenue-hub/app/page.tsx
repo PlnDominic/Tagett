@@ -80,7 +80,7 @@ interface Message {
   content: string
 }
 
-type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
+type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
 type ViewId = 'home' | 'pipeline' | 'website' | 'council' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
@@ -500,10 +500,87 @@ When given a plan or idea:
 
 You are not here to plan. You are here to execute. Every response ends with: "DO THIS NOW: [one specific action, 10 words or less]."`,
   },
+  scout: {
+    id: 'scout',
+    icon: '⌖',
+    label: '06 SocialScout',
+    short: 'Scout',
+    description: 'Finds clients via social listening & keyword signals',
+    briefingLabel: "Today's Search Strategy",
+    dailyPrompt: `Generate today's social media listening plan for Ecstasy Technologies. I am a software studio in Ghana looking for businesses that need a website or are unhappy with their current online presence.
+
+Deliver:
+1. TOP 5 SEARCH QUERIES to run RIGHT NOW — one each for Facebook, Twitter/X, LinkedIn, Google, and WhatsApp groups
+2. 3 PROSPECT SIGNALS to watch for in the results (exact wording patterns that mean "they're ready to buy")
+3. ONE RESPONSE TEMPLATE — a comment or DM reply I can paste immediately when I find someone asking for a developer
+4. TODAY'S FOCUS SECTOR — one Ghanaian industry where the best opportunities are hiding this week, and why`,
+    systemPrompt: `You are SocialScout, a social media listening and inbound lead generation specialist for Ecstasy Technologies (ecstasytechnologies.com), a software studio in Ghana run by Dominic Agyapong.
+
+Your job is to find Ghanaian businesses and individuals who are actively signalling that they need a website or software developer — through posts, comments, reviews, or complaints — so Dominic can reach them before any competitor does.
+
+PLATFORMS TO MONITOR:
+- Facebook: Ghana business groups, local buy/sell pages, business owner communities, public pages with no website link
+- Twitter/X: searches for Ghanaian keywords, business owners' accounts with no website in bio
+- LinkedIn: Ghana business owners, "looking for" posts, decision-maker profiles without a website
+- Google/Maps: businesses with 1–2 star reviews citing "hard to find online", "no website", "couldn't reach them"
+- WhatsApp: shared screenshots of group posts, "looking for developer" messages
+- Domain tools: recently registered .com.gh / .gh domains that have no live site yet (indicating they registered but haven't built)
+
+LEAD SIGNAL PATTERNS — what to look for:
+HIGH INTENT (reply immediately):
+- "I need a website for my business" / "who can build me a website in Ghana"
+- "looking for a web developer in Accra/Kumasi/Takoradi"
+- "website developer needed" / "I need someone to design my website"
+- "my website is down/not working" / "I hate how my website looks"
+- "how do I get more customers online?" / "how do I go digital?"
+
+MEDIUM INTENT (warm outreach):
+- Business posting on Facebook/Instagram with no website link in bio
+- Google Maps listing with no website listed
+- Business with multiple 1–2 star reviews about "can't find them online" or "no website"
+- Businesses that just registered a .gh or .com.gh domain (check WHOIS — no site live yet)
+- "which platform is best to sell my products online Ghana?" (they haven't committed yet)
+
+LOW INTENT (monitor and nurture):
+- "I'm thinking about getting a website" / "eventually I want a website"
+- Accounts with 5,000+ followers but no website link
+- Businesses running Facebook ads with no landing page (they're spending money without a site)
+
+GHANA-SPECIFIC KEYWORDS TO SEARCH:
+Facebook/Google: "need website Ghana", "web developer Accra", "website Kumasi", "website Takoradi", "build my website Ghana", "website for my business Ghana", "digital marketing Ghana", "online store Ghana", "e-commerce Ghana"
+Twitter/X: "need a website" Ghana, "web developer" Accra, "website design" Ghana
+LinkedIn: "web developer" Ghana, "website" Accra, "looking for developer" Ghana
+Reviews: search "[business type] Accra no website" or "[business type] Kumasi poor online presence"
+
+SEARCH STRATEGIES:
+1. Facebook: Search bar → type keyword → click "Posts" tab → filter by recent → look at Ghana pages
+2. Twitter/X Advanced Search: from:Ghana OR location:Accra OR location:Kumasi + keyword in quotes
+3. LinkedIn: Search People → filter by Ghana → keyword in "Activity" or posts
+4. Google Alerts: Set up free alerts for "need website Ghana", "web developer Accra" etc.
+5. Domain scan: Tools like ExpiredDomains.net → filter .com.gh → find recently registered with no live site
+6. Google Maps: Search "[industry] [city] Ghana" → look for listings with no website URL
+
+WHEN THE USER PASTES SOCIAL MEDIA CONTENT, analyze it:
+1. Business name and type
+2. Location (city/area in Ghana)
+3. Intent signal: HIGH / MEDIUM / LOW
+4. Pain point in their own words (quote it)
+5. Estimated deal value in GHS (website GHS 3,500–4,000, web app GHS 8,000–25,000, system GHS 15,000+)
+6. First response script — exactly what to comment or DM (short, confident, no pitch)
+7. Pipeline recommendation: "→ Add to pipeline as [name] — GHS [value] — Stage: Found"
+
+OUTREACH TEMPLATES:
+Comment reply: "Hey [name], I build websites for Ghanaian businesses like yours. Prices start at GHS 3,500. Check our work at ecstasytechnologies.com — DM me if you want a quick chat."
+DM: "Hi [name], saw your post about needing a website. We're a Ghanaian software studio — we've built sites for hotels, shops, clinics and more. Takes 2 weeks. Starts at GHS 3,500. Want to see some examples? → ecstasytechnologies.com"
+
+COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
+⊗ Contrarian: [one sentence — what is the most likely reason these leads won't convert?]
+▸ Executor: [one action — what is the single search Dominic should run in the next 10 minutes?]`,
+  },
 }
 
 const AGENT_IDS = Object.keys(AGENTS) as AgentId[]
-const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'viral']
+const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'viral', 'scout']
 const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'outsider', 'executor']
 
 // ─── Website project seed data ─────────────────────────────────────────────────
@@ -731,6 +808,11 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       buildPrompt: (c) => `These are my current leads from ProspectBot. Use the industries and pain points in this lead list to create viral content that attracts MORE of these same clients inbound to Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
     },
     {
+      label: '⌖ Find More on Social',
+      targetAgent: 'scout',
+      buildPrompt: (c) => `ProspectBot found these leads. Now search social media for MORE businesses in the same industries — specifically find people actively posting "I need a website" or complaining about their online presence:\n\n${c.slice(0, 1500)}`,
+    },
+    {
       label: '⊗ Challenge My Leads',
       targetAgent: 'contrarian',
       buildPrompt: (c) => `I just got this lead list from ProspectBot. Challenge every assumption in it — what is most likely to fail when I pick up the phone and call these businesses?\n\n${c.slice(0, 1500)}`,
@@ -922,6 +1004,38 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       label: '→ Send This NOW (ContentBot)',
       targetAgent: 'content',
       buildPrompt: (c) => `The Executor says act immediately. Write the exact message I should send right now to move a deal forward — no revisions, just the message ready to copy-paste:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  scout: [
+    {
+      label: '→ Write Reply (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `SocialScout found this social media lead or prospect signal. Write the exact reply, comment, or DM to send immediately — confident, brief, one clear CTA to ecstasytechnologies.com:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Scope & Price It (ProjectBot)',
+      targetAgent: 'scope',
+      buildPrompt: (c) => `SocialScout identified this potential client from social media. Scope a realistic project for their business type and generate a GHS-priced proposal:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Add to Pipeline (RevenueTracker)',
+      targetAgent: 'revenue',
+      buildPrompt: (c) => `SocialScout found these social media leads. Log them to my pipeline and calculate their combined value against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Find Offline Leads Too (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `SocialScout found leads in these industries on social media. Find 5 more businesses in the same sectors that I can call directly — name, location, phone, no website:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Create Content From This (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `SocialScout found this lead signal — someone asking for a website on social media. Create a viral post that positions Ecstasy Technologies as the obvious choice for people searching for these exact services:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '▸ Reply NOW',
+      targetAgent: 'executor',
+      buildPrompt: (c) => `SocialScout found this lead. Tell me exactly what to do in the next 5 minutes to claim this prospect before a competitor does:\n\n${c.slice(0, 1500)}`,
     },
   ],
 }
