@@ -81,7 +81,27 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | AgentId
+
+// ─── Website project types (mirrors API route) ────────────────────────────────
+type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
+type ProjectStatus = 'completed' | 'in-progress'
+const PROJECT_CATEGORIES: ProjectCategory[] = ['Website', 'Web Application', 'Mobile App', 'Business Software', 'GIS']
+
+interface WebsiteProject {
+  id: string
+  title: string
+  category: ProjectCategory
+  description: string
+  year: number
+  link?: string
+  image?: string
+  client?: string
+  featured: boolean
+  status: ProjectStatus
+  techStack: string[]
+  updatedAt: string
+}
 
 interface Agent {
   id: AgentId
@@ -1738,11 +1758,12 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
 
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onMove, onDelete, onOpenAgent }: {
+function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite }: {
   deal: Deal
   onMove: (id: string, stage: DealStage) => void
   onDelete: (id: string) => void
   onOpenAgent: (agentId: AgentId, prompt: string) => void
+  onPublishToWebsite: (deal: Deal) => void
 }) {
   const idx = STAGES.indexOf(deal.stage)
   return (
@@ -1776,6 +1797,11 @@ function DealCard({ deal, onMove, onDelete, onOpenAgent }: {
         <button onClick={() => onOpenAgent('executor', `Deal at stage "${deal.stage}": ${deal.name} (${deal.industry}, GHS ${deal.valueGHS}). What is the single most important action to move it forward right now?`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           ▸ Next Action
         </button>
+        {deal.stage === 'closed' && (
+          <button onClick={() => onPublishToWebsite(deal)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+            ↑ Website
+          </button>
+        )}
       </div>
     </div>
   )
@@ -1783,12 +1809,13 @@ function DealCard({ deal, onMove, onDelete, onOpenAgent }: {
 
 // ─── DealPipeline ─────────────────────────────────────────────────────────────
 
-function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent }: {
+function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishToWebsite }: {
   deals: Deal[]
   onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void
   onMove: (id: string, stage: DealStage) => void
   onDelete: (id: string) => void
   onOpenAgent: (agentId: AgentId, prompt: string) => void
+  onPublishToWebsite: (deal: Deal) => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '' })
@@ -1845,11 +1872,263 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent }: {
               <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, padding: '4px 0', opacity: 0.5 }}>No deals yet</div>
             )}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {stageDeals.map(deal => <DealCard key={deal.id} deal={deal} onMove={onMove} onDelete={onDelete} onOpenAgent={onOpenAgent} />)}
+              {stageDeals.map(deal => <DealCard key={deal.id} deal={deal} onMove={onMove} onDelete={onDelete} onOpenAgent={onOpenAgent} onPublishToWebsite={onPublishToWebsite} />)}
             </div>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ─── WebsiteProjectsView ─────────────────────────────────────────────────────
+
+const BLANK_PROJECT = (): Partial<WebsiteProject> => ({
+  title: '', category: 'Website', description: '', year: new Date().getFullYear(),
+  link: '', client: '', featured: false, status: 'completed', techStack: [],
+})
+
+function WebsiteProjectsView({ prefill, onClearPrefill }: {
+  prefill?: Partial<WebsiteProject> | null
+  onClearPrefill?: () => void
+}) {
+  const [projects, setProjects] = useState<WebsiteProject[]>([])
+  const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState('')
+  const [form, setForm] = useState<Partial<WebsiteProject>>(BLANK_PROJECT())
+  const [editing, setEditing] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveMsg, setSaveMsg] = useState('')
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [techInput, setTechInput] = useState('')
+  const showForm = editing !== null
+
+  useEffect(() => {
+    fetch('/api/website/projects')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setProjects(d); else setFetchError(d.error ?? 'Failed to load') })
+      .catch(() => setFetchError('Network error'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!prefill) return
+    setForm({ ...BLANK_PROJECT(), ...prefill })
+    setEditing('new')
+    onClearPrefill?.()
+  }, [prefill, onClearPrefill])
+
+  const openNew = () => { setForm(BLANK_PROJECT()); setEditing('new'); setTechInput(''); setSaveMsg('') }
+  const openEdit = (p: WebsiteProject) => { setForm({ ...p }); setEditing(p.id); setTechInput(''); setSaveMsg('') }
+  const cancel = () => { setEditing(null); setSaveMsg('') }
+
+  const set = (key: keyof WebsiteProject, val: unknown) => setForm(prev => ({ ...prev, [key]: val }))
+
+  const addTech = () => {
+    const t = techInput.trim()
+    if (!t) return
+    setForm(prev => ({ ...prev, techStack: [...(prev.techStack ?? []), t] }))
+    setTechInput('')
+  }
+
+  const removeTech = (t: string) => setForm(prev => ({ ...prev, techStack: (prev.techStack ?? []).filter(x => x !== t) }))
+
+  const handleSave = async () => {
+    if (!form.title?.trim() || !form.description?.trim()) { setSaveMsg('Title and description are required.'); return }
+    setSaving(true); setSaveMsg('')
+    const project: WebsiteProject = {
+      id: editing === 'new' ? Date.now().toString() : editing!,
+      title: form.title!.trim(),
+      category: form.category ?? 'Website',
+      description: form.description!.trim(),
+      year: form.year ?? new Date().getFullYear(),
+      link: form.link?.trim() || undefined,
+      image: form.image?.trim() || undefined,
+      client: form.client?.trim() || undefined,
+      featured: form.featured ?? false,
+      status: form.status ?? 'completed',
+      techStack: form.techStack ?? [],
+      updatedAt: new Date().toISOString(),
+    }
+    try {
+      const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(project) })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Publish failed')
+      setProjects(prev => { const i = prev.findIndex(p => p.id === project.id); return i >= 0 ? prev.map((p, j) => j === i ? project : p) : [project, ...prev] })
+      setSaveMsg('✓ Published to website!')
+      setEditing(null)
+    } catch (err) {
+      setSaveMsg(err instanceof Error ? err.message : 'Failed')
+    } finally { setSaving(false) }
+  }
+
+  const handleDelete = async (id: string) => {
+    setDeleting(id)
+    try {
+      const res = await fetch('/api/website/projects', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
+      if (res.ok) setProjects(prev => prev.filter(p => p.id !== id))
+    } finally { setDeleting(null) }
+  }
+
+  const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
+  const labelStyle: React.CSSProperties = { fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, display: 'block' }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Website Projects</div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>ecstasytechnologies.com · {projects.length} published</div>
+        </div>
+        {!showForm && (
+          <button onClick={openNew} style={{ padding: '8px 14px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            + Add Project
+          </button>
+        )}
+      </div>
+
+      {fetchError && (
+        <div style={{ padding: '10px 14px', borderRadius: 8, background: '#2a101040', border: '1px solid #f8717140', color: '#f87171', fontSize: 13, fontFamily: FONT_BODY, marginBottom: 12 }}>
+          {fetchError}
+          {fetchError.includes('GITHUB_WEBSITE_TOKEN') && (
+            <div style={{ marginTop: 6, fontSize: 11, opacity: 0.8 }}>Add GITHUB_WEBSITE_TOKEN to your Vercel environment variables.</div>
+          )}
+        </div>
+      )}
+
+      {/* Project form */}
+      {showForm && (
+        <div style={{ marginBottom: 16, padding: 16, borderRadius: 12, border: `1px solid ${GOLD}40`, background: `${GOLD}08` }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 14 }}>
+            {editing === 'new' ? 'New Project' : 'Edit Project'}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <label style={labelStyle}>Project Title *</label>
+              <input value={form.title ?? ''} onChange={e => set('title', e.target.value)} placeholder="Lavimac Royal Hotel Website" style={inputStyle} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div>
+                <label style={labelStyle}>Category *</label>
+                <select value={form.category ?? 'Website'} onChange={e => set('category', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  {PROJECT_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>Year</label>
+                <input type="number" value={form.year ?? new Date().getFullYear()} onChange={e => set('year', parseInt(e.target.value, 10))} style={inputStyle} />
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Client Name</label>
+              <input value={form.client ?? ''} onChange={e => set('client', e.target.value)} placeholder="Lavimac Royal Hotel" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Description *</label>
+              <textarea value={form.description ?? ''} onChange={e => set('description', e.target.value)} placeholder="A professional website for a luxury hotel in Kumasi, Ghana..." rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }} />
+            </div>
+            <div>
+              <label style={labelStyle}>Live Site URL</label>
+              <input value={form.link ?? ''} onChange={e => set('link', e.target.value)} placeholder="https://lavimachotel.com" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Cover Image URL</label>
+              <input value={form.image ?? ''} onChange={e => set('image', e.target.value)} placeholder="https://…" style={inputStyle} />
+            </div>
+            <div>
+              <label style={labelStyle}>Tech Stack</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={techInput} onChange={e => setTechInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTech() }}} placeholder="e.g. Next.js" style={{ ...inputStyle, flex: 1 }} />
+                <button onClick={addTech} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Add</button>
+              </div>
+              {(form.techStack ?? []).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                  {(form.techStack ?? []).map(t => (
+                    <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 12, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 11, fontFamily: FONT_BODY }}>
+                      {t}
+                      <button onClick={() => removeTech(t)} style={{ background: 'none', border: 'none', color: GOLD, cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div>
+                <label style={labelStyle}>Status</label>
+                <select value={form.status ?? 'completed'} onChange={e => set('status', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
+                  <option value="completed">Completed</option>
+                  <option value="in-progress">In Progress</option>
+                </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingTop: 16 }}>
+                <input type="checkbox" id="featured-cb" checked={form.featured ?? false} onChange={e => set('featured', e.target.checked)} style={{ width: 16, height: 16, cursor: 'pointer' }} />
+                <label htmlFor="featured-cb" style={{ ...labelStyle, marginBottom: 0, cursor: 'pointer', textTransform: 'none', fontSize: 13, color: TEXT }}>Featured on homepage</label>
+              </div>
+            </div>
+          </div>
+
+          {saveMsg && (
+            <div style={{ marginTop: 10, fontSize: 13, color: saveMsg.startsWith('✓') ? GOLD : '#f87171', fontFamily: FONT_BODY }}>{saveMsg}</div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: '11px', borderRadius: 8, background: saving ? SURFACE2 : GOLD, color: saving ? MUTED : BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, border: 'none', cursor: saving ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+              {saving ? <><ThinkingDots /> Publishing…</> : '↑ Publish to Website'}
+            </button>
+            <button onClick={cancel} style={{ padding: '11px 16px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Published projects list */}
+      {loading && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: MUTED, fontSize: 13, fontFamily: FONT_BODY, padding: '8px 0' }}>
+          <ThinkingDots /> Loading published projects…
+        </div>
+      )}
+
+      {!loading && projects.length === 0 && !fetchError && (
+        <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY, padding: '8px 0', opacity: 0.6 }}>
+          No projects published yet. Click "+ Add Project" to publish your first project to ecstasytechnologies.com.
+        </div>
+      )}
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {projects.map(p => (
+          <div key={p.id} style={{ padding: '12px 14px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{p.title}</span>
+                  {p.featured && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: `${GOLD}20`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Featured</span>}
+                  {p.status === 'in-progress' && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#3b82f620', color: '#3b82f6', fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>In Progress</span>}
+                </div>
+                <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{p.category} · {p.year}{p.client ? ` · ${p.client}` : ''}</div>
+                <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 4, lineHeight: 1.5 }}>{p.description.slice(0, 100)}{p.description.length > 100 ? '…' : ''}</div>
+                {p.techStack.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                    {p.techStack.map(t => <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, border: `1px solid ${BORDER}`, color: MUTED, fontFamily: FONT_BODY }}>{t}</span>)}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                {p.link && <a href={p.link} target="_blank" rel="noopener noreferrer" title="View live site" style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>↗</a>}
+                <button onClick={() => openEdit(p)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer' }}>✎</button>
+                <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer', opacity: deleting === p.id ? 0.4 : 1 }}>✕</button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {!showForm && !loading && (
+        <div style={{ marginTop: 20, padding: 14, borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: MUTED, marginBottom: 6 }}>Website Integration Setup</div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.65 }}>
+            In your Ecstasy Technologies Next.js repo, import projects from <code style={{ background: SURFACE, padding: '1px 5px', borderRadius: 4, fontSize: 11 }}>data/projects.json</code> instead of hardcoded data. Tagett commits to that file automatically on every publish.
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1926,6 +2205,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
       <div className="tn" style={{ display: 'flex', minWidth: 'max-content' }}>
         {renderViewBtn('home', '⌂', 'Home')}
         {renderViewBtn('pipeline', '◫', 'Deals')}
+        {renderViewBtn('website', '↑', 'Website')}
         {divider('d1')}
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
@@ -2053,6 +2333,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null)
   const [briefResult, setBriefResult] = useState('')
   const [briefLoading, setBriefLoading] = useState(false)
+  const [websitePrefill, setWebsitePrefill] = useState<Partial<WebsiteProject> | null>(null)
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
   useEffect(() => { setDeals(loadDeals()) }, [])
@@ -2127,6 +2408,26 @@ export default function Page() {
     setDeals(prev => prev.filter(d => d.id !== id))
   }, [])
 
+  const handlePublishDealToWebsite = useCallback((deal: Deal) => {
+    setWebsitePrefill({
+      id: `deal-${deal.id}`,
+      title: deal.name,
+      category: deal.industry ? (
+        /mobile|app/i.test(deal.industry) ? 'Mobile App' :
+        /software|system|erp/i.test(deal.industry) ? 'Business Software' :
+        /gis|map|geo/i.test(deal.industry) ? 'GIS' :
+        /web app|application/i.test(deal.industry) ? 'Web Application' : 'Website'
+      ) : 'Website',
+      client: deal.name,
+      year: new Date().getFullYear(),
+      status: 'completed',
+      featured: false,
+      techStack: [],
+    })
+    setActiveView('website')
+    setError(null)
+  }, [])
+
   const earnedGHS = useMemo(() => {
     const fromDeals = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.valueGHS, 0)
     if (fromDeals > 0) return fromDeals
@@ -2159,7 +2460,11 @@ export default function Page() {
     )
 
     if (activeView === 'pipeline') return shell(
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} />
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} />
+    )
+
+    if (activeView === 'website') return shell(
+      <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
 
     const AgentSubheader = (
@@ -2222,7 +2527,10 @@ export default function Page() {
       <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
     )
     if (activeView === 'pipeline') return (
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} />
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} />
+    )
+    if (activeView === 'website') return (
+      <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
     return (
       <>
@@ -2259,6 +2567,7 @@ export default function Page() {
         <nav style={{ padding: '12px 10px', flex: 1, overflowY: 'auto' }}>
           {renderDesktopNavBtn('home', '⌂', 'Command Center', 'Goal, brief & overview')}
           {renderDesktopNavBtn('pipeline', '◫', 'Deal Pipeline', 'Track deals by stage')}
+          {renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
             <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
