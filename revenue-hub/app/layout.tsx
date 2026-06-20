@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Tagett',
-    statusBarStyle: 'black-translucent',
+    statusBarStyle: 'black',
   },
   icons: {
     apple: '/apple-touch-icon.png',
