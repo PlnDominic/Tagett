@@ -3799,6 +3799,61 @@ const BLANK_PROJECT = (): Partial<WebsiteProject> => ({
   year: new Date().getFullYear(), featured: false, status: 'completed',
 })
 
+const CASE_STUDIES_KEY = 'tagett-case-studies-v1'
+function loadCaseStudies(): Record<number, string> {
+  if (typeof window === 'undefined') return {}
+  try { return JSON.parse(localStorage.getItem(CASE_STUDIES_KEY) ?? '{}') } catch { return {} }
+}
+function saveCaseStudies(d: Record<number, string>) {
+  try { localStorage.setItem(CASE_STUDIES_KEY, JSON.stringify(d)) } catch {}
+}
+
+const CASE_STUDY_SYSTEM = `You write crisp, persuasive case studies for Ecstasy Technologies, a web and software agency in Ghana (ecstasytechnologies.com). Output EXACTLY in this format — no extra text before or after:
+
+PROBLEM
+[What challenge did the client face? Why did they need a digital solution? 1–2 sentences.]
+
+SOLUTION
+[What did Ecstasy Technologies build? Mention 2–3 specific features. 2–3 sentences.]
+
+RESULT
+[What changed for the client? Business impact — visibility, efficiency, credibility, bookings. 1–2 sentences.]
+
+PROOF_SNIPPET
+[One compelling sentence for a WhatsApp cold pitch to a similar business in Ghana. Must start with "We built" or "We helped".]`
+
+async function generateCaseStudyText(p: WebsiteProject): Promise<string> {
+  const userMsg = `Client: ${p.client || p.title}
+Type: ${p.category}
+Project: ${p.title}
+Description: ${p.description}
+Features: ${p.features.join(', ')}
+Technologies: ${p.technologies.join(', ')}`
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ systemPrompt: CASE_STUDY_SYSTEM, messages: [{ role: 'user', content: userMsg }] }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error ?? 'Generation failed')
+  return data.text as string
+}
+
+function parseCaseStudy(text: string) {
+  const parts = text.split(/\n(?=PROBLEM|SOLUTION|RESULT|PROOF_SNIPPET)/i)
+  const s: Record<string, string> = {}
+  for (const p of parts) {
+    const m = p.match(/^(PROBLEM|SOLUTION|RESULT|PROOF_SNIPPET)\s*\n([\s\S]+)/i)
+    if (m) s[m[1].toUpperCase()] = m[2].trim()
+  }
+  return { problem: s['PROBLEM'] ?? '', solution: s['SOLUTION'] ?? '', result: s['RESULT'] ?? '', proof: s['PROOF_SNIPPET'] ?? '' }
+}
+
+function projectMatchesIndustry(p: WebsiteProject, q: string): boolean {
+  const kw = q.toLowerCase()
+  return [p.title, p.description, p.client ?? '', p.category].some(f => f.toLowerCase().includes(kw))
+}
+
 // ─── ImageUploader ─────────────────────────────────────────────────────────────
 
 function ImageUploader({ value, onChange }: { value: string; onChange: (url: string) => void }) {
@@ -3870,9 +3925,10 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
   )
 }
 
-function WebsiteProjectsView({ prefill, onClearPrefill }: {
+function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
   prefill?: Partial<WebsiteProject> | null
   onClearPrefill?: () => void
+  onOpenAgent?: (agentId: AgentId, prompt: string) => void
 }) {
   const [projects, setProjects] = useState<WebsiteProject[]>([])
   const [loading, setLoading] = useState(true)
@@ -3886,7 +3942,35 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   const [featureInput, setFeatureInput] = useState('')
   const [bulkImporting, setBulkImporting] = useState(false)
   const [bulkMsg, setBulkMsg] = useState('')
+  const [caseStudies, setCaseStudies] = useState<Record<number, string>>(() => loadCaseStudies())
+  const [generatingId, setGeneratingId] = useState<number | null>(null)
+  const [openStudyId, setOpenStudyId] = useState<number | null>(null)
+  const [matchIndustry, setMatchIndustry] = useState('')
+  const [studyError, setStudyError] = useState('')
+  const [copiedProof, setCopiedProof] = useState(false)
   const showForm = editing !== null
+
+  const handleGenerateCaseStudy = async (p: WebsiteProject) => {
+    if (openStudyId === p.id) { setOpenStudyId(null); return }
+    setOpenStudyId(p.id)
+    if (caseStudies[p.id]) return
+    setGeneratingId(p.id)
+    setStudyError('')
+    try {
+      const text = await generateCaseStudyText(p)
+      const updated = { ...caseStudies, [p.id]: text }
+      setCaseStudies(updated)
+      saveCaseStudies(updated)
+    } catch (err) {
+      setStudyError(err instanceof Error ? err.message : 'Generation failed')
+    } finally { setGeneratingId(null) }
+  }
+
+  const handleCopyProof = async (proof: string) => {
+    await navigator.clipboard.writeText(proof).catch(() => {})
+    setCopiedProof(true)
+    setTimeout(() => setCopiedProof(false), 2000)
+  }
 
   const handleBulkImport = async () => {
     setBulkImporting(true)
@@ -4141,32 +4225,115 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
         </div>
       )}
 
+      {/* Industry match filter */}
+      {!showForm && projects.length > 0 && (
+        <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input
+            value={matchIndustry}
+            onChange={e => setMatchIndustry(e.target.value)}
+            placeholder="Find case study for prospect industry (e.g. hotel, clinic, school)…"
+            style={{ flex: 1, padding: '7px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 12, fontFamily: FONT_BODY, outline: 'none' }}
+          />
+          {matchIndustry && <button onClick={() => setMatchIndustry('')} style={{ fontSize: 13, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>}
+        </div>
+      )}
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {projects.map(p => (
-          <div key={p.id} style={{ padding: '12px 14px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{p.title}</span>
-                  {p.featured && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: `${GOLD}20`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Featured</span>}
-                  {p.status === 'in-progress' && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#3b82f620', color: '#3b82f6', fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>In Progress</span>}
+        {projects
+          .filter(p => !matchIndustry || projectMatchesIndustry(p, matchIndustry))
+          .map(p => {
+            const isMatch = !!matchIndustry && projectMatchesIndustry(p, matchIndustry)
+            const study = caseStudies[p.id]
+            const isOpen = openStudyId === p.id
+            const isGenerating = generatingId === p.id
+            const parsed = study ? parseCaseStudy(study) : null
+
+            return (
+              <div key={p.id}>
+                <div style={{ padding: '12px 14px', borderRadius: isOpen ? '10px 10px 0 0' : 10, border: `1px solid ${isMatch ? `${GOLD}60` : BORDER}`, background: isMatch ? `${GOLD}06` : SURFACE2 }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{p.title}</span>
+                        {p.featured && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: `${GOLD}20`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Featured</span>}
+                        {p.status === 'in-progress' && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#3b82f620', color: '#3b82f6', fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>In Progress</span>}
+                      </div>
+                      <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{p.category} · {p.year}{p.client ? ` · ${p.client}` : ''}</div>
+                      <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 4, lineHeight: 1.5 }}>{p.description.slice(0, 100)}{p.description.length > 100 ? '…' : ''}</div>
+                      {(p.technologies ?? []).length > 0 && (
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+                          {p.technologies.map(t => <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, border: `1px solid ${BORDER}`, color: MUTED, fontFamily: FONT_BODY }}>{t}</span>)}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                      {p.link && <a href={p.link} target="_blank" rel="noopener noreferrer" title="View live site" style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>↗</a>}
+                      <button onClick={() => openEdit(p)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer' }}>✎</button>
+                      <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer', opacity: deleting === p.id ? 0.4 : 1 }}>✕</button>
+                    </div>
+                  </div>
+                  {/* Case Study toggle button */}
+                  <button onClick={() => handleGenerateCaseStudy(p)} style={{ marginTop: 8, display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 14, border: `1px solid ${isOpen ? `${GOLD}60` : BORDER}`, background: isOpen ? `${GOLD}12` : 'none', color: isOpen ? GOLD : MUTED, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: isOpen ? 600 : 400, cursor: 'pointer' }}>
+                    {isGenerating ? <><ThinkingDots /> Generating…</> : isOpen ? '▾ Case Study' : '▸ Case Study'}
+                    {study && !isOpen && <span style={{ fontSize: 9, background: `${GOLD}20`, color: GOLD, padding: '1px 5px', borderRadius: 8 }}>ready</span>}
+                  </button>
                 </div>
-                <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{p.category} · {p.year}{p.client ? ` · ${p.client}` : ''}</div>
-                <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 4, lineHeight: 1.5 }}>{p.description.slice(0, 100)}{p.description.length > 100 ? '…' : ''}</div>
-                {(p.technologies ?? []).length > 0 && (
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                    {p.technologies.map(t => <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, border: `1px solid ${BORDER}`, color: MUTED, fontFamily: FONT_BODY }}>{t}</span>)}
+
+                {/* Inline case study panel */}
+                {isOpen && (
+                  <div style={{ border: `1px solid ${GOLD}40`, borderTop: 'none', borderRadius: '0 0 10px 10px', background: `${GOLD}04`, padding: '14px 16px' }}>
+                    {isGenerating && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: MUTED, fontSize: 12, fontFamily: FONT_BODY }}>
+                        <ThinkingDots /> Generating case study…
+                      </div>
+                    )}
+                    {studyError && !isGenerating && (
+                      <div style={{ fontSize: 12, color: '#f87171', fontFamily: FONT_BODY }}>{studyError}</div>
+                    )}
+                    {parsed && !isGenerating && (
+                      <>
+                        {[
+                          { label: 'Problem', text: parsed.problem, color: '#EF4444' },
+                          { label: 'Solution', text: parsed.solution, color: '#3B82F6' },
+                          { label: 'Result', text: parsed.result, color: '#10B981' },
+                        ].map(s => s.text ? (
+                          <div key={s.label} style={{ marginBottom: 12 }}>
+                            <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 700, color: s.color, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>{s.label}</div>
+                            <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65 }}>{s.text}</div>
+                          </div>
+                        ) : null)}
+
+                        {parsed.proof && (
+                          <div style={{ marginTop: 4, padding: '10px 12px', borderRadius: 8, border: `1px solid ${GOLD}40`, background: `${GOLD}08` }}>
+                            <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 700, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>Pitch Proof</div>
+                            <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, fontStyle: 'italic', marginBottom: 8 }}>"{parsed.proof}"</div>
+                            <button onClick={() => handleCopyProof(parsed.proof)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 14, border: `1px solid ${GOLD}50`, background: copiedProof ? `${GOLD}20` : 'none', color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>
+                              {copiedProof ? '✓ Copied' : 'Copy'}
+                            </button>
+                          </div>
+                        )}
+
+                        <div style={{ display: 'flex', gap: 6, marginTop: 12, flexWrap: 'wrap' }}>
+                          <button onClick={() => onOpenAgent?.('content', `Use this Ecstasy Technologies case study to write a personalised WhatsApp cold pitch for a similar ${p.category.toLowerCase()} business in Ghana:\n\n${study}`)}
+                            style={{ padding: '5px 12px', borderRadius: 14, border: `1px solid ${BORDER}`, background: 'none', color: MUTED, fontSize: 11, fontFamily: FONT_HEADING, cursor: 'pointer' }}>
+                            → Use in WhatsApp Pitch
+                          </button>
+                          <button onClick={() => onOpenAgent?.('viral', `Create 3 social media posts (X, LinkedIn, Instagram) showcasing this Ecstasy Technologies case study to attract similar clients:\n\n${study}`)}
+                            style={{ padding: '5px 12px', borderRadius: 14, border: `1px solid ${BORDER}`, background: 'none', color: MUTED, fontSize: 11, fontFamily: FONT_HEADING, cursor: 'pointer' }}>
+                            → Create Social Posts
+                          </button>
+                          <button onClick={() => { const updated = { ...caseStudies }; delete updated[p.id]; setCaseStudies(updated); saveCaseStudies(updated); setOpenStudyId(null) }}
+                            style={{ padding: '5px 12px', borderRadius: 14, border: `1px solid ${BORDER}`, background: 'none', color: MUTED, fontSize: 11, fontFamily: FONT_BODY, cursor: 'pointer', opacity: 0.6 }}>
+                            Regenerate
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                {p.link && <a href={p.link} target="_blank" rel="noopener noreferrer" title="View live site" style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>↗</a>}
-                <button onClick={() => openEdit(p)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer' }}>✎</button>
-                <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer', opacity: deleting === p.id ? 0.4 : 1 }}>✕</button>
-              </div>
-            </div>
-          </div>
-        ))}
+            )
+          })}
       </div>
 
       {!showForm && !loading && (
@@ -5327,7 +5494,7 @@ export default function Page() {
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
         {activeView === 'social'        && <SocialCalendarView />}
-        {activeView === 'website'       && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />}
+        {activeView === 'website'       && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />}
         {activeView === 'history'       && <AgentRunHistory />}
         {activeView === 'data-quality'  && <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />}
       </>
@@ -5437,7 +5604,7 @@ export default function Page() {
       <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
     )
     if (activeView === 'website') return (
-      <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
+      <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />
     )
     if (activeView === 'council')   return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
     if (activeView === 'history')   return <AgentRunHistory />
