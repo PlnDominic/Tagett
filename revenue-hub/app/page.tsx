@@ -105,7 +105,18 @@ const AGENTS: Record<AgentId, Agent> = {
     short: 'Prospect',
     description: 'Find businesses without websites in Ghana',
     briefingLabel: "Today's Prospect List",
-    dailyPrompt: '',
+    dailyPrompt: `Give me today's lead list. Find 5 Ghanaian businesses that have NO website or have a broken/outdated one, and are ready to buy.
+
+Prioritise industries with money: restaurants with delivery potential, clinics, auto dealers, hotels, fashion brands, pharmacies.
+
+For each prospect follow the exact output format — Business Name, Industry, Address, Phone (+233 format), Why they need a website, Service to pitch, Estimated value in GHS, Phone pitch.
+
+After all 5, add:
+
+PIPELINE SUMMARY
+Total estimated value: GHS [sum]
+That is [X]% of my GHS 120,000 monthly goal.
+Fastest to close: [Business Name] — call them first.`,
     systemPrompt: `You are ProspectBot, a lead generation AI for Ecstasy Technologies based in Ghana (ecstasytechnologies.com).
 
 Your job is to find businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
@@ -122,7 +133,9 @@ Output format for each prospect:
    Estimated value: GHS [amount]
    Phone pitch: "[one sentence to say when they pick up]"
 
-Cover all industries and business types. Be specific about Ghanaian towns, streets, and areas. All pricing in GHS.`,
+Cover all industries and business types. Be specific about Ghanaian towns, streets, and areas. All pricing in GHS.
+
+PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 120,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 120,000 monthly goal.`,
   },
   content: {
     id: 'content',
@@ -142,7 +155,7 @@ Keep everything on-brand: premium, confident, no filler phrases. Tagline: "Build
 
 1. X (Twitter) posts — concise, professional, software/tech focus. Aimed at attracting Ghanaian and African clients. No hashtag spam. Max 280 characters unless thread requested.
 
-2. Client proposals — formal business proposals for Ghanaian clients. Include: executive summary, scope of work, deliverables, timeline, pricing in GHS, and terms.
+2. Client proposals and pitches — formal business proposals for Ghanaian clients. Include: executive summary, scope of work, deliverables, timeline, pricing in GHS, and terms. For WhatsApp messages: conversational, brief, one clear CTA.
 
 Services offered:
 - Web design & development: GHS 5,000–18,000
@@ -151,7 +164,9 @@ Services offered:
 - Business software: GHS 15,000–40,000
 - GIS solutions: GHS 3,000–10,000
 
-Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.`,
+Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.
+
+PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 120,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.`,
   },
   scope: {
     id: 'scope',
@@ -184,7 +199,9 @@ Service pricing ranges (always in GHS):
 - Business software & automation: GHS 15,000–40,000
 - GIS solutions: GHS 3,000–10,000
 
-Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.`,
+Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.
+
+PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 120,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 120,000 monthly target."`,
   },
   revenue: {
     id: 'revenue',
@@ -200,7 +217,7 @@ Tell me:
 2. The fastest path to GHS 120,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
 3. Three specific revenue actions I should take today — be direct and tactical, not generic.
 4. What a realistic week-by-week milestone breakdown looks like to hit GHS 120,000 by month end.`,
-    systemPrompt: `You are RevenueTracker, a business analytics AI for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You help track and analyse monthly revenue against a GHS 120,000/month target (~$10,000 USD).
+    systemPrompt: `You are RevenueTracker, the command centre of a 5-agent revenue machine for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). Target: GHS 120,000/month (~$10,000 USD).
 
 When given revenue data, you:
 1. Calculate total earnings and % of monthly goal achieved
@@ -216,7 +233,16 @@ Service pricing context:
 - Business software: GHS 15,000–40,000
 - GIS solutions: GHS 3,000–10,000
 
-Always express amounts in GHS. Give clear, actionable analysis.`,
+Always express amounts in GHS. Give clear, actionable analysis.
+
+PIPELINE ROLE: You receive data from all four other agents and tell Dominic EXACTLY what to do next. Be ruthlessly tactical:
+- Behind on goal → direct to ProspectBot to find more leads now
+- Leads not closing → direct to ContentBot to write follow-ups today
+- Need one big deal → direct to ProjectBot to scope a high-value project
+- Need inbound inquiries → direct to ViralBot to create content that pulls clients in
+
+Always end every response with:
+"NEXT ACTION: Open [Agent Name] and tell it: [exact one-sentence instruction]."`,
   },
   viral: {
     id: 'viral',
@@ -289,7 +315,12 @@ Viral Angles That Work for Ecstasy Technologies:
 
 GHANA CONTEXT: Always ground content in real Ghanaian business culture — chop bars, mobile money, markets, Accra traffic, load shedding resilience, the hustle. This makes content authentic and shareable.
 
-Always write as Dominic Agyapong. No placeholders. No [your name]. Make it immediately postable.`,
+Always write as Dominic Agyapong. No placeholders. No [your name]. Make it immediately postable.
+
+PIPELINE ROLE: You drive inbound leads that supplement ProspectBot's outbound work. Viral content attracts clients without cold calls. After your content output, always add:
+"This content targets: [client type]
+Estimated contract value if they inquire: GHS [range]
+Pipeline contribution if 1 lead converts: [X]% of GHS 120,000 goal"`,
   },
 }
 
@@ -333,41 +364,87 @@ async function callChat(systemPrompt: string, messages: Message[]): Promise<stri
 const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; buildPrompt: (c: string) => string }>> = {
   prospect: [
     {
-      label: '→ Scope with ProjectBot',
-      targetAgent: 'scope',
-      buildPrompt: (c) => `I found this lead from ProspectBot. Scope a project and generate a GHS-priced proposal:\n\n${c.slice(0, 1500)}`,
+      label: '→ Write the Pitch (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `I found these leads from ProspectBot. Write a personalised WhatsApp cold-open message for the top prospect — confident, brief, one clear call to action:\n\n${c.slice(0, 1500)}`,
     },
     {
-      label: '→ Draft Pitch (ContentBot)',
-      targetAgent: 'content',
-      buildPrompt: (c) => `I have this prospect from ProspectBot. Write a personalized WhatsApp message I can send them today to open the conversation:\n\n${c.slice(0, 1500)}`,
+      label: '→ Scope & Price It (ProjectBot)',
+      targetAgent: 'scope',
+      buildPrompt: (c) => `I found this lead from ProspectBot. Scope a project for them and generate a GHS-priced proposal ready to send:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Log Pipeline (RevenueTracker)',
+      targetAgent: 'revenue',
+      buildPrompt: (c) => `I found these leads with ProspectBot. Add the total estimated value to my pipeline and tell me how close I am to my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Viral Angle (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `These are my current leads from ProspectBot. Use the industries and pain points in this lead list to create viral content that attracts MORE of these same clients inbound to Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
     },
   ],
   scope: [
     {
       label: '→ Polish Proposal (ContentBot)',
       targetAgent: 'content',
-      buildPrompt: (c) => `I have this project scope from ProjectBot. Turn it into a polished client-ready proposal I can send by email or WhatsApp:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I have this project scope from ProjectBot. Turn it into a polished, client-ready proposal I can send directly by email or WhatsApp:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Log to RevenueTracker',
       targetAgent: 'revenue',
       buildPrompt: (c) => `I have this scoped project from ProjectBot. Add it to my pipeline and show what % of my GHS 120,000 monthly goal it covers:\n\n${c.slice(0, 1500)}`,
     },
+    {
+      label: '→ Make it a Case Study (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `I have this project scope from ProjectBot. After delivery, I want to turn this into a viral story. Create a compelling X thread, LinkedIn post, or TikTok that shows potential clients what we can build for them:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Find Similar Leads (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `I just scoped this type of project. Find 5 more Ghanaian businesses in the same industry or similar situation that would benefit from the same solution:\n\n${c.slice(0, 1500)}`,
+    },
   ],
   content: [
     {
-      label: '→ Scope with ProjectBot',
+      label: '→ Scope & Price It (ProjectBot)',
       targetAgent: 'scope',
-      buildPrompt: (c) => `I have this content/proposal from ContentBot. Review the scope and generate a formal project proposal with GHS line items:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I have this content/proposal from ContentBot. Review the scope and generate a formal project proposal with GHS line items and payment milestones:\n\n${c.slice(0, 1500)}`,
     },
     {
-      label: '→ Make it go viral (ViralBot)',
+      label: '→ Make it Go Viral (ViralBot)',
       targetAgent: 'viral',
       buildPrompt: (c) => `I have this content from ContentBot. Turn it into a viral X thread, LinkedIn post, and TikTok script that will blow up for Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
     },
+    {
+      label: '→ Log Pipeline (RevenueTracker)',
+      targetAgent: 'revenue',
+      buildPrompt: (c) => `I drafted these pitches and proposals with ContentBot. Add the deal values to my pipeline and tell me what % of my GHS 120,000 monthly goal they represent if closed:\n\n${c.slice(0, 1500)}`,
+    },
   ],
-  revenue: [],
+  revenue: [
+    {
+      label: '→ Find More Leads (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `My RevenueTracker says I need more pipeline. Based on this revenue analysis, find 5 new high-value leads in Ghana that can close fast and help me hit my GHS 120,000 goal:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Scope a Big Deal (ProjectBot)',
+      targetAgent: 'scope',
+      buildPrompt: (c) => `My RevenueTracker shows I need to close a large deal to hit my goal. Based on this revenue analysis, scope the highest-value project type most likely to close quickly in Ghana right now:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Write Follow-Ups (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `My RevenueTracker shows I need to close deals faster. Based on this pipeline gap, write 3 follow-up messages I can send to warm prospects today to push them to a decision:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Go Viral to Close the Gap (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `My RevenueTracker shows I am behind on my GHS 120,000 target. Create urgent viral content that positions Ecstasy Technologies as the go-to software studio in Ghana and drives inbound inquiries this week:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
   viral: [
     {
       label: '→ Polish Post (ContentBot)',
@@ -375,9 +452,14 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       buildPrompt: (c) => `I have this viral content from ViralBot. Polish it, tighten the copy, and make it ready to publish immediately for Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
     },
     {
-      label: '→ Track Revenue Impact',
+      label: '→ Turn Fans into Leads (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `This viral content from ViralBot is attracting attention. Based on the topics and industries in this content, find 5 specific Ghanaian businesses that would respond to this message and are ready to buy now:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Track Revenue Impact (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I ran this viral campaign from ViralBot. Help me estimate the pipeline value and track it against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I ran this viral campaign with ViralBot. Help me estimate the potential pipeline value of the inbound leads this could attract and track it against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
   ],
 }
@@ -676,10 +758,10 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             })}
           </div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 18, color: TEXT, marginBottom: 8, textAlign: 'center' }}>
-            Four agents. One mission.
+            Five agents. One mission.
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 36, fontFamily: FONT_BODY }}>
-            Tap any agent to start. They collaborate: hand off prospects, polish proposals, and log deals automatically.
+            They work as a machine: find leads, write pitches, scope deals, go viral, and track every GHS toward the goal.
           </div>
         </>
       )}
