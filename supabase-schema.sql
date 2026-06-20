@@ -2,7 +2,7 @@
 -- Tagett — Ecstasy Technologies Operator Dashboard
 -- Full Supabase schema
 -- Paste this entire script into the Supabase SQL Editor and run it.
--- Safe to re-run: all statements use CREATE TABLE IF NOT EXISTS.
+-- Safe to re-run: CREATE TABLE IF NOT EXISTS + ADD COLUMN IF NOT EXISTS.
 -- ============================================================
 
 
@@ -24,6 +24,16 @@ CREATE TABLE IF NOT EXISTS deals (
   whatsapp_history JSONB       DEFAULT '[]'::JSONB
     -- array of { text: string, sentAt: number }
 );
+
+-- Add columns that may be missing if the table was created before this schema.
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS industry         TEXT    NOT NULL DEFAULT 'Unknown';
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS value_ghs        NUMERIC NOT NULL DEFAULT 0;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS stage            TEXT    NOT NULL DEFAULT 'found';
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS phone            TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS stage_changed_at BIGINT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS follow_up_at     BIGINT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS last_contacted_at BIGINT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS whatsapp_history  JSONB  DEFAULT '[]'::JSONB;
 
 CREATE INDEX IF NOT EXISTS deals_stage_idx         ON deals (stage);
 CREATE INDEX IF NOT EXISTS deals_follow_up_at_idx  ON deals (follow_up_at) WHERE follow_up_at IS NOT NULL;
@@ -47,6 +57,14 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at  TIMESTAMPTZ DEFAULT now(),
   updated_at  TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone     TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS whatsapp  TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS email     TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS website   TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS industry  TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS notes     TEXT;
+ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS clients_name_idx       ON clients (lower(name));
 CREATE INDEX IF NOT EXISTS clients_industry_idx   ON clients (industry);
