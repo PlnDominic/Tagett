@@ -3470,7 +3470,7 @@ function BottomNav({ activeView, onSelect }: {
   ]
   return (
     <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
-      <div style={{ display: 'flex' }}>
+      <div style={{ display: 'flex', height: 56 }}>
         {tabs.map(tab => {
           const isActive = tab.id === activeTab
           return (
@@ -3480,8 +3480,7 @@ function BottomNav({ activeView, onSelect }: {
               background: 'none', border: 'none', cursor: 'pointer',
               color: isActive ? GOLD : MUTED,
               borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
-              paddingTop: 10, paddingBottom: 'calc(6px + env(safe-area-inset-bottom, 0px))',
-              minHeight: 56, transition: 'color 0.15s',
+              paddingTop: 10, paddingBottom: 6, transition: 'color 0.15s',
             }}>
               {tab.icon(isActive)}
               <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, letterSpacing: '0.04em' }}>{tab.label}</span>
@@ -3960,7 +3959,7 @@ export default function Page() {
     }
 
     const shell = (content: React.ReactNode) => (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100svh', background: BG, overflow: 'hidden' }}>
         {content}
         <BottomNav activeView={activeView} onSelect={handleTabSelect} />
       </div>
