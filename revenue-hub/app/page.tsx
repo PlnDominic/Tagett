@@ -765,6 +765,7 @@ interface Deal {
   stage: DealStage
   phone?: string
   createdAt: number
+  stageChangedAt?: number
 }
 
 const DEALS_KEY = 'tagett-deals-v1'
@@ -1300,6 +1301,9 @@ function SocialShareBar({ content }: { content: string }) {
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <a href={`https://wa.me/?text=${encodeURIComponent(content.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+          ✆ WhatsApp
+        </a>
         <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${LI_BLUE}60`, background: `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           in LinkedIn
         </a>
@@ -1310,6 +1314,49 @@ function SocialShareBar({ content }: { content: string }) {
           {copied ? '✓ Copied' : '📋 Copy'}
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── ProposalDownload ─────────────────────────────────────────────────────────
+
+function ProposalDownload({ content }: { content: string }) {
+  const download = () => {
+    const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ecstasy Technologies Proposal</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Georgia, 'Times New Roman', serif; max-width: 720px; margin: 48px auto; padding: 0 32px; color: #1a1a1a; line-height: 1.7; }
+  .logo { font-family: Arial, sans-serif; font-weight: 800; font-size: 22px; color: #C8A96E; letter-spacing: 0.05em; margin-bottom: 2px; }
+  .tagline { font-family: Arial, sans-serif; font-size: 13px; color: #888; margin-bottom: 40px; }
+  pre { white-space: pre-wrap; font-family: Georgia, serif; font-size: 14px; line-height: 1.8; }
+  .footer { margin-top: 56px; padding-top: 16px; border-top: 1px solid #e0e0e0; font-family: Arial, sans-serif; font-size: 11px; color: #aaa; display: flex; justify-content: space-between; }
+  @media print { body { margin: 24px; } }
+</style>
+</head>
+<body>
+  <div class="logo">Ecstasy Technologies</div>
+  <div class="tagline">ecstasytechnologies.com · Building software Africa trusts.</div>
+  <pre>${escaped}</pre>
+  <div class="footer"><span>Prepared by Ecstasy Technologies, Ghana</span><span>${new Date().toLocaleDateString('en-GH', { year: 'numeric', month: 'long', day: 'numeric' })}</span></div>
+  <script>window.onload = () => { setTimeout(() => window.print(), 300) }</script>
+</body>
+</html>`
+    const blob = new Blob([html], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank')
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+  }
+
+  return (
+    <div style={{ marginTop: 10, paddingLeft: 34 }}>
+      <button onClick={download} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 14px', borderRadius: 20, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
+        ↓ Download Proposal PDF
+      </button>
     </div>
   )
 }
@@ -1352,6 +1399,9 @@ function ChatMessage({ message, agentId, isLast, onHandoff }: {
       )}
       {!isUser && isLast && agentId === 'content' && (
         <SocialShareBar content={message.content} />
+      )}
+      {!isUser && isLast && agentId === 'scope' && (
+        <ProposalDownload content={message.content} />
       )}
       {!isUser && isLast && agentId && onHandoff && (
         <HandoffChips agentId={agentId} content={message.content} onHandoff={onHandoff} />
@@ -2378,11 +2428,16 @@ function BottomNav({ activeView, allChats, onSelect }: {
 
 // ─── ChatInput ────────────────────────────────────────────────────────────────
 
-function ChatInput({ agentShort, onSend, loading }: {
+function ChatInput({ agentShort, onSend, loading, prefill, onClearPrefill }: {
   agentShort: string; onSend: (text: string) => void; loading: boolean
+  prefill?: string | null; onClearPrefill?: () => void
 }) {
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (prefill) { setInput(prefill); onClearPrefill?.() }
+  }, [prefill, onClearPrefill])
 
   const handleSend = useCallback(() => {
     const text = input.trim()
@@ -2495,9 +2550,37 @@ export default function Page() {
   const [briefResult, setBriefResult] = useState('')
   const [briefLoading, setBriefLoading] = useState(false)
   const [websitePrefill, setWebsitePrefill] = useState<Partial<WebsiteProject> | null>(null)
+  const [viralPrefill, setViralPrefill] = useState<string | null>(null)
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
   useEffect(() => { setDeals(loadDeals()) }, [])
+
+  // ── Stale proposal notifications ─────────────────────────────────────────
+  useEffect(() => {
+    if (deals.length === 0) return
+    const STALE_MS = 3 * 24 * 60 * 60 * 1000
+    const NOTIFIED_KEY = 'tagett-notified-proposals-v1'
+    const notified: Record<string, number> = JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? '{}')
+    const now = Date.now()
+    const stale = deals.filter(d =>
+      d.stage === 'proposal' &&
+      (d.stageChangedAt ?? d.createdAt) < now - STALE_MS &&
+      (!notified[d.id] || now - notified[d.id] > STALE_MS)
+    )
+    if (stale.length === 0) return
+    stale.forEach(deal => {
+      fetch('/api/notify/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: `Follow up: ${deal.name}`,
+          body: 'Proposal has been waiting 3+ days. Send a WhatsApp now.',
+        }),
+      }).catch(() => {})
+      notified[deal.id] = now
+    })
+    localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified))
+  }, [deals])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
   useEffect(() => { saveDeals(deals) }, [deals])
 
@@ -2562,8 +2645,18 @@ export default function Page() {
   }, [])
 
   const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage } : d))
-  }, [])
+    const deal = deals.find(d => d.id === id)
+    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage, stageChangedAt: Date.now() } : d))
+    if (stage === 'closed' && deal) {
+      const category = /mobile|app/i.test(deal.industry) ? 'Mobile App' :
+        /software|system|erp/i.test(deal.industry) ? 'Business Software' :
+        /gis|map|geo/i.test(deal.industry) ? 'GIS solution' :
+        /web app|application/i.test(deal.industry) ? 'Web Application' : 'Website'
+      const prompt = `We just closed a deal and completed a project! Write a viral project reveal for Ecstasy Technologies:\n\nClient: ${deal.name}\nBusiness type: ${deal.industry}\nProject type: ${category}\nDeal value: GHS ${deal.valueGHS.toLocaleString()}\n\nDeliver:\n1. A viral X thread (6 tweets) — hook with the project reveal, walk through what we built, end with CTA to ecstasytechnologies.com. Specify which screenshot to attach.\n2. A LinkedIn founder post — tell the story of this client win, what they needed, what we built, what changes for them now.\n\nWrite as Dominic Agyapong. Make it immediately postable.`
+      setViralPrefill(prompt)
+      setTimeout(() => { setActiveView('viral'); setError(null) }, 700)
+    }
+  }, [deals])
 
   const handleDeleteDeal = useCallback((id: string) => {
     setDeals(prev => prev.filter(d => d.id !== id))
@@ -2647,7 +2740,7 @@ export default function Page() {
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
-          <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
+          <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
       </>
     )
