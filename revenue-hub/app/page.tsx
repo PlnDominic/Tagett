@@ -328,20 +328,28 @@ CONTENT MIX: Roughly half of all content should be project showcases — real pr
 
 REAL PROJECTS TO DRAW FROM (ecstasytechnologies.com/projects):
 - Lavimac Royal Hotel Website (hotel, Website)
+- Lavimac Hotel Management System (hotel ops, Business Software — React/Node/Supabase)
+- Mikjan Hotel Management System (hotel ops, Business Software — React/Supabase)
 - Nhyiraba Hotel Management System (hotel, Web Application)
 - Jokran Hotel (hotel, Website)
 - Peravic Lodge (hotel, Website)
 - Dynamic Shipping & Logistics (logistics, Web Application)
-- Solani Construction & Engineering (construction, Website)
-- Amor De Dios Drilling & Construction (construction, Website)
-- Clems Akinaabi Company Limited (corporate, Web Application)
-- Bubbly Kids Academy (school/montessori, Website)
+- Solani Construction & Engineering (construction, Website — Next.js/Supabase)
+- Eighteen Cubic (construction/design, Website — Next.js)
+- BABMA Municipal Assembly Website (government, Website — HTML/CSS/JS)
+- Bubbly Montessori School Website (education, Website — Next.js)
 - MoldGold School Management System (school, Web Application)
 - Royal Ecclesia Church Management System (church, Business Software)
+- Obotan Co-operative Credit Union System (finance, Business Software — Python/Flask)
+- PM Group (property management, Web Application — Next.js)
+- Fine Wine (retail, Website)
+- Avenu-15 (events/venue, Website)
 - Mankind Foundation Ghana (NGO/health, Website)
 - Aaron Freeman Portfolio (portfolio, Website)
-- Building Development Manager (GIS/compliance, Web Application)
-- Obotan Credit Union Banking App (finance, Mobile App)
+- Interactive GIS Web Map (geospatial, GIS — JavaScript)
+- Building Compliance Tracking App (GIS/compliance, GIS — Python/Flask)
+- Bia East District (government/GIS, GIS)
+- XScout Lead Platform (sales tools, Web Application — Python)
 - Bauvet Dog Parent App (lifestyle/pet, Web Application)
 …and more at ecstasytechnologies.com/projects
 
@@ -497,6 +505,170 @@ You are not here to plan. You are here to execute. Every response ends with: "DO
 const AGENT_IDS = Object.keys(AGENTS) as AgentId[]
 const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'viral']
 const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'outsider', 'executor']
+
+// ─── Website project seed data ─────────────────────────────────────────────────
+
+const SEED_PROJECTS: Array<{
+  title: string; category: string; description: string; image: string
+  features: string[]; technologies: string[]; link?: string; year?: number; status?: string
+}> = [
+  {
+    title: 'Lavimac Hotel Management System',
+    category: 'Business Software',
+    description: 'Full-stack hotel management system with real-time room status updates, guest check-in/checkout workflows, reservation handling, and comprehensive reporting for Lavimac Hotel, Ghana.',
+    image: '',
+    features: ['Real-time room occupancy dashboard', 'Guest check-in/checkout', 'Reservation management', 'Report generation & exports', 'Row-level security'],
+    technologies: ['React', 'Node.js', 'Express', 'Supabase', 'PostgreSQL'],
+    link: 'https://github.com/PlnDominic/Lavimac-HMS',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Mikjan Hotel Management System',
+    category: 'Business Software',
+    description: 'Full-stack hotel management system built for Mikjan Hotel with live occupancy tracking, guest workflows, reservation system, and automated reporting.',
+    image: '',
+    features: ['Room occupancy dashboard', 'Check-in/checkout workflows', 'Reservation system', 'Live database sync', 'Automated reports'],
+    technologies: ['React', 'Supabase', 'PostgreSQL', 'Tailwind CSS', 'JavaScript'],
+    link: 'https://github.com/PlnDominic/mikjan-hotel-management-system-software',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'BABMA Municipal Assembly Website',
+    category: 'Website',
+    description: 'Modern, responsive official website for the BABMA Municipal Assembly with dark/light theme toggle, dynamic content loading, and multi-page structure covering services, departments, and announcements.',
+    image: '',
+    features: ['Responsive design', 'Dark/light theme toggle', 'Services directory', 'Announcements board', 'Departments listing', 'Contact form'],
+    technologies: ['HTML5', 'CSS3', 'JavaScript', 'Google Fonts'],
+    link: 'https://github.com/PlnDominic/BABMA02',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Obotan Co-operative Credit Union System',
+    category: 'Business Software',
+    description: 'Comprehensive web application for managing the Obotan Co-operative Credit Union — covering user management, financial transactions, work submissions, and administrative reporting.',
+    image: '',
+    features: ['User authentication', 'Financial transactions', 'Work submissions', 'Admin reporting dashboard', 'Role-based access control', 'Database migrations'],
+    technologies: ['Python', 'Flask', 'PostgreSQL', 'HTML', 'CSS', 'JavaScript', 'Gunicorn'],
+    link: 'https://github.com/PlnDominic/Obotan-Cooperative-Credit-Union',
+    year: 2023, status: 'completed',
+  },
+  {
+    title: 'Lavimac Royal Hotel Website',
+    category: 'Website',
+    description: 'Modern hotel website for Lavimac Royal Hotel with online room booking, Google Maps integration, email contact form, and WhatsApp direct messaging for guests.',
+    image: '',
+    features: ['Online booking system', 'Room displays', 'Contact form with email', 'Google Maps integration', 'WhatsApp direct contact'],
+    technologies: ['TypeScript', 'Python', 'Flask', 'Vite', 'Tailwind CSS', 'Google Maps API'],
+    link: 'https://github.com/PlnDominic/Lavimac-Royal-Hotel',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Solani Construction & Engineering',
+    category: 'Website',
+    description: 'Corporate website for Solani Construction & Engineering with project portfolio showcase, 3D animation elements, admin dashboard, and SEO optimization.',
+    image: '',
+    features: ['Project portfolio showcase', 'Admin dashboard', '3D animations', 'SEO optimization', 'Interactive maps', 'Responsive design'],
+    technologies: ['Next.js', 'TypeScript', 'Tailwind CSS', 'Supabase'],
+    link: 'https://github.com/PlnDominic/Solani-Construction-and-Engineering',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Bubbly Montessori School Website',
+    category: 'Website',
+    description: 'Clean, professional school website for Bubbly Montessori built with Next.js and Tailwind CSS with SEO optimization and component-based architecture.',
+    image: '',
+    features: ['School information pages', 'Responsive design', 'SEO optimization', 'Custom React hooks', 'Component-based UI'],
+    technologies: ['Next.js', 'TypeScript', 'Tailwind CSS', 'PostCSS'],
+    link: 'https://github.com/PlnDominic/Bubbly-Montessori',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Interactive GIS Web Map',
+    category: 'GIS',
+    description: 'Web-based interactive mapping application for spatial data visualization, built entirely with vanilla JavaScript and HTML5 for lightweight deployment.',
+    image: '',
+    features: ['Interactive map layers', 'Spatial data visualization', 'Location display', 'Custom data directory', 'No-framework deployment'],
+    technologies: ['JavaScript', 'HTML5', 'CSS3'],
+    link: 'https://github.com/PlnDominic/InteractiveMap',
+    year: 2023, status: 'completed',
+  },
+  {
+    title: 'Building Compliance Tracking App',
+    category: 'GIS',
+    description: 'Web application for tracking and assessing building compliance with geospatial mapping support, shapefile and GeoJSON data handling, and a migration-backed database.',
+    image: '',
+    features: ['Building compliance tracking', 'Geospatial map views', 'Shapefile & GeoJSON support', 'File upload system', 'Database migrations', 'Test suite'],
+    technologies: ['Python', 'Flask', 'JavaScript', 'HTML5', 'CSS3', 'GeoJSON'],
+    link: 'https://github.com/PlnDominic/building-compliance-app',
+    year: 2023, status: 'completed',
+  },
+  {
+    title: 'XScout Lead Platform',
+    category: 'Web Application',
+    description: 'Python-powered web application for lead scouting and data management with a dedicated dashboard for prospect tracking and analysis.',
+    image: '',
+    features: ['Lead scouting dashboard', 'Prospect data management', 'Detail views', 'Cloud deployment-ready', 'Data analytics'],
+    technologies: ['Python', 'Flask', 'HTML5', 'Heroku'],
+    link: 'https://github.com/PlnDominic/XScout',
+    year: 2023, status: 'completed',
+  },
+  {
+    title: 'PM Group',
+    category: 'Web Application',
+    description: 'Property management web application built with Next.js, TypeScript, and PostgreSQL for managing properties, listings, and client interactions.',
+    image: '',
+    features: ['Property listings', 'Management dashboard', 'Database integration', 'User authentication', 'Responsive design'],
+    technologies: ['Next.js', 'TypeScript', 'Tailwind CSS', 'PostgreSQL', 'PLpgSQL'],
+    link: 'https://github.com/PlnDominic/PM-Group',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Eighteen Cubic',
+    category: 'Website',
+    description: 'Modern business website built with Next.js and TypeScript using Geist font and a clean, professional architecture.',
+    image: '',
+    features: ['Modern UI/UX', 'Responsive design', 'Font optimization', 'Clean codebase', 'ESLint configured'],
+    technologies: ['Next.js', 'TypeScript', 'CSS', 'Geist Font'],
+    link: 'https://github.com/PlnDominic/Eighteen-Cubic',
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Royal Ecclesia Church Management System',
+    category: 'Business Software',
+    description: 'Full-stack church management system for Royal Ecclesia Church covering member records, attendance tracking, event coordination, and church administration.',
+    image: '',
+    features: ['Member directory', 'Attendance tracking', 'Event management', 'Service schedules', 'Church administration dashboard'],
+    technologies: ['Next.js', 'TypeScript', 'Tailwind CSS', 'PostgreSQL'],
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Fine Wine',
+    category: 'Website',
+    description: 'Premium wine retail website with product catalogue, WhatsApp ordering, and elegant design tailored for a Ghanaian wine business.',
+    image: '',
+    features: ['Product catalogue', 'WhatsApp ordering', 'Elegant UI', 'Mobile-first design', 'Responsive layout'],
+    technologies: ['Next.js', 'TypeScript', 'Tailwind CSS'],
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Avenu-15',
+    category: 'Website',
+    description: 'Event venue and booking website with an online reservation system, gallery, and event listings for a premium Ghana venue.',
+    image: '',
+    features: ['Online reservations', 'Event listings', 'Venue gallery', 'Contact & enquiry form', 'Responsive design'],
+    technologies: ['Next.js', 'TypeScript', 'Tailwind CSS'],
+    year: 2024, status: 'completed',
+  },
+  {
+    title: 'Bia East District',
+    category: 'GIS',
+    description: 'Digital platform for Bia East District, Ghana, with geographic information mapping, community resource directory, and district service listings.',
+    image: '',
+    features: ['District GIS mapping', 'Community resources', 'Service directory', 'Geographic data visualization', 'Responsive design'],
+    technologies: ['JavaScript', 'Python', 'HTML5', 'GeoJSON'],
+    year: 2023, status: 'completed',
+  },
+]
 
 // ─── localStorage helpers ──────────────────────────────────────────────────────
 
@@ -1208,7 +1380,7 @@ function ProspectActionChips({ content }: { content: string }) {
 type PostStatus = 'idle' | 'posting' | 'done' | 'error'
 type BufferProfile = { id: string; service: string; username: string }
 
-function SocialShareBar({ content }: { content: string }) {
+function SocialShareBar({ content, schedule = false }: { content: string; schedule?: boolean }) {
   const [copied, setCopied] = useState(false)
   const [statuses, setStatuses] = useState<Record<number, PostStatus>>({})
   const [profiles, setProfiles] = useState<BufferProfile[]>([])
@@ -1228,7 +1400,7 @@ function SocialShareBar({ content }: { content: string }) {
       const res = await fetch('/api/social/buffer', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: post, profileIds: profiles.map(p => p.id), now: true }),
+        body: JSON.stringify({ text: post, profileIds: profiles.map(p => p.id), now: !schedule }),
       })
       const next: PostStatus = res.ok ? 'done' : 'error'
       setStatuses(prev => ({ ...prev, [idx]: next }))
@@ -1291,9 +1463,9 @@ function SocialShareBar({ content }: { content: string }) {
                     disabled={s === 'posting'}
                     style={bufferBtnStyle(s)}
                   >
-                    {s === 'idle' && '↑ Post'}
+                    {s === 'idle' && (schedule ? '📅 Schedule' : '↑ Post')}
                     {s === 'posting' && '…'}
-                    {s === 'done' && '✓ Posted'}
+                    {s === 'done' && (schedule ? '✓ Scheduled' : '✓ Posted')}
                     {s === 'error' && '✗ Failed'}
                   </button>
                 )}
@@ -1400,8 +1572,8 @@ function ChatMessage({ message, agentId, isLast, onHandoff }: {
       {!isUser && agentId === 'prospect' && (
         <ProspectActionChips content={message.content} />
       )}
-      {!isUser && isLast && agentId === 'content' && (
-        <SocialShareBar content={message.content} />
+      {!isUser && isLast && (agentId === 'content' || agentId === 'viral') && (
+        <SocialShareBar content={message.content} schedule={agentId === 'viral'} />
       )}
       {!isUser && isLast && agentId === 'scope' && (
         <ProposalDownload content={message.content} />
@@ -2088,7 +2260,35 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   const [deleting, setDeleting] = useState<number | null>(null)
   const [techInput, setTechInput] = useState('')
   const [featureInput, setFeatureInput] = useState('')
+  const [bulkImporting, setBulkImporting] = useState(false)
+  const [bulkMsg, setBulkMsg] = useState('')
   const showForm = editing !== null
+
+  const handleBulkImport = async () => {
+    setBulkImporting(true)
+    setBulkMsg('')
+    try {
+      const res = await fetch('/api/website/bulk', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(SEED_PROJECTS),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error ?? 'Import failed')
+      if (d.added === 0) {
+        setBulkMsg(`All ${d.skipped} projects already published.`)
+      } else {
+        setBulkMsg(`✓ Imported ${d.added} project${d.added !== 1 ? 's' : ''}${d.skipped ? ` (${d.skipped} already existed)` : ''}.`)
+        const freshRes = await fetch('/api/website/projects')
+        const freshData = await freshRes.json()
+        if (Array.isArray(freshData)) setProjects(freshData)
+      }
+    } catch (err) {
+      setBulkMsg(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setBulkImporting(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/website/projects')
@@ -2171,17 +2371,27 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Website Projects</div>
           <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>ecstasytechnologies.com · {projects.length} published</div>
         </div>
         {!showForm && (
-          <button onClick={openNew} style={{ padding: '8px 14px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            + Add Project
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleBulkImport} disabled={bulkImporting} style={{ padding: '7px 12px', borderRadius: 8, background: 'transparent', color: bulkImporting ? MUTED : GOLD, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid ${GOLD}60`, cursor: bulkImporting ? 'default' : 'pointer' }}>
+              {bulkImporting ? '…importing' : '↑ Import Missing'}
+            </button>
+            <button onClick={openNew} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+              + Add Project
+            </button>
+          </div>
         )}
       </div>
+      {bulkMsg && (
+        <div style={{ fontSize: 12, color: bulkMsg.startsWith('✓') ? GOLD : '#f87171', fontFamily: FONT_BODY, marginBottom: 10 }}>
+          {bulkMsg}
+        </div>
+      )}
 
       {fetchError && (
         <div style={{ padding: '10px 14px', borderRadius: 8, background: '#2a101040', border: '1px solid #f8717140', color: '#f87171', fontSize: 13, fontFamily: FONT_BODY, marginBottom: 12 }}>
