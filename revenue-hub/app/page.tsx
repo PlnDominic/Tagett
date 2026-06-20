@@ -14,7 +14,7 @@ const MUTED = 'var(--muted)'
 const FONT_HEADING = "var(--font-space-grotesk), 'Space Grotesk', sans-serif"
 const FONT_BODY = "var(--font-inter), 'Inter', sans-serif"
 
-const MONTHLY_GOAL_GHS = 120_000
+const MONTHLY_GOAL_GHS = 12_000
 
 // ─── Prospect intake data ─────────────────────────────────────────────────────
 
@@ -42,33 +42,83 @@ const INDUSTRIES = [
 ]
 
 const GHANA_LOCATIONS: Record<string, string[]> = {
-  Accra: [
-    'East Legon', 'Osu', 'Labone', 'Cantonments', 'Spintex',
-    'Tema', 'Achimota', 'Madina', 'Adenta', 'Dansoman',
-    'Kasoa', 'Lapaz', 'Teshie', 'Nungua', 'Dzorwulu',
-    'Airport Residential', 'Haatso', 'Dome', 'Okponglo',
-  ],
-  Kumasi: [
-    'Adum', 'Bantama', 'Asokwa', 'Nhyiaeso', 'Suame',
-    'Oforikrom', 'Kwadaso', 'Roman Hill', 'Tafo',
-    'Asante Mampong', 'Kronum', 'Ayigya',
-  ],
-  Takoradi: [
-    'Sekondi', 'Effia', 'Kojokrom', 'Tanokrom',
-    'Fijai', 'Airport Ridge', 'New Takoradi', 'Anaji',
-  ],
-  Tamale: [
-    'Lamashegu', 'Kukuo', 'Kalpohin', 'Sagnarigu',
-    'Choggu', 'Nyohini', 'Vittin', 'Datoyili',
-  ],
-  'Cape Coast': [
-    'Ola', 'Abura', 'Pedu', 'Adisadel',
-    'Kotokuraba', 'Amamoma', 'University Area',
-  ],
-  Sunyani: ['Berekum', 'Dormaa', 'Techiman', 'Drobo', 'Wenchi'],
-  Ho: ['Aflao', 'Hohoe', 'Keta', 'Anloga', 'Sogakope'],
-  Koforidua: ['Nsawam', 'Nkawkaw', 'Suhum', 'Mpraeso', 'Oda'],
-  Bolgatanga: ['Navrongo', 'Bawku', 'Wa', 'Zebilla', 'Sandema'],
+  // Greater Accra
+  Accra: ['East Legon', 'Osu', 'Labone', 'Cantonments', 'Spintex', 'Achimota', 'Madina', 'Adenta', 'Dansoman', 'Lapaz', 'Teshie', 'Nungua', 'Dzorwulu', 'Airport Residential', 'Haatso', 'Dome', 'Okponglo', 'Labadi', 'Kotobabi', 'North Kaneshie', 'Darkuman', 'Mataheko', 'Mallam', 'Weija'],
+  Tema: ['Community 1', 'Community 2', 'Community 3', 'Community 4', 'Community 5', 'Community 6', 'Community 7', 'Community 8', 'Community 9', 'Community 10', 'Tema New Town', 'Manhean', 'Sakumono', 'Kpone', 'Afienya'],
+  Kasoa: ['Millennium City', 'Akweley', 'Rainbow', 'Galilea', 'New Bortianor', 'Buduburam', 'Opeikuma'],
+  Ashaiman: ['Ashaiman Township', 'Zenu', 'Tulako', 'Newtown', 'Ashiaman Community'],
+  // Ashanti
+  Kumasi: ['Adum', 'Bantama', 'Asokwa', 'Nhyiaeso', 'Suame', 'Oforikrom', 'Kwadaso', 'Roman Hill', 'Tafo', 'Kronum', 'Ayigya', 'Asafo', 'Patase', 'Buokrom', 'Fante New Town', 'Ahodwo', 'Kaase', 'Deduako', 'Santasi'],
+  Obuasi: ['Obuasi Township', 'Sanso', 'Anyinam', 'Wioso'],
+  Ejisu: ['Ejisu', 'Juaben', 'Kuntanase', 'Bonwire', 'Onwe'],
+  'Asante Mampong': ['Mampong', 'Agogo', 'Effiduase', 'Juaben'],
+  Konongo: ['Konongo', 'Odumase', 'Juaso', 'Agogo'],
+  Bekwai: ['Bekwai', 'Fomena', 'Nkawie', 'Mankranso'],
+  // Western
+  Takoradi: ['Sekondi', 'Effia', 'Kojokrom', 'Tanokrom', 'Fijai', 'Airport Ridge', 'New Takoradi', 'Anaji', 'Market Circle', 'Kansaworodo', 'Adiembra', 'Kwesimintsim'],
+  Tarkwa: ['Tarkwa Township', 'Aboso', 'Bogoso', 'Prestea', 'Huni Valley'],
+  Axim: ['Axim', 'Beyin', 'Ellembelle', 'Ankobra'],
+  Bibiani: ['Bibiani', 'Anhwiaso', 'Bekwai West', 'Sefwi Wiawso'],
+  // Western North
+  'Sefwi Wiawso': ['Sefwi Wiawso', 'Sefwi Bekwai', 'Sefwi Bodi', 'Debiso'],
+  Enchi: ['Enchi', 'Aowin', 'Boin', 'Dadieso'],
+  // Central
+  'Cape Coast': ['Ola', 'Abura', 'Pedu', 'Adisadel', 'Kotokuraba', 'Amamoma', 'University Area', 'Aboom', 'Batsonaa', 'Siwdu'],
+  Winneba: ['Winneba Township', 'Apam', 'Gomoa East', 'Ekumfi'],
+  'Agona Swedru': ['Swedru', 'Agona Duakwa', 'Agona Abodom', 'Nyakrom'],
+  'Assin Fosu': ['Assin Fosu', 'Assin Bereku', 'Assin Nsuta', 'Assin Manso'],
+  Saltpond: ['Saltpond', 'Anomabo', 'Biriwa', 'Abandze'],
+  Mankessim: ['Mankessim', 'Ajumako', 'Breman Asikuma', 'Esiam'],
+  'Dunkwa-on-Offin': ['Dunkwa', 'Upper Denkyira East', 'Hemang'],
+  Elmina: ['Elmina', 'Komenda', 'Edina', 'Kissi'],
+  // Eastern
+  Koforidua: ['Koforidua Township', 'Jackson Park', 'Effiduase', 'Nsukwao', 'Old Estate'],
+  Nkawkaw: ['Nkawkaw', 'Kwahu Nteso', 'Pepease', 'Bokuruwa'],
+  Nsawam: ['Nsawam', 'Apapam', 'Adoagyiri', 'Adeiso'],
+  Oda: ['Oda', 'Akim Oda', 'Kade', 'Apapam'],
+  Suhum: ['Suhum', 'Coaltar', 'Apedwa', 'Accra Newtown'],
+  'Akropong-Akuapem': ['Akropong', 'Abiriw', 'Adukrom', 'Larteh', 'Dawu'],
+  Asamankese: ['Asamankese', 'Apedwa', 'Kade', 'Achiase'],
+  Somanya: ['Somanya', 'Odumase-Krobo', 'Akuse', 'Asesewa'],
+  Aburi: ['Aburi', 'Mamfe', 'Mampong Akuapem', 'Amanfro'],
+  Mpraeso: ['Mpraeso', 'Nkwatia', 'Kwahu Praso', 'Obo'],
+  // Volta
+  Ho: ['Ho Township', 'Bankoe', 'Kpenoe', 'Mawuli', 'Sokode', 'Agorve'],
+  Hohoe: ['Hohoe', 'Gbi Wegbe', 'Likpe', 'Golokwati'],
+  Keta: ['Keta', 'Anloga', 'Anyanui', 'Kedzi', 'Tegbi'],
+  Aflao: ['Aflao', 'Klikor', 'Agbozume', 'Denu', 'Dabala'],
+  Sogakope: ['Sogakope', 'Battor', 'Adidome', 'Aveyime', 'Mepe'],
+  Kpando: ['Kpando', 'Kpeve', 'Avatime', 'Hohoe-Kpando'],
+  Akatsi: ['Akatsi', 'Tongu', 'Vume', 'Adidome'],
+  // Oti
+  Dambai: ['Dambai', 'Nkwanta', 'Kadjebi', 'Kpassa'],
+  // Northern
+  Tamale: ['Lamashegu', 'Kukuo', 'Kalpohin', 'Sagnarigu', 'Choggu', 'Nyohini', 'Vittin', 'Datoyili', 'Kamina', 'Gumbihini', 'Nyohini Industrial', 'Gurugu'],
+  Yendi: ['Yendi', 'Zabzugu', 'Tatale', 'Demon'],
+  Savelugu: ['Savelugu', 'Nanton', 'Gushegu', 'Karaga'],
+  // Savannah
+  Damongo: ['Damongo', 'West Gonja', 'Bole', 'Sawla'],
+  Salaga: ['Salaga', 'Yapei', 'Tolon', 'East Gonja'],
+  // North East
+  Walewale: ['Walewale', 'Nalerigu', 'Gambaga', 'Chereponi'],
+  // Upper East
+  Bolgatanga: ['Bolga Central', 'Zuarungu', 'Bongo', 'Nayoriko', 'Soe'],
+  Bawku: ['Bawku', 'Pusiga', 'Garu', 'Zebilla', 'Binduri'],
+  Navrongo: ['Navrongo', 'Sandema', 'Paga', 'Chiana', 'Kayoro'],
+  // Upper West
+  Wa: ['Wa Township', 'Kpongu', 'Funsi', 'Nandom', 'Ko'],
+  Lawra: ['Lawra', 'Jirapa', 'Nandom', 'Hamile', 'Eremon'],
+  Tumu: ['Tumu', 'Gwolu', 'Sissala East', 'Pulima'],
+  // Bono
+  Sunyani: ['Sunyani Township', 'Fiapre', 'Odumasi', 'Jinijini', 'Chiraa'],
+  Berekum: ['Berekum', 'Dormaa Ahenkro', 'Japekrom', 'Nsuatre'],
+  Wenchi: ['Wenchi', 'Nsawkaw', 'Badu', 'Seikwa'],
+  // Bono East
+  Techiman: ['Techiman Township', 'Krobo', 'Tuobodom', 'Offuman', 'Techiman North'],
+  Kintampo: ['Kintampo Township', 'Jema', 'Nkoranza', 'Prang'],
+  Atebubu: ['Atebubu', 'Prang', 'Yeji', 'Kwame Danso'],
+  // Ahafo
+  Goaso: ['Goaso', 'Kukuom', 'Mim', 'Kenyase', 'Hwidiem'],
 }
 
 const CITIES = Object.keys(GHANA_LOCATIONS)
@@ -137,27 +187,35 @@ After all 5, add:
 
 PIPELINE SUMMARY
 Total estimated value: GHS [sum]
-That is [X]% of my GHS 120,000 monthly goal.
+That is [X]% of my GHS 12,000 monthly goal.
 Fastest to close: [Business Name] — call them first.`,
     systemPrompt: `You are ProspectBot, a lead generation AI for Ecstasy Technologies based in Ghana (ecstasytechnologies.com).
 
-Your job is to find businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
+Your job is to find REAL businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
 
-IMPORTANT: Always include phone numbers for every prospect in Ghanaian format (+233XXXXXXXXX or 0XXXXXXXXX).
+CRITICAL — REAL BUSINESSES ONLY: You MUST use the search_web tool to find actual businesses. Search Google/DuckDuckGo for queries like:
+- "[industry] [location] Ghana"
+- "[industry] in [location] site:facebook.com OR site:google.com"
+- "[business type] [location] contact phone Ghana"
+- "best [industry] in [location] Ghana"
+Search multiple times if needed. NEVER invent or make up businesses, phone numbers, or addresses. Only report what you find in search results.
 
-Output format for each prospect:
-1. Business Name — [name]
+How to find phone numbers: Search for the business name + "Ghana" + "phone" or "contact". Check Facebook pages, Google Maps listings, and business directories.
+
+Output format for each REAL prospect found:
+1. Business Name — [exact name from search]
    Industry: [type]
-   Address: [specific location in Ghana]
-   Phone: +233XXXXXXXXX
-   Why they need a website: [specific reason]
+   Address: [actual address from search results]
+   Phone: [real number found online, or "Not found — search '[business name] Ghana phone'"]
+   Why they need a website: [specific reason based on what you found]
    Service to pitch: [web design / mobile app / business software / GIS]
    Estimated value: GHS [amount]
    Phone pitch: "[one sentence to say when they pick up]"
+   Source: [where you found this business — Google, Facebook, etc.]
 
-Cover all industries and business types. Be specific about Ghanaian towns, streets, and areas. All pricing in GHS.
+If you find fewer than 5 real businesses, say so honestly and suggest better search terms. Do NOT pad with invented entries.
 
-PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 120,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 120,000 monthly goal.
+PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 12,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 12,000 monthly goal.
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason these specific leads will not convert?]
@@ -205,7 +263,7 @@ CONTENT MIX RULE: Aim for roughly half project showcase, half generic value cont
 
 Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.
 
-PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 120,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
+PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 12,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason this content will not land with the prospect?]
@@ -244,7 +302,7 @@ Service pricing ranges (always in GHS):
 
 Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.
 
-PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 120,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 120,000 monthly target."
+PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 12,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 12,000 monthly target."
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason this scope or proposal will fall apart?]
@@ -255,22 +313,22 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
     icon: '◐',
     label: '04 RevenueTracker',
     short: 'Revenue',
-    description: 'Track earnings vs GHS 120,000/month goal',
+    description: 'Track earnings vs GHS 12,000/month goal',
     briefingLabel: "Today's Revenue Briefing",
-    dailyPrompt: `Give me my revenue focus briefing for today. My target is GHS 120,000 this month.
+    dailyPrompt: `Give me my revenue focus briefing for today. My target is GHS 12,000 this month.
 
 Tell me:
 1. Exactly how many projects at each service price point I need to close to hit the goal — show the math clearly.
-2. The fastest path to GHS 120,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
+2. The fastest path to GHS 12,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
 3. Three specific revenue actions I should take today — be direct and tactical, not generic.
-4. What a realistic week-by-week milestone breakdown looks like to hit GHS 120,000 by month end.`,
-    systemPrompt: `You are RevenueTracker, the command centre of a 5-agent revenue machine for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). Target: GHS 120,000/month (~$10,000 USD).
+4. What a realistic week-by-week milestone breakdown looks like to hit GHS 12,000 by month end.`,
+    systemPrompt: `You are RevenueTracker, the command centre of a 5-agent revenue machine for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). Target: GHS 12,000/month (~$10,000 USD).
 
 When given revenue data, you:
 1. Calculate total earnings and % of monthly goal achieved
 2. Break down earnings by service type
 3. Identify which services are over/under-performing
-4. Suggest strategies to close any gap to GHS 120,000
+4. Suggest strategies to close any gap to GHS 12,000
 5. Project the month-end total based on current pace
 
 Service pricing context:
@@ -292,7 +350,7 @@ Always end every response with:
 "NEXT ACTION: Open [Agent Name] and tell it: [exact one-sentence instruction]."
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
-⊗ Contrarian: [one sentence — what is the most likely reason this revenue plan will miss the GHS 120,000 target?]
+⊗ Contrarian: [one sentence — what is the most likely reason this revenue plan will miss the GHS 12,000 target?]
 ▸ Executor: [one action — what is the single most important revenue action Dominic should take in the next 2 hours?]`,
   },
   viral: {
@@ -373,7 +431,7 @@ Always write as Dominic Agyapong. No placeholders. Immediately postable.
 PIPELINE ROLE: Viral project content attracts inbound clients who see the work and want the same. After your content output, always add:
 "This content targets: [client type]
 Estimated contract value if they inquire: GHS [range]
-Pipeline contribution if 1 lead converts: [X]% of GHS 120,000 goal"
+Pipeline contribution if 1 lead converts: [X]% of GHS 12,000 goal"
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason this content will not go viral or attract clients?]
@@ -386,12 +444,12 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
     short: 'Contra',
     description: 'Finds what will fail before it does',
     briefingLabel: 'Challenge the Plan',
-    dailyPrompt: `Review Ecstasy Technologies' current approach: using 5 AI agents to hit GHS 120,000/month by finding Ghanaian businesses without websites and selling them software.
+    dailyPrompt: `Review Ecstasy Technologies' current approach: using 5 AI agents to hit GHS 12,000/month by finding Ghanaian businesses without websites and selling them software.
 
 What are the 3 biggest assumptions that could be wrong? What is the most likely failure mode of the entire system? What early warning sign should I watch for this week?
 
 Be direct. No padding. No validation.`,
-    systemPrompt: `You are The Contrarian, a critical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Contrarian, a critical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 Your ONLY job is to find what will fail. You do not cheerlead. You do not validate. You interrogate every assumption with one question: "Why will this fail?"
 
@@ -413,10 +471,10 @@ You are not here to kill ideas. You are here to pressure-test them so only stron
     briefingLabel: 'Rebuild From Scratch',
     dailyPrompt: `Strip Ecstasy Technologies' entire approach to its foundation. What is the actual problem being solved?
 
-Ignore the current 5-agent system, the current pricing, and the current outreach method. If you were starting with a completely blank page today, what would the fastest path to GHS 120,000/month look like?
+Ignore the current 5-agent system, the current pricing, and the current outreach method. If you were starting with a completely blank page today, what would the fastest path to GHS 12,000/month look like?
 
 What is the one constraint in the current approach that, if removed, would change everything?`,
-    systemPrompt: `You are The First Principles Thinker, a radical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The First Principles Thinker, a radical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You ignore how things are currently done. You strip every problem to its fundamental truths and rebuild from there. No analogies. No industry norms. No "how it's usually done."
 
@@ -425,7 +483,7 @@ When given a plan or problem:
 2. State the fundamental truth underneath the problem
 3. Rebuild the solution from scratch — what would you build with absolutely no prior context?
 4. Name one constraint that, if removed, would make the solution 10x better
-5. Give the most unconventional path to GHS 120,000/month that the existing plan ignores
+5. Give the most unconventional path to GHS 12,000/month that the existing plan ignores
 
 You are not here to improve the existing plan. You are here to show what Dominic would build if he started with a blank page today.`,
   },
@@ -438,10 +496,10 @@ You are not here to improve the existing plan. You are here to show what Dominic
     briefingLabel: 'Expand the Horizon',
     dailyPrompt: `What is Ecstasy Technologies missing today?
 
-Look beyond the current 5 agents and the outbound lead strategy. What adjacent markets, untapped channels, overlooked segments, or strategic partnerships could contribute significantly to GHS 120,000/month that nobody is discussing?
+Look beyond the current 5 agents and the outbound lead strategy. What adjacent markets, untapped channels, overlooked segments, or strategic partnerships could contribute significantly to GHS 12,000/month that nobody is discussing?
 
 Think Africa, think global patterns showing up in Ghana, think 10x — then bring it back to something actionable today.`,
-    systemPrompt: `You are The Expansionist, a strategic advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Expansionist, a strategic advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You look beyond what is in front of you. Your job is to find what is missing — adjacent markets, overlooked segments, untapped channels, partnerships nobody mentioned, global patterns appearing in Ghana first.
 
@@ -461,10 +519,10 @@ You are not here to refine. You are here to expand the horizon. Think Africa, th
     short: 'Outsider',
     description: 'Ignores all context, sees the problem completely fresh',
     briefingLabel: 'Fresh Eyes Review',
-    dailyPrompt: `You know nothing about Ecstasy Technologies except: software studio in Ghana, targeting GHS 120,000/month, using AI agents to find and close clients.
+    dailyPrompt: `You know nothing about Ecstasy Technologies except: software studio in Ghana, targeting GHS 12,000/month, using AI agents to find and close clients.
 
 As a complete outsider walking in for the first time — what is your immediate honest assessment? What stands out as strange or counterintuitive? What is the most obvious thing this team is probably ignoring because they are too close to it?`,
-    systemPrompt: `You are The Outsider, a fresh-eyes advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Outsider, a fresh-eyes advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You ignore all prior context. You do not know what has been tried, what was decided, or what the current plan is. You walk in completely fresh and look only at the core problem with zero baggage.
 
@@ -484,10 +542,10 @@ You are not here to fit in. You are here to say what everyone else is too polite
     short: 'Execute',
     description: 'Only cares about immediate actions and execution',
     briefingLabel: "Today's 3 Actions",
-    dailyPrompt: `Cut all strategy and debate. What are the 3 highest-leverage actions Ecstasy Technologies should execute in the next 24 hours to move toward GHS 120,000/month?
+    dailyPrompt: `Cut all strategy and debate. What are the 3 highest-leverage actions Ecstasy Technologies should execute in the next 24 hours to move toward GHS 12,000/month?
 
 Be specific. Be immediate. No theory. No "consider doing X." Tell me exactly what to do, in what order, and what the expected result is.`,
-    systemPrompt: `You are The Executor, an action advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Executor, an action advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You do not care about strategy, vision, theory, or debate. You only care about what gets done TODAY. You measure everything in actions, not intentions.
 
@@ -769,14 +827,44 @@ function saveAllChats(chats: AllChats): void {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
-async function callChat(systemPrompt: string, messages: Message[], pinnedNotes?: string): Promise<string> {
-  const fullPrompt = pinnedNotes?.trim()
-    ? `${systemPrompt}\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
-    : systemPrompt
+const TEAM_LABELS: Record<string, string> = {
+  prospect: 'ProspectBot', content: 'ContentBot', scope: 'ProjectBot',
+  revenue: 'RevenueBot', viral: 'ViralBot', scout: 'SocialScout',
+}
+
+function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): string {
+  return Object.entries(workspace)
+    .filter(([id, v]) => id !== excludeId && v?.trim())
+    .map(([id, v]) => `[${TEAM_LABELS[id] ?? id}]: ${v.slice(0, 500)}`)
+    .join('\n\n')
+}
+
+const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Shared goal: GHS 12,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.\n\n`
+
+async function callChat(
+  systemPrompt: string,
+  messages: Message[],
+  pinnedNotes?: string,
+  agentId?: string,
+  workspace?: Record<string, string>
+): Promise<string> {
+  let fullPrompt = TEAM_MISSION_HEADER + systemPrompt
+
+  if (pinnedNotes?.trim()) {
+    fullPrompt += `\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
+  }
+
+  if (workspace) {
+    const intel = buildTeamIntel(workspace, agentId)
+    if (intel) {
+      fullPrompt += `\n\n— TEAM INTEL (your colleagues' latest outputs — reference and build on these) —\n${intel}\n— END TEAM INTEL —`
+    }
+  }
+
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ systemPrompt: fullPrompt, messages }),
+    body: JSON.stringify({ systemPrompt: fullPrompt, messages, agentId }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
@@ -800,7 +888,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Log Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I found these leads with ProspectBot. Add the total estimated value to my pipeline and tell me how close I am to my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I found these leads with ProspectBot. Add the total estimated value to my pipeline and tell me how close I am to my GHS 12,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Viral Angle (ViralBot)',
@@ -832,7 +920,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Log to RevenueTracker',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I have this scoped project from ProjectBot. Add it to my pipeline and show what % of my GHS 120,000 monthly goal it covers:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I have this scoped project from ProjectBot. Add it to my pipeline and show what % of my GHS 12,000 monthly goal it covers:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Make it a Case Study (ViralBot)',
@@ -869,7 +957,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Log Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I drafted these pitches and proposals with ContentBot. Add the deal values to my pipeline and tell me what % of my GHS 120,000 monthly goal they represent if closed:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I drafted these pitches and proposals with ContentBot. Add the deal values to my pipeline and tell me what % of my GHS 12,000 monthly goal they represent if closed:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '◯ Outside Read',
@@ -886,7 +974,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Find More Leads (ProspectBot)',
       targetAgent: 'prospect',
-      buildPrompt: (c) => `My RevenueTracker says I need more pipeline. Based on this revenue analysis, find 5 new high-value leads in Ghana that can close fast and help me hit my GHS 120,000 goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `My RevenueTracker says I need more pipeline. Based on this revenue analysis, find 5 new high-value leads in Ghana that can close fast and help me hit my GHS 12,000 goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Scope a Big Deal (ProjectBot)',
@@ -901,17 +989,17 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Go Viral to Close the Gap (ViralBot)',
       targetAgent: 'viral',
-      buildPrompt: (c) => `My RevenueTracker shows I am behind on my GHS 120,000 target. Create urgent viral content that positions Ecstasy Technologies as the go-to software studio in Ghana and drives inbound inquiries this week:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `My RevenueTracker shows I am behind on my GHS 12,000 target. Create urgent viral content that positions Ecstasy Technologies as the go-to software studio in Ghana and drives inbound inquiries this week:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '⊗ Reality Check the Target',
       targetAgent: 'contrarian',
-      buildPrompt: (c) => `This is my current revenue situation. Tell me every specific reason why I will NOT hit GHS 120,000 this month — challenge every assumption in my current approach.\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `This is my current revenue situation. Tell me every specific reason why I will NOT hit GHS 12,000 this month — challenge every assumption in my current approach.\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '⊕ Find Hidden Revenue',
       targetAgent: 'expansionist',
-      buildPrompt: (c) => `This is my current revenue data. What revenue streams, adjacent markets, or untapped opportunities am I completely missing that could help me hit GHS 120,000/month faster?\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `This is my current revenue data. What revenue streams, adjacent markets, or untapped opportunities am I completely missing that could help me hit GHS 12,000/month faster?\n\n${c.slice(0, 1500)}`,
     },
   ],
   viral: [
@@ -928,7 +1016,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Track Revenue Impact (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I ran this viral campaign with ViralBot. Help me estimate the potential pipeline value of the inbound leads this could attract and track it against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I ran this viral campaign with ViralBot. Help me estimate the potential pipeline value of the inbound leads this could attract and track it against my GHS 12,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '◯ Audience Reality Check',
@@ -955,7 +1043,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Reality-Check Revenue (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `The Contrarian has challenged my assumptions. Run a conservative revenue analysis against my GHS 120,000 goal accounting for these specific failure risks:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `The Contrarian has challenged my assumptions. Run a conservative revenue analysis against my GHS 12,000 goal accounting for these specific failure risks:\n\n${c.slice(0, 1500)}`,
     },
   ],
   firstp: [
@@ -1020,7 +1108,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Add to Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `SocialScout found these social media leads. Log them to my pipeline and calculate their combined value against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `SocialScout found these social media leads. Log them to my pipeline and calculate their combined value against my GHS 12,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Find Offline Leads Too (ProspectBot)',
@@ -1342,7 +1430,7 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             Tagett
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 40, fontFamily: FONT_BODY }}>
-            Ten AI agents working as one system. Find leads, close deals, go viral, and hit GHS 120,000/month.
+            Ten AI agents working as one system. Find leads, close deals, go viral, and hit GHS 12,000/month.
           </div>
         </>
       )}
@@ -1754,7 +1842,7 @@ function ProspectIntakeScreen({ onSubmit, loading }: {
           Find Today&apos;s Prospects
         </div>
         <div style={{ fontSize: 13, color: MUTED, marginTop: 4, fontFamily: FONT_BODY }}>
-          Select an industry and location. ProspectBot finds businesses without websites and gives you their phone numbers.
+          Select an industry and location. ProspectBot searches Google and business directories to find real businesses without websites — with actual phone numbers.
         </div>
       </div>
 
@@ -1962,7 +2050,7 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Monthly Goal</div>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
-          GHS {earned.toLocaleString()} / 120,000
+          GHS {earned.toLocaleString()} / {MONTHLY_GOAL_GHS.toLocaleString()}
         </div>
       </div>
     </div>
@@ -2009,7 +2097,7 @@ function ForecastCard({ deals }: { deals: Deal[] }) {
         {earned === 0
           ? `No closed deals yet · need ~${dealsNeeded} deals at GHS ${Math.round(avgDeal).toLocaleString()} avg to hit goal`
           : gap <= 0
-          ? '🎯 On track to hit GHS 120,000 this month!'
+          ? '🎯 On track to hit GHS 12,000 this month!'
           : `GHS ${gap.toLocaleString()} gap · ~${dealsNeeded} more deal${dealsNeeded !== 1 ? 's' : ''} · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
       </div>
     </div>
@@ -2040,7 +2128,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
       <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 20, color: TEXT, letterSpacing: '-0.02em' }}>Command Center</div>
-          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Ecstasy Technologies · GHS 120,000 target</div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Ecstasy Technologies · GHS 12,000 target</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {notifToggle}
@@ -2231,7 +2319,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishTo
   const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(16px + env(safe-area-inset-top)) 12px 16px' } as React.CSSProperties}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Deal Pipeline</div>
@@ -2484,7 +2572,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   const labelStyle: React.CSSProperties = { fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, display: 'block' }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(16px + env(safe-area-inset-top)) 12px 16px' } as React.CSSProperties}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Website Projects</div>
@@ -2743,7 +2831,7 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle, onO
 
 // ─── CouncilChamber ──────────────────────────────────────────────────────────
 
-function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
+function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; workspace?: Record<string, string> }) {
   const [input, setInput] = useState('')
   const [topic, setTopic] = useState('')
   const [responses, setResponses] = useState<Partial<Record<AgentId, string>>>({})
@@ -2764,7 +2852,7 @@ function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
     await Promise.allSettled(
       COUNCIL_AGENT_IDS.map(async (agentId) => {
         try {
-          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes)
+          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes, agentId, workspace)
           setResponses(prev => ({ ...prev, [agentId]: text }))
         } catch (err) {
           setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
@@ -2776,7 +2864,7 @@ function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingTop: 'env(safe-area-inset-top)' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Council Chamber</div>
         <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>All five advisors respond simultaneously. Bring a decision, idea, or dilemma.</div>
@@ -2872,7 +2960,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
         borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
-        paddingTop: 16, paddingBottom: 8, transition: 'border-color 0.15s',
+        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
       }}>
         <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? GOLD : MUTED, transition: 'color 0.15s' }}>{icon}</span>
         <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? GOLD : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
@@ -2889,7 +2977,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
         borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
-        paddingTop: 16, paddingBottom: 8, transition: 'border-color 0.15s',
+        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
       }}>
         <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>{a.icon}</span>
         <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{a.short}</span>
@@ -2912,6 +3000,76 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
         {COUNCIL_AGENT_IDS.map(renderAgentBtn)}
+      </div>
+    </div>
+  )
+}
+
+// ─── MissionBar ───────────────────────────────────────────────────────────────
+
+const MISSION_AGENTS: Array<{ id: AgentId; label: string }> = [
+  { id: 'scout', label: 'Scout' },
+  { id: 'prospect', label: 'Prospect' },
+  { id: 'content', label: 'Content' },
+  { id: 'scope', label: 'Scope' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'viral', label: 'Viral' },
+]
+
+function MissionBar({ workspace, earnedGHS, pipelineGHS, onClearWorkspace }: {
+  workspace: Record<string, string>
+  earnedGHS: number
+  pipelineGHS: number
+  onClearWorkspace: () => void
+}) {
+  const pct = Math.min(100, Math.round((earnedGHS / MONTHLY_GOAL_GHS) * 100))
+  const hasAny = MISSION_AGENTS.some(a => workspace[a.id]?.trim())
+  return (
+    <div style={{ padding: '5px 12px', background: SURFACE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 30 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
+        <span style={{ fontSize: 10, color: GOLD, fontFamily: FONT_BODY, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>Mission</span>
+        <span style={{ fontSize: 11, color: TEXT, fontFamily: FONT_BODY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          GHS {earnedGHS.toLocaleString()} closed · GHS {pipelineGHS.toLocaleString()} pipeline · {pct}% of GHS 12k
+        </span>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        {MISSION_AGENTS.map(a => (
+          <div key={a.id} title={`${a.label}: ${workspace[a.id]?.trim() ? 'has context' : 'no output yet'}`}
+            style={{ width: 7, height: 7, borderRadius: '50%', background: workspace[a.id]?.trim() ? GOLD : BORDER, transition: 'background 0.3s' }} />
+        ))}
+        {hasAny && (
+          <button onClick={onClearWorkspace} title="Clear team context" style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px', lineHeight: 1, marginLeft: 2 }}>✕</button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── ScoutToolbar ─────────────────────────────────────────────────────────────
+
+const SCOUT_PRESETS = [
+  { label: 'Need website Ghana', query: 'Search Reddit and web for Ghana businesses saying they need a website or web developer. Find at least 3 specific businesses or individuals looking for websites.' },
+  { label: 'Poor website complaints', query: 'Find businesses in Ghana complaining about their current website being slow, outdated, or unprofessional. Check social media and forums.' },
+  { label: 'New domain registrations', query: 'Search for businesses in Accra or Kumasi that recently registered a domain in the last 6 months but may not have a proper website yet. Check if their domains are active.' },
+  { label: 'Web dev keywords', query: 'Search Reddit for recent posts with keywords: "need a web developer", "website for my business", "website developer Ghana", "how to get a website". List the most relevant prospects.' },
+  { label: 'Expired websites', query: 'Find businesses in Ghana whose websites appear to be down, expired, or have broken links. These are warm leads for a rebuild.' },
+  { label: 'Competitor analysis', query: 'Search for other web development companies in Ghana. What are they offering? What gaps exist that Ecstasy Technologies can fill?' },
+]
+
+function ScoutToolbar({ onSend, loading }: { onSend: (q: string) => void; loading: boolean }) {
+  return (
+    <div style={{ padding: '8px 12px 6px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, flexShrink: 0 }}>
+      <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick searches</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {SCOUT_PRESETS.map(p => (
+          <button key={p.label} onClick={() => !loading && onSend(p.query)}
+            disabled={loading}
+            style={{ fontSize: 11, fontFamily: FONT_BODY, color: loading ? MUTED : GOLD, border: `1px solid ${loading ? BORDER : GOLD + '60'}`, borderRadius: 14, padding: '3px 10px', background: 'transparent', cursor: loading ? 'default' : 'pointer', transition: 'background 0.15s, border-color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = `${GOLD}14` }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+            {p.label}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -3046,6 +3204,11 @@ export default function Page() {
   const [pinnedNotes, setPinnedNotes] = useState(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tagett-pinned-notes-v1') ?? '') : ''
   )
+  const [workspace, setWorkspace] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {}
+    try { return JSON.parse(localStorage.getItem('tagett-workspace-v1') ?? '{}') }
+    catch { return {} }
+  })
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
 
@@ -3094,6 +3257,7 @@ export default function Page() {
     localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified))
   }, [deals])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
+  useEffect(() => { localStorage.setItem('tagett-workspace-v1', JSON.stringify(workspace)) }, [workspace])
 
   const notesSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -3132,12 +3296,13 @@ export default function Page() {
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
     setLoading(true); setError(null)
     try {
-      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes)
+      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, workspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
+      setWorkspace((prev) => ({ ...prev, [activeAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [activeAgent, allChats])
+  }, [activeAgent, allChats, workspace, pinnedNotes])
 
   const handleRunBriefing = useCallback(() => {
     if (agent.dailyPrompt) handleSend(agent.dailyPrompt)
@@ -3146,12 +3311,12 @@ export default function Page() {
   const handleRunBrief = useCallback(async () => {
     setBriefLoading(true); setBriefResult('')
     try {
-      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes)
+      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes, 'executor', workspace)
       setBriefResult(reply)
     } catch (err) {
       setBriefResult('Error: ' + (err instanceof Error ? err.message : 'Unknown'))
     } finally { setBriefLoading(false) }
-  }, [])
+  }, [pinnedNotes, workspace])
 
   const handleClear = useCallback(() => {
     if (!activeAgent) return
@@ -3166,12 +3331,13 @@ export default function Page() {
     setAllChats((prev) => { msgs = [...(prev[targetAgent] ?? []), userMsg]; return { ...prev, [targetAgent]: msgs } })
     setLoading(true)
     try {
-      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes)
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent, workspace)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
+      setWorkspace((prev) => ({ ...prev, [targetAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [])
+  }, [pinnedNotes, workspace])
 
   const handleOpenAgent = useCallback((agentId: AgentId, prompt: string) => {
     handleHandoff(agentId, prompt)
@@ -3232,6 +3398,11 @@ export default function Page() {
     return max
   }, [deals, allChats.revenue])
 
+  const pipelineGHS = useMemo(
+    () => deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0),
+    [deals]
+  )
+
   const notifToggle = <NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
 
   if (onboarded === null) return null
@@ -3258,7 +3429,7 @@ export default function Page() {
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
 
-    if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} />)
+    if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />)
 
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
@@ -3275,8 +3446,10 @@ export default function Page() {
         <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onOpenNotes={() => setNotesOpen(true)} hasNotes={!!pinnedNotes.trim()} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
+          <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
+          {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
         <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
@@ -3326,7 +3499,7 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
-    if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} />
+    if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -3345,8 +3518,10 @@ export default function Page() {
             )}
           </div>
         </div>
+        <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
         <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
+        {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
     )
