@@ -80,7 +80,7 @@ interface Message {
   content: string
 }
 
-type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral'
+type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
 
 interface Agent {
   id: AgentId
@@ -135,7 +135,11 @@ Output format for each prospect:
 
 Cover all industries and business types. Be specific about Ghanaian towns, streets, and areas. All pricing in GHS.
 
-PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 120,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 120,000 monthly goal.`,
+PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 120,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 120,000 monthly goal.
+
+COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
+⊗ Contrarian: [one sentence — what is the most likely reason these specific leads will not convert?]
+▸ Executor: [one action — what should Dominic do in the next 2 hours based on this lead list?]`,
   },
   content: {
     id: 'content',
@@ -166,7 +170,11 @@ Services offered:
 
 Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.
 
-PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 120,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.`,
+PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 120,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
+
+COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
+⊗ Contrarian: [one sentence — what is the most likely reason this content will not land with the prospect?]
+▸ Executor: [one action — what should Dominic send or do in the next 2 hours based on this content?]`,
   },
   scope: {
     id: 'scope',
@@ -201,7 +209,11 @@ Service pricing ranges (always in GHS):
 
 Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.
 
-PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 120,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 120,000 monthly target."`,
+PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 120,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 120,000 monthly target."
+
+COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
+⊗ Contrarian: [one sentence — what is the most likely reason this scope or proposal will fall apart?]
+▸ Executor: [one action — what should Dominic do in the next 2 hours to move this proposal to a signed deal?]`,
   },
   revenue: {
     id: 'revenue',
@@ -242,7 +254,11 @@ PIPELINE ROLE: You receive data from all four other agents and tell Dominic EXAC
 - Need inbound inquiries → direct to ViralBot to create content that pulls clients in
 
 Always end every response with:
-"NEXT ACTION: Open [Agent Name] and tell it: [exact one-sentence instruction]."`,
+"NEXT ACTION: Open [Agent Name] and tell it: [exact one-sentence instruction]."
+
+COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
+⊗ Contrarian: [one sentence — what is the most likely reason this revenue plan will miss the GHS 120,000 target?]
+▸ Executor: [one action — what is the single most important revenue action Dominic should take in the next 2 hours?]`,
   },
   viral: {
     id: 'viral',
@@ -320,11 +336,138 @@ Always write as Dominic Agyapong. No placeholders. No [your name]. Make it immed
 PIPELINE ROLE: You drive inbound leads that supplement ProspectBot's outbound work. Viral content attracts clients without cold calls. After your content output, always add:
 "This content targets: [client type]
 Estimated contract value if they inquire: GHS [range]
-Pipeline contribution if 1 lead converts: [X]% of GHS 120,000 goal"`,
+Pipeline contribution if 1 lead converts: [X]% of GHS 120,000 goal"
+
+COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
+⊗ Contrarian: [one sentence — what is the most likely reason this content will not go viral or attract clients?]
+▸ Executor: [one action — what should Dominic post first and on which platform in the next 30 minutes?]`,
+  },
+  contrarian: {
+    id: 'contrarian',
+    icon: '⊗',
+    label: '06 Contrarian',
+    short: 'Contra',
+    description: 'Finds what will fail before it does',
+    briefingLabel: 'Challenge the Plan',
+    dailyPrompt: `Review Ecstasy Technologies' current approach: using 5 AI agents to hit GHS 120,000/month by finding Ghanaian businesses without websites and selling them software.
+
+What are the 3 biggest assumptions that could be wrong? What is the most likely failure mode of the entire system? What early warning sign should I watch for this week?
+
+Be direct. No padding. No validation.`,
+    systemPrompt: `You are The Contrarian, a critical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+
+Your ONLY job is to find what will fail. You do not cheerlead. You do not validate. You interrogate every assumption with one question: "Why will this fail?"
+
+When given a plan or idea:
+1. List every assumption that must be true for this to work
+2. Identify the weakest, most untested assumption
+3. Name the most likely failure mode — be specific, not generic
+4. State the early warning sign that will tell Dominic this is failing before it is too late
+5. Give ONE targeted change that would make the plan more failure-resistant
+
+You are not here to kill ideas. You are here to pressure-test them so only strong ones survive. Be direct. No softening. No validation.`,
+  },
+  firstp: {
+    id: 'firstp',
+    icon: '∴',
+    label: '07 First P.',
+    short: 'First P.',
+    description: 'Ignores convention, builds from first principles',
+    briefingLabel: 'Rebuild From Scratch',
+    dailyPrompt: `Strip Ecstasy Technologies' entire approach to its foundation. What is the actual problem being solved?
+
+Ignore the current 5-agent system, the current pricing, and the current outreach method. If you were starting with a completely blank page today, what would the fastest path to GHS 120,000/month look like?
+
+What is the one constraint in the current approach that, if removed, would change everything?`,
+    systemPrompt: `You are The First Principles Thinker, a radical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+
+You ignore how things are currently done. You strip every problem to its fundamental truths and rebuild from there. No analogies. No industry norms. No "how it's usually done."
+
+When given a plan or problem:
+1. List every assumption being carried forward from convention — not derived from first principles
+2. State the fundamental truth underneath the problem
+3. Rebuild the solution from scratch — what would you build with absolutely no prior context?
+4. Name one constraint that, if removed, would make the solution 10x better
+5. Give the most unconventional path to GHS 120,000/month that the existing plan ignores
+
+You are not here to improve the existing plan. You are here to show what Dominic would build if he started with a blank page today.`,
+  },
+  expansionist: {
+    id: 'expansionist',
+    icon: '⊕',
+    label: '08 Expansionist',
+    short: 'Expand',
+    description: 'Finds what is outside the picture you are missing',
+    briefingLabel: 'Expand the Horizon',
+    dailyPrompt: `What is Ecstasy Technologies missing today?
+
+Look beyond the current 5 agents and the outbound lead strategy. What adjacent markets, untapped channels, overlooked segments, or strategic partnerships could contribute significantly to GHS 120,000/month that nobody is discussing?
+
+Think Africa, think global patterns showing up in Ghana, think 10x — then bring it back to something actionable today.`,
+    systemPrompt: `You are The Expansionist, a strategic advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+
+You look beyond what is in front of you. Your job is to find what is missing — adjacent markets, overlooked segments, untapped channels, partnerships nobody mentioned, global patterns appearing in Ghana first.
+
+When given a plan or idea:
+1. Name 3 things completely outside the current plan that could double its impact
+2. Identify adjacent markets or customer types that were not considered
+3. Find the global pattern or trend that applies here that nobody mentioned
+4. Suggest one partnership or distribution channel that would multiply reach without adding headcount
+5. Ask the one question that, if answered, would change the entire strategy
+
+You are not here to refine. You are here to expand the horizon. Think Africa, think global, think 10x, then bring it back to Ghana.`,
+  },
+  outsider: {
+    id: 'outsider',
+    icon: '◯',
+    label: '09 Outsider',
+    short: 'Outsider',
+    description: 'Ignores all context, sees the problem completely fresh',
+    briefingLabel: 'Fresh Eyes Review',
+    dailyPrompt: `You know nothing about Ecstasy Technologies except: software studio in Ghana, targeting GHS 120,000/month, using AI agents to find and close clients.
+
+As a complete outsider walking in for the first time — what is your immediate honest assessment? What stands out as strange or counterintuitive? What is the most obvious thing this team is probably ignoring because they are too close to it?`,
+    systemPrompt: `You are The Outsider, a fresh-eyes advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+
+You ignore all prior context. You do not know what has been tried, what was decided, or what the current plan is. You walk in completely fresh and look only at the core problem with zero baggage.
+
+When given a plan or problem:
+1. Restate the problem in your own words as if hearing it for the first time
+2. Note what immediately stands out as strange, counterintuitive, or questionable
+3. Name the most obvious thing everyone in the room is ignoring because they are too close to it
+4. Suggest what someone from a completely different industry would do with this exact problem
+5. Give your honest first impression of whether this will work — no political softening
+
+You are not here to fit in. You are here to say what everyone else is too polite or too invested to say.`,
+  },
+  executor: {
+    id: 'executor',
+    icon: '▸',
+    label: '10 Executor',
+    short: 'Execute',
+    description: 'Only cares about immediate actions and execution',
+    briefingLabel: "Today's 3 Actions",
+    dailyPrompt: `Cut all strategy and debate. What are the 3 highest-leverage actions Ecstasy Technologies should execute in the next 24 hours to move toward GHS 120,000/month?
+
+Be specific. Be immediate. No theory. No "consider doing X." Tell me exactly what to do, in what order, and what the expected result is.`,
+    systemPrompt: `You are The Executor, an action advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+
+You do not care about strategy, vision, theory, or debate. You only care about what gets done TODAY. You measure everything in actions, not intentions.
+
+When given a plan or idea:
+1. Strip everything out and name the ONE action that moves the needle most right now
+2. List exactly 3 things Dominic can do in the next 2 hours to generate revenue or move a deal forward
+3. Name the biggest time-waster in the current approach that should be cut immediately
+4. Give a simple decision rule: "If [X] then do [A], if [Y] then do [B]" — no grey areas
+5. Set a 48-hour checkpoint: what specific outcome should exist in 48 hours if execution is on track?
+
+You are not here to plan. You are here to execute. Every response ends with: "DO THIS NOW: [one specific action, 10 words or less]."`,
   },
 }
 
 const AGENT_IDS = Object.keys(AGENTS) as AgentId[]
+const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'viral']
+const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'outsider', 'executor']
 
 // ─── localStorage helpers ──────────────────────────────────────────────────────
 
@@ -383,6 +526,16 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       targetAgent: 'viral',
       buildPrompt: (c) => `These are my current leads from ProspectBot. Use the industries and pain points in this lead list to create viral content that attracts MORE of these same clients inbound to Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
     },
+    {
+      label: '⊗ Challenge My Leads',
+      targetAgent: 'contrarian',
+      buildPrompt: (c) => `I just got this lead list from ProspectBot. Challenge every assumption in it — what is most likely to fail when I pick up the phone and call these businesses?\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '▸ Who Do I Call First?',
+      targetAgent: 'executor',
+      buildPrompt: (c) => `I have these prospects from ProspectBot. Cut the analysis — tell me exactly which lead to call first, what to say, and what to do in the next 2 hours.\n\n${c.slice(0, 1500)}`,
+    },
   ],
   scope: [
     {
@@ -405,6 +558,16 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       targetAgent: 'prospect',
       buildPrompt: (c) => `I just scoped this type of project. Find 5 more Ghanaian businesses in the same industry or similar situation that would benefit from the same solution:\n\n${c.slice(0, 1500)}`,
     },
+    {
+      label: '∴ Rethink From Scratch',
+      targetAgent: 'firstp',
+      buildPrompt: (c) => `I have this project scope from ProjectBot. Ignore the scope — rebuild the solution from first principles. What should I actually be building for this client if I started from zero?\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '⊕ What Am I Missing?',
+      targetAgent: 'expansionist',
+      buildPrompt: (c) => `I have this project scope. What adjacent services, features, or opportunities are completely outside this scope that could double the deal value or open new revenue streams?\n\n${c.slice(0, 1500)}`,
+    },
   ],
   content: [
     {
@@ -421,6 +584,16 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       label: '→ Log Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
       buildPrompt: (c) => `I drafted these pitches and proposals with ContentBot. Add the deal values to my pipeline and tell me what % of my GHS 120,000 monthly goal they represent if closed:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '◯ Outside Read',
+      targetAgent: 'outsider',
+      buildPrompt: (c) => `I wrote this pitch/content with ContentBot. Read it as the client receiving it for the first time — what is your completely honest first impression? Would you respond to this?\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '⊗ Will This Pitch Work?',
+      targetAgent: 'contrarian',
+      buildPrompt: (c) => `I wrote this pitch/content with ContentBot. Tell me every specific reason why the prospect will say no, ignore it, or ghost me after reading this.\n\n${c.slice(0, 1500)}`,
     },
   ],
   revenue: [
@@ -444,6 +617,16 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       targetAgent: 'viral',
       buildPrompt: (c) => `My RevenueTracker shows I am behind on my GHS 120,000 target. Create urgent viral content that positions Ecstasy Technologies as the go-to software studio in Ghana and drives inbound inquiries this week:\n\n${c.slice(0, 1500)}`,
     },
+    {
+      label: '⊗ Reality Check the Target',
+      targetAgent: 'contrarian',
+      buildPrompt: (c) => `This is my current revenue situation. Tell me every specific reason why I will NOT hit GHS 120,000 this month — challenge every assumption in my current approach.\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '⊕ Find Hidden Revenue',
+      targetAgent: 'expansionist',
+      buildPrompt: (c) => `This is my current revenue data. What revenue streams, adjacent markets, or untapped opportunities am I completely missing that could help me hit GHS 120,000/month faster?\n\n${c.slice(0, 1500)}`,
+    },
   ],
   viral: [
     {
@@ -460,6 +643,81 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       label: '→ Track Revenue Impact (RevenueTracker)',
       targetAgent: 'revenue',
       buildPrompt: (c) => `I ran this viral campaign with ViralBot. Help me estimate the potential pipeline value of the inbound leads this could attract and track it against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '◯ Audience Reality Check',
+      targetAgent: 'outsider',
+      buildPrompt: (c) => `I created this viral content with ViralBot. As someone who does not know Ecstasy Technologies at all — how does this content land? Would you stop scrolling for it? Would you engage?\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '▸ Just Post It',
+      targetAgent: 'executor',
+      buildPrompt: (c) => `I have this viral content ready from ViralBot. Stop the debate — tell me exactly what to post, on which platform, in what order, in the next 30 minutes.\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  contrarian: [
+    {
+      label: '→ Strengthen the Pitch (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `The Contrarian raised these concerns. Rewrite my pitch or content to address the most critical failure point and make it resilient to the objections identified:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Find Stronger Leads (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `The Contrarian found weaknesses in my lead strategy. Find 5 leads that would survive this level of scrutiny — higher quality, higher conversion probability:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Reality-Check Revenue (RevenueTracker)',
+      targetAgent: 'revenue',
+      buildPrompt: (c) => `The Contrarian has challenged my assumptions. Run a conservative revenue analysis against my GHS 120,000 goal accounting for these specific failure risks:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  firstp: [
+    {
+      label: '→ Scope the New Approach (ProjectBot)',
+      targetAgent: 'scope',
+      buildPrompt: (c) => `The First Principles Thinker has redesigned the solution from scratch. Scope this new approach, define deliverables, and price it in GHS:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Write for New Approach (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `The First Principles Thinker identified a fundamentally better approach. Write a pitch, X post, or proposal that positions this new angle for Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  expansionist: [
+    {
+      label: '→ Find Leads in New Segment (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `The Expansionist identified adjacent markets and untapped segments. Find 5 leads in these new areas that Ecstasy Technologies has not targeted yet:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Amplify New Angle (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `The Expansionist found new markets, trends, and angles I can capitalise on. Create viral content that reaches these expanded audiences for Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  outsider: [
+    {
+      label: '→ Rewrite With Fresh Eyes (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `The Outsider gave an honest first impression of my content. Rewrite it from scratch based on this fresh perspective — make it land better for someone who does not know Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Fresh Perspective Content (ViralBot)',
+      targetAgent: 'viral',
+      buildPrompt: (c) => `The Outsider noticed what a fresh audience really sees. Use this outsider perspective to create viral content that hooks people who have never heard of Ecstasy Technologies:\n\n${c.slice(0, 1500)}`,
+    },
+  ],
+  executor: [
+    {
+      label: '→ Find Lead NOW (ProspectBot)',
+      targetAgent: 'prospect',
+      buildPrompt: (c) => `The Executor says take action now. Find the single highest-probability lead I should contact in the next hour — most likely to convert, fastest to respond:\n\n${c.slice(0, 1500)}`,
+    },
+    {
+      label: '→ Send This NOW (ContentBot)',
+      targetAgent: 'content',
+      buildPrompt: (c) => `The Executor says act immediately. Write the exact message I should send right now to move a deal forward — no revisions, just the message ready to copy-paste:\n\n${c.slice(0, 1500)}`,
     },
   ],
 }
@@ -712,8 +970,18 @@ function useOnboarding() {
 
 function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
   const [step, setStep] = useState(0)
+  const next = () => (step < 2 ? setStep(step + 1) : onComplete())
 
-  const next = () => (step < 1 ? setStep(1) : onComplete())
+  const AgentCard = ({ id }: { id: AgentId }) => {
+    const a = AGENTS[id]
+    return (
+      <div key={id} style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <span style={{ fontSize: 20, lineHeight: 1 }}>{a.icon}</span>
+        <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: TEXT }}>{a.short}</div>
+        <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.4, fontFamily: FONT_BODY }}>{a.description}</div>
+      </div>
+    )
+  }
 
   return (
     <div style={{
@@ -721,53 +989,52 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       padding: '0 36px env(safe-area-inset-bottom)',
     }}>
-      {/* spacer pushes content into the lower portion */}
       <div style={{ flex: 1 }} />
 
-      {step === 0 ? (
+      {step === 0 && (
         <>
-          <img
-            src="/icon-192.png"
-            alt="Tagett"
-            width={72}
-            height={72}
-            style={{ borderRadius: 18, marginBottom: 22, boxShadow: `0 0 36px ${GOLD}40` }}
-          />
+          <img src="/icon-192.png" alt="Tagett" width={72} height={72} style={{ borderRadius: 18, marginBottom: 22, boxShadow: `0 0 36px ${GOLD}40` }} />
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 28, color: TEXT, marginBottom: 10, letterSpacing: '-0.02em' }}>
             Tagett
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 40, fontFamily: FONT_BODY }}>
-            AI operator tools for Ecstasy Technologies. Find leads, write content, scope projects, and track revenue.
+            Ten AI agents working as one system. Find leads, close deals, go viral, and hit GHS 120,000/month.
           </div>
         </>
-      ) : (
+      )}
+
+      {step === 1 && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 22, width: '100%' }}>
-            {AGENT_IDS.map((id) => {
-              const a = AGENTS[id]
-              return (
-                <div key={id} style={{
-                  background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12,
-                  padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 4,
-                }}>
-                  <span style={{ fontSize: 20, lineHeight: 1 }}>{a.icon}</span>
-                  <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: TEXT }}>{a.short}</div>
-                  <div style={{ fontSize: 10, color: MUTED, lineHeight: 1.4, fontFamily: FONT_BODY }}>{a.description}</div>
-                </div>
-              )
-            })}
+          <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: GOLD, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 12, alignSelf: 'flex-start' }}>Operators</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18, width: '100%' }}>
+            {MAIN_AGENT_IDS.map((id) => <AgentCard key={id} id={id} />)}
           </div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 18, color: TEXT, marginBottom: 8, textAlign: 'center' }}>
-            Five agents. One mission.
+            Five operators. One pipeline.
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 36, fontFamily: FONT_BODY }}>
-            They work as a machine: find leads, write pitches, scope deals, go viral, and track every GHS toward the goal.
+            Find leads, write pitches, scope deals, go viral, and track every GHS toward the goal.
+          </div>
+        </>
+      )}
+
+      {step === 2 && (
+        <>
+          <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: GOLD, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 12, alignSelf: 'flex-start' }}>The Council</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 18, width: '100%' }}>
+            {COUNCIL_AGENT_IDS.map((id) => <AgentCard key={id} id={id} />)}
+          </div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 18, color: TEXT, marginBottom: 8, textAlign: 'center' }}>
+            Meet The Council.
+          </div>
+          <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 36, fontFamily: FONT_BODY }}>
+            Five advisors that pressure-test every decision. No operator acts without The Council's check.
           </div>
         </>
       )}
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
-        {[0, 1].map((i) => (
+        {[0, 1, 2].map((i) => (
           <div key={i} style={{
             width: i === step ? 20 : 6, height: 5, borderRadius: 3,
             background: i === step ? TEXT : BORDER,
@@ -786,14 +1053,11 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
           cursor: 'pointer',
         }}
       >
-        {step === 0 ? 'Continue' : 'Get Started'}
+        {step < 2 ? 'Continue' : 'Get Started'}
       </button>
 
       {step === 0 && (
-        <button
-          onClick={onComplete}
-          style={{ marginTop: 16, marginBottom: 8, fontSize: 13, color: MUTED, fontFamily: FONT_BODY }}
-        >
+        <button onClick={onComplete} style={{ marginTop: 16, marginBottom: 8, fontSize: 13, color: MUTED, fontFamily: FONT_BODY }}>
           Skip
         </button>
       )}
@@ -1343,33 +1607,40 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
 function BottomNav({ activeAgent, allChats, onSelect }: {
   activeAgent: AgentId; allChats: AllChats; onSelect: (id: AgentId) => void
 }) {
+  const renderBtn = (id: AgentId) => {
+    const agent = AGENTS[id]
+    const isActive = id === activeAgent
+    const turnCount = Math.floor((allChats[id]?.length ?? 0) / 2)
+    return (
+      <button key={id} onClick={() => onSelect(id)} style={{
+        width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
+        borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
+        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
+      }}>
+        <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>
+          {agent.icon}
+        </span>
+        <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>
+          {agent.short}
+        </span>
+        {turnCount > 0 && (
+          <span style={{ fontFamily: FONT_BODY, fontSize: 8, color: MUTED, background: SURFACE2, padding: '1px 4px', borderRadius: 6 }}>
+            {turnCount}
+          </span>
+        )}
+      </button>
+    )
+  }
+
   return (
-    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, display: 'flex', paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0 }}>
-      {AGENT_IDS.map((id) => {
-        const agent = AGENTS[id]
-        const isActive = id === activeAgent
-        const turnCount = Math.floor((allChats[id]?.length ?? 0) / 2)
-        return (
-          <button key={id} onClick={() => onSelect(id)} style={{
-            flex: 1, minHeight: 56, display: 'flex', flexDirection: 'column',
-            alignItems: 'center', justifyContent: 'center', gap: 3, background: 'none',
-            borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
-            paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
-          }}>
-            <span style={{ fontSize: 20, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>
-              {agent.icon}
-            </span>
-            <span style={{ fontFamily: FONT_HEADING, fontSize: 10, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, marginTop: 1, letterSpacing: '0.02em' }}>
-              {agent.short}
-            </span>
-            {turnCount > 0 && (
-              <span style={{ fontFamily: FONT_BODY, fontSize: 9, color: MUTED, background: SURFACE2, padding: '1px 5px', borderRadius: 8, minWidth: 16, textAlign: 'center' }}>
-                {turnCount}
-              </span>
-            )}
-          </button>
-        )
-      })}
+    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+      <style>{`.tn::-webkit-scrollbar{display:none}`}</style>
+      <div className="tn" style={{ display: 'flex', minWidth: 'max-content' }}>
+        {MAIN_AGENT_IDS.map(renderBtn)}
+        <div style={{ width: 1, background: BORDER, flexShrink: 0, margin: '8px 2px', alignSelf: 'stretch' }} />
+        {COUNCIL_AGENT_IDS.map(renderBtn)}
+      </div>
     </div>
   )
 }
@@ -1436,7 +1707,7 @@ function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandof
           <ProspectIntakeScreen onSubmit={onSend} loading={loading} />
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', color: MUTED, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY }}>
-            <div style={{ fontSize: 32, marginBottom: 16, opacity: 0.2 }}>◈</div>
+            <div style={{ fontSize: 32, marginBottom: 16, opacity: 0.2 }}>{agent.icon}</div>
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT, marginBottom: 6 }}>{agent.label}</div>
             <div style={{ fontSize: 13, color: MUTED, marginBottom: 4 }}>{agent.description}</div>
             <div style={{ fontSize: 12, color: MUTED, opacity: 0.6, marginBottom: 8 }}>Tap to run autonomously, or type a message below.</div>
@@ -1605,22 +1876,36 @@ export default function Page() {
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tagett</div>
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Technologies</div>
         </div>
-        <nav style={{ padding: '12px 10px', flex: 1 }}>
-          {AGENT_IDS.map((id) => {
-            const a = AGENTS[id], isActive = id === activeAgent
-            const msgCount = (allChats[id] ?? []).length
+        <nav style={{ padding: '12px 10px', flex: 1, overflowY: 'auto' }}>
+          {(() => {
+            const renderNavBtn = (id: AgentId) => {
+              const a = AGENTS[id], isActive = id === activeAgent
+              const msgCount = (allChats[id] ?? []).length
+              return (
+                <button key={id} onClick={() => handleSelectAgent(id)} style={{ width: '100%', display: 'block', textAlign: 'left', padding: '9px 12px', borderRadius: 8, marginBottom: 2, background: isActive ? `${GOLD}18` : 'transparent', transition: 'background 0.15s' }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : TEXT }}>{a.label}</span>
+                    {msgCount > 0 && <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED, background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10 }}>{Math.floor(msgCount / 2)}</span>}
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{a.description}</div>
+                </button>
+              )
+            }
             return (
-              <button key={id} onClick={() => handleSelectAgent(id)} style={{ width: '100%', display: 'block', textAlign: 'left', padding: '9px 12px', borderRadius: 8, marginBottom: 2, background: isActive ? `${GOLD}18` : 'transparent', transition: 'background 0.15s' }}
-                onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
-                onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : TEXT }}>{a.label}</span>
-                  {msgCount > 0 && <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED, background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10 }}>{Math.floor(msgCount / 2)}</span>}
+              <>
+                <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', padding: '2px 4px 6px' }}>Operators</div>
+                {MAIN_AGENT_IDS.map(renderNavBtn)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 8px' }}>
+                  <div style={{ flex: 1, height: 1, background: BORDER }} />
+                  <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>The Council</span>
+                  <div style={{ flex: 1, height: 1, background: BORDER }} />
                 </div>
-                <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{a.description}</div>
-              </button>
+                {COUNCIL_AGENT_IDS.map(renderNavBtn)}
+              </>
             )
-          })}
+          })()}
         </nav>
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
           <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
