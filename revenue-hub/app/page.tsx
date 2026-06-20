@@ -14,7 +14,7 @@ const MUTED = 'var(--muted)'
 const FONT_HEADING = "var(--font-space-grotesk), 'Space Grotesk', sans-serif"
 const FONT_BODY = "var(--font-inter), 'Inter', sans-serif"
 
-const MONTHLY_GOAL_GHS = 120_000
+const MONTHLY_GOAL_GHS = 12_000
 
 // ─── Prospect intake data ─────────────────────────────────────────────────────
 
@@ -187,7 +187,7 @@ After all 5, add:
 
 PIPELINE SUMMARY
 Total estimated value: GHS [sum]
-That is [X]% of my GHS 120,000 monthly goal.
+That is [X]% of my GHS 12,000 monthly goal.
 Fastest to close: [Business Name] — call them first.`,
     systemPrompt: `You are ProspectBot, a lead generation AI for Ecstasy Technologies based in Ghana (ecstasytechnologies.com).
 
@@ -215,7 +215,7 @@ Output format for each REAL prospect found:
 
 If you find fewer than 5 real businesses, say so honestly and suggest better search terms. Do NOT pad with invented entries.
 
-PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 120,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 120,000 monthly goal.
+PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 12,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 12,000 monthly goal.
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason these specific leads will not convert?]
@@ -263,7 +263,7 @@ CONTENT MIX RULE: Aim for roughly half project showcase, half generic value cont
 
 Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.
 
-PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 120,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
+PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 12,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason this content will not land with the prospect?]
@@ -302,7 +302,7 @@ Service pricing ranges (always in GHS):
 
 Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.
 
-PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 120,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 120,000 monthly target."
+PIPELINE ROLE: You turn leads into priced proposals. Your output feeds ContentBot (to polish the language before sending to client), RevenueTracker (to log this deal against the GHS 12,000 monthly goal), and ViralBot (to turn the completed project into a viral case study). Always state at the end: "This project contributes GHS [amount] — [X]% of the GHS 12,000 monthly target."
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason this scope or proposal will fall apart?]
@@ -313,22 +313,22 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
     icon: '◐',
     label: '04 RevenueTracker',
     short: 'Revenue',
-    description: 'Track earnings vs GHS 120,000/month goal',
+    description: 'Track earnings vs GHS 12,000/month goal',
     briefingLabel: "Today's Revenue Briefing",
-    dailyPrompt: `Give me my revenue focus briefing for today. My target is GHS 120,000 this month.
+    dailyPrompt: `Give me my revenue focus briefing for today. My target is GHS 12,000 this month.
 
 Tell me:
 1. Exactly how many projects at each service price point I need to close to hit the goal — show the math clearly.
-2. The fastest path to GHS 120,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
+2. The fastest path to GHS 12,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
 3. Three specific revenue actions I should take today — be direct and tactical, not generic.
-4. What a realistic week-by-week milestone breakdown looks like to hit GHS 120,000 by month end.`,
-    systemPrompt: `You are RevenueTracker, the command centre of a 5-agent revenue machine for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). Target: GHS 120,000/month (~$10,000 USD).
+4. What a realistic week-by-week milestone breakdown looks like to hit GHS 12,000 by month end.`,
+    systemPrompt: `You are RevenueTracker, the command centre of a 5-agent revenue machine for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). Target: GHS 12,000/month (~$10,000 USD).
 
 When given revenue data, you:
 1. Calculate total earnings and % of monthly goal achieved
 2. Break down earnings by service type
 3. Identify which services are over/under-performing
-4. Suggest strategies to close any gap to GHS 120,000
+4. Suggest strategies to close any gap to GHS 12,000
 5. Project the month-end total based on current pace
 
 Service pricing context:
@@ -350,7 +350,7 @@ Always end every response with:
 "NEXT ACTION: Open [Agent Name] and tell it: [exact one-sentence instruction]."
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
-⊗ Contrarian: [one sentence — what is the most likely reason this revenue plan will miss the GHS 120,000 target?]
+⊗ Contrarian: [one sentence — what is the most likely reason this revenue plan will miss the GHS 12,000 target?]
 ▸ Executor: [one action — what is the single most important revenue action Dominic should take in the next 2 hours?]`,
   },
   viral: {
@@ -431,7 +431,7 @@ Always write as Dominic Agyapong. No placeholders. Immediately postable.
 PIPELINE ROLE: Viral project content attracts inbound clients who see the work and want the same. After your content output, always add:
 "This content targets: [client type]
 Estimated contract value if they inquire: GHS [range]
-Pipeline contribution if 1 lead converts: [X]% of GHS 120,000 goal"
+Pipeline contribution if 1 lead converts: [X]% of GHS 12,000 goal"
 
 COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence — what is the most likely reason this content will not go viral or attract clients?]
@@ -444,12 +444,12 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
     short: 'Contra',
     description: 'Finds what will fail before it does',
     briefingLabel: 'Challenge the Plan',
-    dailyPrompt: `Review Ecstasy Technologies' current approach: using 5 AI agents to hit GHS 120,000/month by finding Ghanaian businesses without websites and selling them software.
+    dailyPrompt: `Review Ecstasy Technologies' current approach: using 5 AI agents to hit GHS 12,000/month by finding Ghanaian businesses without websites and selling them software.
 
 What are the 3 biggest assumptions that could be wrong? What is the most likely failure mode of the entire system? What early warning sign should I watch for this week?
 
 Be direct. No padding. No validation.`,
-    systemPrompt: `You are The Contrarian, a critical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Contrarian, a critical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 Your ONLY job is to find what will fail. You do not cheerlead. You do not validate. You interrogate every assumption with one question: "Why will this fail?"
 
@@ -471,10 +471,10 @@ You are not here to kill ideas. You are here to pressure-test them so only stron
     briefingLabel: 'Rebuild From Scratch',
     dailyPrompt: `Strip Ecstasy Technologies' entire approach to its foundation. What is the actual problem being solved?
 
-Ignore the current 5-agent system, the current pricing, and the current outreach method. If you were starting with a completely blank page today, what would the fastest path to GHS 120,000/month look like?
+Ignore the current 5-agent system, the current pricing, and the current outreach method. If you were starting with a completely blank page today, what would the fastest path to GHS 12,000/month look like?
 
 What is the one constraint in the current approach that, if removed, would change everything?`,
-    systemPrompt: `You are The First Principles Thinker, a radical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The First Principles Thinker, a radical advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You ignore how things are currently done. You strip every problem to its fundamental truths and rebuild from there. No analogies. No industry norms. No "how it's usually done."
 
@@ -483,7 +483,7 @@ When given a plan or problem:
 2. State the fundamental truth underneath the problem
 3. Rebuild the solution from scratch — what would you build with absolutely no prior context?
 4. Name one constraint that, if removed, would make the solution 10x better
-5. Give the most unconventional path to GHS 120,000/month that the existing plan ignores
+5. Give the most unconventional path to GHS 12,000/month that the existing plan ignores
 
 You are not here to improve the existing plan. You are here to show what Dominic would build if he started with a blank page today.`,
   },
@@ -496,10 +496,10 @@ You are not here to improve the existing plan. You are here to show what Dominic
     briefingLabel: 'Expand the Horizon',
     dailyPrompt: `What is Ecstasy Technologies missing today?
 
-Look beyond the current 5 agents and the outbound lead strategy. What adjacent markets, untapped channels, overlooked segments, or strategic partnerships could contribute significantly to GHS 120,000/month that nobody is discussing?
+Look beyond the current 5 agents and the outbound lead strategy. What adjacent markets, untapped channels, overlooked segments, or strategic partnerships could contribute significantly to GHS 12,000/month that nobody is discussing?
 
 Think Africa, think global patterns showing up in Ghana, think 10x — then bring it back to something actionable today.`,
-    systemPrompt: `You are The Expansionist, a strategic advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Expansionist, a strategic advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You look beyond what is in front of you. Your job is to find what is missing — adjacent markets, overlooked segments, untapped channels, partnerships nobody mentioned, global patterns appearing in Ghana first.
 
@@ -519,10 +519,10 @@ You are not here to refine. You are here to expand the horizon. Think Africa, th
     short: 'Outsider',
     description: 'Ignores all context, sees the problem completely fresh',
     briefingLabel: 'Fresh Eyes Review',
-    dailyPrompt: `You know nothing about Ecstasy Technologies except: software studio in Ghana, targeting GHS 120,000/month, using AI agents to find and close clients.
+    dailyPrompt: `You know nothing about Ecstasy Technologies except: software studio in Ghana, targeting GHS 12,000/month, using AI agents to find and close clients.
 
 As a complete outsider walking in for the first time — what is your immediate honest assessment? What stands out as strange or counterintuitive? What is the most obvious thing this team is probably ignoring because they are too close to it?`,
-    systemPrompt: `You are The Outsider, a fresh-eyes advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Outsider, a fresh-eyes advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You ignore all prior context. You do not know what has been tried, what was decided, or what the current plan is. You walk in completely fresh and look only at the core problem with zero baggage.
 
@@ -542,10 +542,10 @@ You are not here to fit in. You are here to say what everyone else is too polite
     short: 'Execute',
     description: 'Only cares about immediate actions and execution',
     briefingLabel: "Today's 3 Actions",
-    dailyPrompt: `Cut all strategy and debate. What are the 3 highest-leverage actions Ecstasy Technologies should execute in the next 24 hours to move toward GHS 120,000/month?
+    dailyPrompt: `Cut all strategy and debate. What are the 3 highest-leverage actions Ecstasy Technologies should execute in the next 24 hours to move toward GHS 12,000/month?
 
 Be specific. Be immediate. No theory. No "consider doing X." Tell me exactly what to do, in what order, and what the expected result is.`,
-    systemPrompt: `You are The Executor, an action advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 120,000/month.
+    systemPrompt: `You are The Executor, an action advisor in The Council for Ecstasy Technologies (ecstasytechnologies.com) targeting GHS 12,000/month.
 
 You do not care about strategy, vision, theory, or debate. You only care about what gets done TODAY. You measure everything in actions, not intentions.
 
@@ -839,7 +839,7 @@ function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): 
     .join('\n\n')
 }
 
-const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Shared goal: GHS 120,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.\n\n`
+const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Shared goal: GHS 12,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.\n\n`
 
 async function callChat(
   systemPrompt: string,
@@ -888,7 +888,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Log Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I found these leads with ProspectBot. Add the total estimated value to my pipeline and tell me how close I am to my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I found these leads with ProspectBot. Add the total estimated value to my pipeline and tell me how close I am to my GHS 12,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Viral Angle (ViralBot)',
@@ -920,7 +920,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Log to RevenueTracker',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I have this scoped project from ProjectBot. Add it to my pipeline and show what % of my GHS 120,000 monthly goal it covers:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I have this scoped project from ProjectBot. Add it to my pipeline and show what % of my GHS 12,000 monthly goal it covers:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Make it a Case Study (ViralBot)',
@@ -957,7 +957,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Log Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I drafted these pitches and proposals with ContentBot. Add the deal values to my pipeline and tell me what % of my GHS 120,000 monthly goal they represent if closed:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I drafted these pitches and proposals with ContentBot. Add the deal values to my pipeline and tell me what % of my GHS 12,000 monthly goal they represent if closed:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '◯ Outside Read',
@@ -974,7 +974,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Find More Leads (ProspectBot)',
       targetAgent: 'prospect',
-      buildPrompt: (c) => `My RevenueTracker says I need more pipeline. Based on this revenue analysis, find 5 new high-value leads in Ghana that can close fast and help me hit my GHS 120,000 goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `My RevenueTracker says I need more pipeline. Based on this revenue analysis, find 5 new high-value leads in Ghana that can close fast and help me hit my GHS 12,000 goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Scope a Big Deal (ProjectBot)',
@@ -989,17 +989,17 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Go Viral to Close the Gap (ViralBot)',
       targetAgent: 'viral',
-      buildPrompt: (c) => `My RevenueTracker shows I am behind on my GHS 120,000 target. Create urgent viral content that positions Ecstasy Technologies as the go-to software studio in Ghana and drives inbound inquiries this week:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `My RevenueTracker shows I am behind on my GHS 12,000 target. Create urgent viral content that positions Ecstasy Technologies as the go-to software studio in Ghana and drives inbound inquiries this week:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '⊗ Reality Check the Target',
       targetAgent: 'contrarian',
-      buildPrompt: (c) => `This is my current revenue situation. Tell me every specific reason why I will NOT hit GHS 120,000 this month — challenge every assumption in my current approach.\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `This is my current revenue situation. Tell me every specific reason why I will NOT hit GHS 12,000 this month — challenge every assumption in my current approach.\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '⊕ Find Hidden Revenue',
       targetAgent: 'expansionist',
-      buildPrompt: (c) => `This is my current revenue data. What revenue streams, adjacent markets, or untapped opportunities am I completely missing that could help me hit GHS 120,000/month faster?\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `This is my current revenue data. What revenue streams, adjacent markets, or untapped opportunities am I completely missing that could help me hit GHS 12,000/month faster?\n\n${c.slice(0, 1500)}`,
     },
   ],
   viral: [
@@ -1016,7 +1016,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Track Revenue Impact (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `I ran this viral campaign with ViralBot. Help me estimate the potential pipeline value of the inbound leads this could attract and track it against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `I ran this viral campaign with ViralBot. Help me estimate the potential pipeline value of the inbound leads this could attract and track it against my GHS 12,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '◯ Audience Reality Check',
@@ -1043,7 +1043,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Reality-Check Revenue (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `The Contrarian has challenged my assumptions. Run a conservative revenue analysis against my GHS 120,000 goal accounting for these specific failure risks:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `The Contrarian has challenged my assumptions. Run a conservative revenue analysis against my GHS 12,000 goal accounting for these specific failure risks:\n\n${c.slice(0, 1500)}`,
     },
   ],
   firstp: [
@@ -1108,7 +1108,7 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
     {
       label: '→ Add to Pipeline (RevenueTracker)',
       targetAgent: 'revenue',
-      buildPrompt: (c) => `SocialScout found these social media leads. Log them to my pipeline and calculate their combined value against my GHS 120,000 monthly goal:\n\n${c.slice(0, 1500)}`,
+      buildPrompt: (c) => `SocialScout found these social media leads. Log them to my pipeline and calculate their combined value against my GHS 12,000 monthly goal:\n\n${c.slice(0, 1500)}`,
     },
     {
       label: '→ Find Offline Leads Too (ProspectBot)',
@@ -1430,7 +1430,7 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             Tagett
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 40, fontFamily: FONT_BODY }}>
-            Ten AI agents working as one system. Find leads, close deals, go viral, and hit GHS 120,000/month.
+            Ten AI agents working as one system. Find leads, close deals, go viral, and hit GHS 12,000/month.
           </div>
         </>
       )}
@@ -2050,7 +2050,7 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Monthly Goal</div>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
-          GHS {earned.toLocaleString()} / 120,000
+          GHS {earned.toLocaleString()} / {MONTHLY_GOAL_GHS.toLocaleString()}
         </div>
       </div>
     </div>
@@ -2097,7 +2097,7 @@ function ForecastCard({ deals }: { deals: Deal[] }) {
         {earned === 0
           ? `No closed deals yet · need ~${dealsNeeded} deals at GHS ${Math.round(avgDeal).toLocaleString()} avg to hit goal`
           : gap <= 0
-          ? '🎯 On track to hit GHS 120,000 this month!'
+          ? '🎯 On track to hit GHS 12,000 this month!'
           : `GHS ${gap.toLocaleString()} gap · ~${dealsNeeded} more deal${dealsNeeded !== 1 ? 's' : ''} · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
       </div>
     </div>
@@ -2128,7 +2128,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
       <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 20, color: TEXT, letterSpacing: '-0.02em' }}>Command Center</div>
-          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Ecstasy Technologies · GHS 120,000 target</div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Ecstasy Technologies · GHS 12,000 target</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {notifToggle}
@@ -3029,7 +3029,7 @@ function MissionBar({ workspace, earnedGHS, pipelineGHS, onClearWorkspace }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: 10, color: GOLD, fontFamily: FONT_BODY, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>Mission</span>
         <span style={{ fontSize: 11, color: TEXT, fontFamily: FONT_BODY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          GHS {earnedGHS.toLocaleString()} closed · GHS {pipelineGHS.toLocaleString()} pipeline · {pct}% of GHS 120k
+          GHS {earnedGHS.toLocaleString()} closed · GHS {pipelineGHS.toLocaleString()} pipeline · {pct}% of GHS 12k
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
