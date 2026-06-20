@@ -56,6 +56,44 @@ async function writeFile(projects: WebsiteProject[], sha: string | null, commitM
   }
 }
 
+// Mirror an external image (e.g. Supabase storage) into public/project-images/ on the
+// website repo so it loads as a simple relative path — no Next.js remotePatterns needed.
+async function mirrorImageToWebsite(imageUrl: string): Promise<string> {
+  if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl
+
+  const filename = imageUrl.split('/').pop()?.split('?')[0] ?? ''
+  if (!filename) return imageUrl
+  const githubPath = `public/project-images/${filename}`
+
+  // Fetch the image bytes
+  const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) })
+  if (!imgRes.ok) return imageUrl
+  const buffer = Buffer.from(await imgRes.arrayBuffer())
+  const base64 = buffer.toString('base64')
+
+  // Check if the file already exists in the repo (need its SHA to update)
+  const checkRes = await fetch(
+    `https://api.github.com/repos/${REPO}/contents/${githubPath}?ref=${BRANCH}`,
+    { headers: githubHeaders() }
+  )
+  const checkData = checkRes.ok ? await checkRes.json() : null
+
+  const body: Record<string, unknown> = {
+    message: `[Tagett] Add project image: ${filename}`,
+    content: base64,
+    branch: BRANCH,
+  }
+  if (checkData?.sha) body.sha = checkData.sha
+
+  const uploadRes = await fetch(
+    `https://api.github.com/repos/${REPO}/contents/${githubPath}`,
+    { method: 'PUT', headers: githubHeaders(), body: JSON.stringify(body) }
+  )
+  if (!uploadRes.ok) return imageUrl
+
+  return `/project-images/${filename}`
+}
+
 export async function GET() {
   if (!TOKEN) return NextResponse.json({ error: 'GITHUB_WEBSITE_TOKEN not set' }, { status: 500 })
   try {
@@ -71,19 +109,25 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     if (!body.title) return NextResponse.json({ error: 'title required' }, { status: 400 })
+
+    // Mirror external images (Supabase, etc.) into the website's public folder
+    if (body.image?.startsWith('http')) {
+      body.image = await mirrorImageToWebsite(body.image)
+    }
+
     const { projects, sha } = await readFile()
-    const existingIdx = body.id ? projects.findIndex(p => p.id === body.id) : -1
+    const existingIdx = body.id ? projects.findIndex((p: WebsiteProject) => p.id === body.id) : -1
     let project: WebsiteProject
     if (existingIdx >= 0) {
       project = { ...projects[existingIdx], ...body }
       projects[existingIdx] = project
     } else {
-      const maxId = projects.reduce((m, p) => Math.max(m, p.id), 0)
+      const maxId = projects.reduce((m: number, p: WebsiteProject) => Math.max(m, p.id), 0)
       project = { image: '', features: [], technologies: [], ...body, id: maxId + 1, updatedAt: new Date().toISOString() }
       projects.unshift(project)
     }
     await writeFile(projects, sha, `[Tagett] ${existingIdx >= 0 ? 'Update' : 'Add'} project: ${project.title}`)
-    return NextResponse.json({ ok: true, id: project.id })
+    return NextResponse.json({ ok: true, id: project.id, image: project.image })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
   }
@@ -94,7 +138,7 @@ export async function DELETE(req: Request) {
   try {
     const { id } = await req.json()
     const { projects, sha } = await readFile()
-    const filtered = projects.filter(p => p.id !== id)
+    const filtered = projects.filter((p: WebsiteProject) => p.id !== id)
     if (filtered.length === projects.length) return NextResponse.json({ ok: true })
     await writeFile(filtered, sha, `[Tagett] Remove project: ${id}`)
     return NextResponse.json({ ok: true })

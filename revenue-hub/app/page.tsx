@@ -2565,7 +2565,8 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
       const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Publish failed')
-      const saved: WebsiteProject = { ...payload, id: d.id ?? (editing as number) } as WebsiteProject
+      // Use the image path returned by the API (may differ if image was mirrored to public/)
+      const saved: WebsiteProject = { ...payload, id: d.id ?? (editing as number), image: d.image ?? payload.image } as WebsiteProject
       setProjects(prev => { const i = prev.findIndex(p => p.id === saved.id); return i >= 0 ? prev.map((p, j) => j === i ? saved : p) : [saved, ...prev] })
       setSaveMsg('✓ Published to website!')
       setEditing(null)
