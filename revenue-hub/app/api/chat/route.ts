@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 
-const GROQ_MODEL   = 'llama-3.3-70b-versatile'
-const GEMINI_MODEL = 'gemini-2.0-flash'
+const GROQ_MODEL    = 'llama-3.3-70b-versatile'
+const GEMINI_MODEL  = 'gemini-2.0-flash'
+const MISTRAL_MODEL = 'mistral-small-latest'
 const MAX_TOOL_ITERATIONS = 5
+
+const GROQ_URL    = 'https://api.groq.com/openai/v1/chat/completions'
+const GEMINI_URL  = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
+const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -44,8 +49,9 @@ async function callLLM(
 }
 
 export async function POST(req: NextRequest) {
-  const groqKey   = process.env.GROQ_API_KEY
-  const geminiKey = process.env.GEMINI_API_KEY
+  const groqKey    = process.env.GROQ_API_KEY
+  const geminiKey  = process.env.GEMINI_API_KEY
+  const mistralKey = process.env.MISTRAL_API_KEY
 
   if (!groqKey) {
     return NextResponse.json({ error: 'GROQ_API_KEY not configured' }, { status: 500 })
@@ -65,13 +71,13 @@ export async function POST(req: NextRequest) {
 
   const tools: ToolDefinition[] = agentId ? getAgentTools(agentId) : []
 
-  // Use Gemini for tool-using agents (Scout, Prospect, etc.) when key is available
-  const useGemini = tools.length > 0 && !!geminiKey
-  const apiUrl = useGemini
-    ? 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
-    : 'https://api.groq.com/openai/v1/chat/completions'
-  const apiKey = useGemini ? geminiKey! : groqKey
-  const model  = useGemini ? GEMINI_MODEL : GROQ_MODEL
+  // Priority for tool-using agents: Mistral → Gemini → Groq
+  // Plain chat agents always use Groq
+  const useMistral = tools.length > 0 && !!mistralKey
+  const useGemini  = tools.length > 0 && !useMistral && !!geminiKey
+  const apiUrl = useMistral ? MISTRAL_URL : useGemini ? GEMINI_URL : GROQ_URL
+  const apiKey = useMistral ? mistralKey! : useGemini ? geminiKey! : groqKey
+  const model  = useMistral ? MISTRAL_MODEL : useGemini ? GEMINI_MODEL : GROQ_MODEL
 
   const chatMessages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -81,15 +87,14 @@ export async function POST(req: NextRequest) {
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     let res = await callLLM(apiUrl, apiKey, model, chatMessages, tools)
 
-    // Gemini rate-limited (429) — fall back to Groq immediately
-    if (useGemini && res.status === 429) {
-      res = await callLLM(
-        'https://api.groq.com/openai/v1/chat/completions',
-        groqKey,
-        GROQ_MODEL,
-        chatMessages,
-        tools
-      )
+    // Rate-limited (429) — cascade to next available provider
+    if (res.status === 429) {
+      if (useMistral && geminiKey) {
+        res = await callLLM(GEMINI_URL, geminiKey, GEMINI_MODEL, chatMessages, tools)
+      }
+      if (res.status === 429) {
+        res = await callLLM(GROQ_URL, groqKey, GROQ_MODEL, chatMessages, tools)
+      }
     }
 
     if (!res.ok) {
@@ -100,13 +105,7 @@ export async function POST(req: NextRequest) {
 
       // Groq/llama occasionally produces malformed tool calls — retry without tools
       if (tools.length > 0 && message.includes('tool call validation failed')) {
-        const fallback = await callLLM(
-          'https://api.groq.com/openai/v1/chat/completions',
-          groqKey,
-          GROQ_MODEL,
-          chatMessages,
-          []
-        )
+        const fallback = await callLLM(GROQ_URL, groqKey, GROQ_MODEL, chatMessages, [])
         if (fallback.ok) {
           const fd = await fallback.json()
           return NextResponse.json({ text: (fd.choices?.[0]?.message?.content as string) ?? '' })
