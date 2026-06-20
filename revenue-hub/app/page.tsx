@@ -81,6 +81,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
+type ViewId = 'home' | 'pipeline' | AgentId
 
 interface Agent {
   id: AgentId
@@ -720,6 +721,31 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
       buildPrompt: (c) => `The Executor says act immediately. Write the exact message I should send right now to move a deal forward — no revisions, just the message ready to copy-paste:\n\n${c.slice(0, 1500)}`,
     },
   ],
+}
+
+// ─── Deal pipeline model & storage ───────────────────────────────────────────
+
+type DealStage = 'found' | 'called' | 'scoped' | 'proposal' | 'closed'
+const STAGES: DealStage[] = ['found', 'called', 'scoped', 'proposal', 'closed']
+const STAGE_LABELS: Record<DealStage, string> = { found: 'Found', called: 'Called', scoped: 'Scoped', proposal: 'Proposal Sent', closed: 'Closed ✓' }
+
+interface Deal {
+  id: string
+  name: string
+  industry: string
+  valueGHS: number
+  stage: DealStage
+  phone?: string
+  createdAt: number
+}
+
+const DEALS_KEY = 'tagett-deals-v1'
+function loadDeals(): Deal[] {
+  if (typeof window === 'undefined') return []
+  try { const r = localStorage.getItem(DEALS_KEY); return r ? JSON.parse(r) : [] } catch { return [] }
+}
+function saveDeals(d: Deal[]): void {
+  try { localStorage.setItem(DEALS_KEY, JSON.stringify(d)) } catch {}
 }
 
 // ─── Social & WhatsApp helpers ────────────────────────────────────────────────
@@ -1576,6 +1602,258 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
   )
 }
 
+// ─── CommandCenter ────────────────────────────────────────────────────────────
+
+function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading }: {
+  deals: Deal[]
+  earnedGHS: number
+  theme: 'dark' | 'light'
+  onToggleTheme: () => void
+  notifToggle: React.ReactNode
+  onNavigate: (v: ViewId) => void
+  onRunBrief: () => void
+  briefResult: string
+  briefLoading: boolean
+}) {
+  const stageCounts = useMemo(() => {
+    const c: Record<DealStage, number> = { found: 0, called: 0, scoped: 0, proposal: 0, closed: 0 }
+    deals.forEach(d => c[d.stage]++)
+    return c
+  }, [deals])
+
+  const pipelineValue = deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0)
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' } as React.CSSProperties}>
+      <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
+        <div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 20, color: TEXT, letterSpacing: '-0.02em' }}>Command Center</div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Ecstasy Technologies · GHS 120,000 target</div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {notifToggle}
+          <ThemeToggle theme={theme} onToggle={onToggleTheme} />
+        </div>
+      </div>
+
+      {/* Goal + pipeline summary */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 16px 0' }}>
+        <GoalRing earned={earnedGHS} />
+        <div style={{ flex: 1 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active Pipeline</div>
+          <div style={{ fontFamily: FONT_HEADING, fontSize: 24, fontWeight: 700, color: TEXT, marginTop: 2 }}>
+            GHS {pipelineValue.toLocaleString()}
+          </div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
+            {deals.filter(d => d.stage !== 'closed').length} open deals
+          </div>
+        </div>
+      </div>
+
+      {/* Stage chips */}
+      <div style={{ display: 'flex', gap: 6, padding: '12px 16px 0', overflowX: 'auto' } as React.CSSProperties}>
+        {STAGES.map(s => (
+          <button key={s} onClick={() => onNavigate('pipeline')} style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            padding: '8px 14px', borderRadius: 10, flexShrink: 0, cursor: 'pointer',
+            border: `1px solid ${s === 'closed' ? GOLD + '60' : BORDER}`,
+            background: s === 'closed' ? `${GOLD}12` : SURFACE2,
+          }}>
+            <span style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 18, color: s === 'closed' ? GOLD : TEXT }}>
+              {stageCounts[s]}
+            </span>
+            <span style={{ fontSize: 9, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', whiteSpace: 'nowrap', marginTop: 2 }}>
+              {STAGE_LABELS[s].replace(' ✓', '')}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Morning Brief */}
+      <div style={{ margin: '16px 16px 0', padding: 16, borderRadius: 12, border: `1px solid ${GOLD}40`, background: `${GOLD}08` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: briefResult ? 12 : 0 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: TEXT }}>Morning Brief</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Executor: today's 3 highest-leverage actions</div>
+          </div>
+          <button onClick={onRunBrief} disabled={briefLoading} style={{
+            padding: '8px 16px', borderRadius: 8,
+            background: briefLoading ? SURFACE2 : GOLD, color: briefLoading ? MUTED : BG,
+            fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13,
+            border: 'none', cursor: briefLoading ? 'not-allowed' : 'pointer', flexShrink: 0,
+          }}>
+            {briefLoading ? <ThinkingDots /> : '▶ Run'}
+          </button>
+        </div>
+        {briefResult && (
+          <div style={{ fontSize: 13, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, whiteSpace: 'pre-wrap', borderTop: `1px solid ${BORDER}`, paddingTop: 10, maxHeight: 260, overflowY: 'auto' } as React.CSSProperties}>
+            {briefResult}
+          </div>
+        )}
+      </div>
+
+      {/* Operator quick-access */}
+      <div style={{ padding: '16px 16px 0' }}>
+        <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Operators</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {MAIN_AGENT_IDS.map(id => {
+            const a = AGENTS[id]
+            return (
+              <button key={id} onClick={() => onNavigate(id)} style={{
+                padding: '12px 10px', borderRadius: 10, textAlign: 'left', cursor: 'pointer',
+                border: `1px solid ${BORDER}`, background: SURFACE2,
+                display: 'flex', flexDirection: 'column', gap: 4,
+              }}>
+                <span style={{ fontSize: 20 }}>{a.icon}</span>
+                <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: TEXT }}>{a.short}</span>
+                <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.3 }}>{a.description}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Council quick-access */}
+      <div style={{ padding: '12px 16px 24px' }}>
+        <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>The Council</div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {COUNCIL_AGENT_IDS.map(id => {
+            const a = AGENTS[id]
+            return (
+              <button key={id} onClick={() => onNavigate(id)} style={{
+                padding: '6px 12px', borderRadius: 20, cursor: 'pointer',
+                border: `1px solid ${BORDER}`, background: 'transparent',
+                display: 'flex', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{ fontSize: 14, color: MUTED }}>{a.icon}</span>
+                <span style={{ fontFamily: FONT_HEADING, fontSize: 11, fontWeight: 500, color: MUTED }}>{a.short}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── DealCard ─────────────────────────────────────────────────────────────────
+
+function DealCard({ deal, onMove, onDelete, onOpenAgent }: {
+  deal: Deal
+  onMove: (id: string, stage: DealStage) => void
+  onDelete: (id: string) => void
+  onOpenAgent: (agentId: AgentId, prompt: string) => void
+}) {
+  const idx = STAGES.indexOf(deal.stage)
+  return (
+    <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${deal.stage === 'closed' ? GOLD + '60' : BORDER}`, background: deal.stage === 'closed' ? `${GOLD}08` : SURFACE2 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{deal.name}</div>
+          {deal.industry && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{deal.industry}</div>}
+          <div style={{ fontFamily: FONT_HEADING, fontSize: 14, fontWeight: 700, color: deal.stage === 'closed' ? GOLD : TEXT, marginTop: 4 }}>
+            GHS {deal.valueGHS.toLocaleString()}
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+          {idx > 0 && <button onClick={() => onMove(deal.id, STAGES[idx - 1])} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 13, cursor: 'pointer' }}>←</button>}
+          {idx < STAGES.length - 1 && <button onClick={() => onMove(deal.id, STAGES[idx + 1])} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 13, cursor: 'pointer' }}>→</button>}
+          <button onClick={() => onDelete(deal.id)} style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer' }}>✕</button>
+        </div>
+      </div>
+      {deal.phone && (
+        <a href={`https://wa.me/${deal.phone.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginTop: 6, fontSize: 11, color: WA_GREEN, fontFamily: FONT_BODY, textDecoration: 'none' }}>
+          📱 {deal.phone}
+        </a>
+      )}
+      <div style={{ display: 'flex', gap: 5, marginTop: 8, flexWrap: 'wrap' }}>
+        <button onClick={() => onOpenAgent('content', `Write a pitch or follow-up for this deal:\nBusiness: ${deal.name}\nIndustry: ${deal.industry}\nValue: GHS ${deal.valueGHS}\nStage: ${deal.stage}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          ✦ Write Pitch
+        </button>
+        <button onClick={() => onOpenAgent('scope', `Scope this deal:\nBusiness: ${deal.name}\nIndustry: ${deal.industry}\nBudget: GHS ${deal.valueGHS}`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          ◈ Scope It
+        </button>
+        <button onClick={() => onOpenAgent('executor', `Deal at stage "${deal.stage}": ${deal.name} (${deal.industry}, GHS ${deal.valueGHS}). What is the single most important action to move it forward right now?`)} style={{ fontSize: 10, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          ▸ Next Action
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── DealPipeline ─────────────────────────────────────────────────────────────
+
+function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent }: {
+  deals: Deal[]
+  onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void
+  onMove: (id: string, stage: DealStage) => void
+  onDelete: (id: string) => void
+  onOpenAgent: (agentId: AgentId, prompt: string) => void
+}) {
+  const [showForm, setShowForm] = useState(false)
+  const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '' })
+
+  const handleSubmit = () => {
+    if (!form.name || !form.valueGHS) return
+    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone })
+    setForm({ name: '', industry: '', valueGHS: '', phone: '' })
+    setShowForm(false)
+  }
+
+  const closedValue = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.valueGHS, 0)
+  const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Deal Pipeline</div>
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
+            GHS {closedValue.toLocaleString()} closed · {deals.filter(d => d.stage !== 'closed').length} open
+          </div>
+        </div>
+        <button onClick={() => setShowForm(!showForm)} style={{ padding: '8px 14px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+          + Deal
+        </button>
+      </div>
+
+      {showForm && (
+        <div style={{ marginBottom: 16, padding: 14, borderRadius: 12, border: `1px solid ${GOLD}40`, background: `${GOLD}08`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Business name *" style={inputStyle} />
+          <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="Industry" style={inputStyle} />
+          <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder="Value (GHS) *" type="number" style={inputStyle} />
+          <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone (+233…)" style={inputStyle} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleSubmit} style={{ flex: 1, padding: '9px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Add Deal</button>
+            <button onClick={() => setShowForm(false)} style={{ padding: '9px 14px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {STAGES.map(stage => {
+        const stageDeals = deals.filter(d => d.stage === stage)
+        return (
+          <div key={stage} style={{ marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: stage === 'closed' ? GOLD : MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>
+                {STAGE_LABELS[stage]}
+              </div>
+              <div style={{ flex: 1, height: 1, background: BORDER }} />
+              <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>{stageDeals.length}</div>
+            </div>
+            {stageDeals.length === 0 && (
+              <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, padding: '4px 0', opacity: 0.5 }}>No deals yet</div>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {stageDeals.map(deal => <DealCard key={deal.id} deal={deal} onMove={onMove} onDelete={onDelete} onOpenAgent={onOpenAgent} />)}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // ─── MobileHeader ─────────────────────────────────────────────────────────────
 
 function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
@@ -1604,12 +1882,27 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
 
 // ─── BottomNav ────────────────────────────────────────────────────────────────
 
-function BottomNav({ activeAgent, allChats, onSelect }: {
-  activeAgent: AgentId; allChats: AllChats; onSelect: (id: AgentId) => void
+function BottomNav({ activeView, allChats, onSelect }: {
+  activeView: ViewId; allChats: AllChats; onSelect: (v: ViewId) => void
 }) {
-  const renderBtn = (id: AgentId) => {
-    const agent = AGENTS[id]
-    const isActive = id === activeAgent
+  const renderViewBtn = (v: ViewId, icon: string, label: string) => {
+    const isActive = v === activeView
+    return (
+      <button key={v} onClick={() => onSelect(v)} style={{
+        width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
+        borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
+        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
+      }}>
+        <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? GOLD : MUTED, transition: 'color 0.15s' }}>{icon}</span>
+        <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? GOLD : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
+      </button>
+    )
+  }
+
+  const renderAgentBtn = (id: AgentId) => {
+    const a = AGENTS[id]
+    const isActive = id === activeView
     const turnCount = Math.floor((allChats[id]?.length ?? 0) / 2)
     return (
       <button key={id} onClick={() => onSelect(id)} style={{
@@ -1618,28 +1911,25 @@ function BottomNav({ activeAgent, allChats, onSelect }: {
         borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
         paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
       }}>
-        <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>
-          {agent.icon}
-        </span>
-        <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>
-          {agent.short}
-        </span>
-        {turnCount > 0 && (
-          <span style={{ fontFamily: FONT_BODY, fontSize: 8, color: MUTED, background: SURFACE2, padding: '1px 4px', borderRadius: 6 }}>
-            {turnCount}
-          </span>
-        )}
+        <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>{a.icon}</span>
+        <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{a.short}</span>
+        {turnCount > 0 && <span style={{ fontFamily: FONT_BODY, fontSize: 8, color: MUTED, background: SURFACE2, padding: '1px 4px', borderRadius: 6 }}>{turnCount}</span>}
       </button>
     )
   }
+
+  const divider = (key: string) => <div key={key} style={{ width: 1, background: BORDER, flexShrink: 0, margin: '8px 2px', alignSelf: 'stretch' }} />
 
   return (
     <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
       <style>{`.tn::-webkit-scrollbar{display:none}`}</style>
       <div className="tn" style={{ display: 'flex', minWidth: 'max-content' }}>
-        {MAIN_AGENT_IDS.map(renderBtn)}
-        <div style={{ width: 1, background: BORDER, flexShrink: 0, margin: '8px 2px', alignSelf: 'stretch' }} />
-        {COUNCIL_AGENT_IDS.map(renderBtn)}
+        {renderViewBtn('home', '⌂', 'Home')}
+        {renderViewBtn('pipeline', '◫', 'Deals')}
+        {divider('d1')}
+        {MAIN_AGENT_IDS.map(renderAgentBtn)}
+        {divider('d2')}
+        {COUNCIL_AGENT_IDS.map(renderAgentBtn)}
       </div>
     </div>
   )
@@ -1756,73 +2046,90 @@ export default function Page() {
   const { theme, toggleTheme } = useTheme()
   const { done: onboarded, complete: completeOnboarding } = useOnboarding()
   const { status: notifStatus, subscribe, unsubscribe, sendTest } = useNotifications()
-  const [activeAgent, setActiveAgent] = useState<AgentId>('prospect')
+  const [activeView, setActiveView] = useState<ViewId>('home')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
+  const [deals, setDeals] = useState<Deal[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [briefResult, setBriefResult] = useState('')
+  const [briefLoading, setBriefLoading] = useState(false)
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
+  useEffect(() => { setDeals(loadDeals()) }, [])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
+  useEffect(() => { saveDeals(deals) }, [deals])
 
-  const messages: Message[] = allChats[activeAgent] ?? []
-  const agent = AGENTS[activeAgent]
+  const activeAgent: AgentId | null = AGENT_IDS.includes(activeView as AgentId) ? activeView as AgentId : null
+  const agent = activeAgent ? AGENTS[activeAgent] : AGENTS.prospect
+  const messages: Message[] = activeAgent ? (allChats[activeAgent] ?? []) : []
 
   const handleSend = useCallback(async (text: string) => {
+    if (!activeAgent) return
     const userMsg: Message = { role: 'user', content: text }
-    const next = [...messages, userMsg]
+    const next = [...(allChats[activeAgent] ?? []), userMsg]
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
-      const reply = await callChat(agent.systemPrompt, next)
-      setAllChats((prev) => ({
-        ...prev,
-        [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }],
-      }))
+      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next)
+      setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
-  }, [activeAgent, messages, agent])
+    } finally { setLoading(false) }
+  }, [activeAgent, allChats])
 
   const handleRunBriefing = useCallback(() => {
     if (agent.dailyPrompt) handleSend(agent.dailyPrompt)
   }, [agent.dailyPrompt, handleSend])
 
+  const handleRunBrief = useCallback(async () => {
+    setBriefLoading(true); setBriefResult('')
+    try {
+      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }])
+      setBriefResult(reply)
+    } catch (err) {
+      setBriefResult('Error: ' + (err instanceof Error ? err.message : 'Unknown'))
+    } finally { setBriefLoading(false) }
+  }, [])
+
   const handleClear = useCallback(() => {
+    if (!activeAgent) return
     setAllChats((prev) => ({ ...prev, [activeAgent]: [] }))
     setError(null)
   }, [activeAgent])
 
   const handleHandoff = useCallback(async (targetAgent: AgentId, prompt: string) => {
-    setActiveAgent(targetAgent)
-    setError(null)
+    setActiveView(targetAgent); setError(null)
     const userMsg: Message = { role: 'user', content: prompt }
-    let messagesForApi: Message[] = []
-    setAllChats((prev) => {
-      messagesForApi = [...(prev[targetAgent] ?? []), userMsg]
-      return { ...prev, [targetAgent]: messagesForApi }
-    })
+    let msgs: Message[] = []
+    setAllChats((prev) => { msgs = [...(prev[targetAgent] ?? []), userMsg]; return { ...prev, [targetAgent]: msgs } })
     setLoading(true)
     try {
-      const reply = await callChat(AGENTS[targetAgent].systemPrompt, messagesForApi)
-      setAllChats((prev) => ({
-        ...prev,
-        [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }],
-      }))
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs)
+      setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
-    } finally {
-      setLoading(false)
-    }
+    } finally { setLoading(false) }
   }, [])
 
-  const handleSelectAgent = useCallback((id: AgentId) => {
-    setActiveAgent(id); setError(null)
+  const handleOpenAgent = useCallback((agentId: AgentId, prompt: string) => {
+    handleHandoff(agentId, prompt)
+  }, [handleHandoff])
+
+  const handleAddDeal = useCallback((d: Omit<Deal, 'id' | 'createdAt'>) => {
+    setDeals(prev => [...prev, { ...d, id: Date.now().toString(), createdAt: Date.now() }])
+  }, [])
+
+  const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
+    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage } : d))
+  }, [])
+
+  const handleDeleteDeal = useCallback((id: string) => {
+    setDeals(prev => prev.filter(d => d.id !== id))
   }, [])
 
   const earnedGHS = useMemo(() => {
+    const fromDeals = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.valueGHS, 0)
+    if (fromDeals > 0) return fromDeals
     let max = 0
     for (const m of allChats.revenue ?? []) {
       for (const match of m.content.match(/GHS\s*([\d,]+)/gi) ?? []) {
@@ -1831,92 +2138,94 @@ export default function Page() {
       }
     }
     return max
-  }, [allChats.revenue])
+  }, [deals, allChats.revenue])
+
+  const notifToggle = <NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
 
   if (onboarded === null) return null
   if (!onboarded) return <OnboardingScreen onComplete={completeOnboarding} />
 
-  const AgentSubheader = (
-    <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
-      <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        {agent.id !== 'prospect' && (
-          <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />
-        )}
-        {messages.length > 0 && (
-          <button onClick={handleClear} style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, minHeight: 30 }}>
-            Clear
-          </button>
-        )}
-      </div>
-    </div>
-  )
-
   // ── Mobile ─────────────────────────────────────────────────────────────────
   if (isMobile) {
-    return (
+    const shell = (content: React.ReactNode) => (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
-        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={<NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />} />
+        {content}
+        <BottomNav activeView={activeView} allChats={allChats} onSelect={(v) => { setActiveView(v); setError(null) }} />
+      </div>
+    )
+
+    if (activeView === 'home') return shell(
+      <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
+    )
+
+    if (activeView === 'pipeline') return shell(
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} />
+    )
+
+    const AgentSubheader = (
+      <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {agent.id !== 'prospect' && <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />}
+          {messages.length > 0 && <button onClick={handleClear} style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, minHeight: 30 }}>Clear</button>}
+        </div>
+      </div>
+    )
+
+    return shell(
+      <>
+        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
         </div>
-        <BottomNav activeAgent={activeAgent} allChats={allChats} onSelect={handleSelectAgent} />
-      </div>
+      </>
     )
   }
 
   // ── Desktop ────────────────────────────────────────────────────────────────
-  return (
-    <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
-      <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
-          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tagett</div>
-          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Technologies</div>
+  const renderDesktopNavBtn = (v: ViewId, icon: string, label: string, description: string) => {
+    const isActive = v === activeView
+    return (
+      <button key={v} onClick={() => { setActiveView(v); setError(null) }} style={{ width: '100%', display: 'block', textAlign: 'left', padding: '9px 12px', borderRadius: 8, marginBottom: 2, background: isActive ? `${GOLD}18` : 'transparent', transition: 'background 0.15s' }}
+        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
+        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 15, color: isActive ? GOLD : MUTED }}>{icon}</span>
+          <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : TEXT }}>{label}</span>
         </div>
-        <nav style={{ padding: '12px 10px', flex: 1, overflowY: 'auto' }}>
-          {(() => {
-            const renderNavBtn = (id: AgentId) => {
-              const a = AGENTS[id], isActive = id === activeAgent
-              const msgCount = (allChats[id] ?? []).length
-              return (
-                <button key={id} onClick={() => handleSelectAgent(id)} style={{ width: '100%', display: 'block', textAlign: 'left', padding: '9px 12px', borderRadius: 8, marginBottom: 2, background: isActive ? `${GOLD}18` : 'transparent', transition: 'background 0.15s' }}
-                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
-                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : TEXT }}>{a.label}</span>
-                    {msgCount > 0 && <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED, background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10 }}>{Math.floor(msgCount / 2)}</span>}
-                  </div>
-                  <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{a.description}</div>
-                </button>
-              )
-            }
-            return (
-              <>
-                <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', padding: '2px 4px 6px' }}>Operators</div>
-                {MAIN_AGENT_IDS.map(renderNavBtn)}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 8px' }}>
-                  <div style={{ flex: 1, height: 1, background: BORDER }} />
-                  <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>The Council</span>
-                  <div style={{ flex: 1, height: 1, background: BORDER }} />
-                </div>
-                {COUNCIL_AGENT_IDS.map(renderNavBtn)}
-              </>
-            )
-          })()}
-        </nav>
-        <div style={{ borderTop: `1px solid ${BORDER}` }}>
-          <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
-            <ThemeToggle theme={theme} onToggle={toggleTheme} />
-          </div>
-          <GoalRing earned={earnedGHS} />
-        </div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY, paddingLeft: 23 }}>{description}</div>
+      </button>
+    )
+  }
 
-      </div>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+  const renderAgentNavBtn = (id: AgentId) => {
+    const a = AGENTS[id]; const isActive = id === activeView
+    const msgCount = (allChats[id] ?? []).length
+    return (
+      <button key={id} onClick={() => { setActiveView(id); setError(null) }} style={{ width: '100%', display: 'block', textAlign: 'left', padding: '9px 12px', borderRadius: 8, marginBottom: 2, background: isActive ? `${GOLD}18` : 'transparent', transition: 'background 0.15s' }}
+        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = `${GOLD}0A` }}
+        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: isActive ? 600 : 400, color: isActive ? GOLD : TEXT }}>{a.label}</span>
+          {msgCount > 0 && <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: isActive ? GOLD : MUTED, background: isActive ? `${GOLD}20` : SURFACE2, padding: '1px 6px', borderRadius: 10 }}>{Math.floor(msgCount / 2)}</span>}
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{a.description}</div>
+      </button>
+    )
+  }
+
+  const renderMainContent = () => {
+    if (activeView === 'home') return (
+      <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
+    )
+    if (activeView === 'pipeline') return (
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} />
+    )
+    return (
+      <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
           <div>
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT }}>{agent.label}</div>
@@ -1936,6 +2245,43 @@ export default function Page() {
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
         <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
+      </>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
+      <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tagett</div>
+          <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Technologies</div>
+        </div>
+        <nav style={{ padding: '12px 10px', flex: 1, overflowY: 'auto' }}>
+          {renderDesktopNavBtn('home', '⌂', 'Command Center', 'Goal, brief & overview')}
+          {renderDesktopNavBtn('pipeline', '◫', 'Deal Pipeline', 'Track deals by stage')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
+            <div style={{ flex: 1, height: 1, background: BORDER }} />
+            <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
+            <div style={{ flex: 1, height: 1, background: BORDER }} />
+          </div>
+          {MAIN_AGENT_IDS.map(renderAgentNavBtn)}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 8px' }}>
+            <div style={{ flex: 1, height: 1, background: BORDER }} />
+            <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>The Council</span>
+            <div style={{ flex: 1, height: 1, background: BORDER }} />
+          </div>
+          {COUNCIL_AGENT_IDS.map(renderAgentNavBtn)}
+        </nav>
+        <div style={{ borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {notifToggle}
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+          </div>
+          <GoalRing earned={earnedGHS} />
+        </div>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {renderMainContent()}
       </div>
     </div>
   )
