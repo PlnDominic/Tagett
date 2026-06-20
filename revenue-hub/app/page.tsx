@@ -1922,7 +1922,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
   const pipelineValue = deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0)
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' } as React.CSSProperties}>
+    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' } as React.CSSProperties}>
       <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 20, color: TEXT, letterSpacing: '-0.02em' }}>Command Center</div>
@@ -2117,7 +2117,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishTo
   const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(16px + env(safe-area-inset-top)) 12px 16px' } as React.CSSProperties}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Deal Pipeline</div>
@@ -2370,7 +2370,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   const labelStyle: React.CSSProperties = { fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4, display: 'block' }
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' } as React.CSSProperties}>
+    <div style={{ flex: 1, overflowY: 'auto', padding: 'calc(16px + env(safe-area-inset-top)) 12px 16px' } as React.CSSProperties}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 17, color: TEXT }}>Website Projects</div>
@@ -2662,7 +2662,7 @@ function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', paddingTop: 'env(safe-area-inset-top)' }}>
       <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Council Chamber</div>
         <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>All five advisors respond simultaneously. Bring a decision, idea, or dilemma.</div>
@@ -2758,7 +2758,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
         borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
-        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
+        paddingTop: 16, paddingBottom: 8, transition: 'border-color 0.15s',
       }}>
         <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? GOLD : MUTED, transition: 'color 0.15s' }}>{icon}</span>
         <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? GOLD : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{label}</span>
@@ -2775,7 +2775,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         width: 60, flexShrink: 0, minHeight: 56, display: 'flex', flexDirection: 'column',
         alignItems: 'center', justifyContent: 'center', gap: 2, background: 'none',
         borderTop: `2px solid ${isActive ? TEXT : 'transparent'}`,
-        paddingTop: 10, paddingBottom: 8, transition: 'border-color 0.15s',
+        paddingTop: 16, paddingBottom: 8, transition: 'border-color 0.15s',
       }}>
         <span style={{ fontSize: 17, lineHeight: 1, color: isActive ? TEXT : MUTED, transition: 'color 0.15s' }}>{a.icon}</span>
         <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, color: isActive ? TEXT : MUTED, letterSpacing: '0.02em', textAlign: 'center', lineHeight: 1.2 }}>{a.short}</span>
@@ -2787,7 +2787,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
   const divider = (key: string) => <div key={key} style={{ width: 1, background: BORDER, flexShrink: 0, margin: '8px 2px', alignSelf: 'stretch' }} />
 
   return (
-    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, paddingTop: 6, paddingBottom: 'env(safe-area-inset-bottom)', flexShrink: 0, overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
       <style>{`.tn::-webkit-scrollbar{display:none}`}</style>
       <div className="tn" style={{ display: 'flex', minWidth: 'max-content' }}>
         {renderViewBtn('home', '⌂', 'Home')}
