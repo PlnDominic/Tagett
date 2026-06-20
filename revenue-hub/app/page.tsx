@@ -203,7 +203,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -715,9 +715,9 @@ const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'o
 
 // ─── Mobile tab groupings ─────────────────────────────────────────────────────
 type MobileTab = 'home' | 'work' | 'agents' | 'more'
-const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients']
+const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
-const MORE_VIEWS: ViewId[]  = ['website', 'history']
+const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history']
 function getMobileTab(view: ViewId): MobileTab {
   if (WORK_VIEWS.includes(view))  return 'work'
   if (AGENT_VIEWS.includes(view)) return 'agents'
@@ -1276,6 +1276,70 @@ function loadDeals(): Deal[] {
 }
 function saveDeals(d: Deal[]): void {
   try { localStorage.setItem(DEALS_KEY, JSON.stringify(d)) } catch {}
+}
+
+// ─── Invoice types & storage ──────────────────────────────────────────────────
+
+interface InvoiceMilestone {
+  id: string
+  label: string
+  amountGHS: number
+  paidAt?: number
+  paymentMethod?: string
+  notes?: string
+}
+
+interface Invoice {
+  id: string
+  clientName: string
+  description: string
+  dealId?: string
+  totalGHS: number
+  milestones: InvoiceMilestone[]
+  status: 'draft' | 'sent' | 'partial' | 'paid'
+  createdAt: number
+  dueAt?: number
+  sentAt?: number
+  notes?: string
+}
+
+const INVOICES_KEY = 'tagett-invoices-v1'
+function loadInvoices(): Invoice[] {
+  if (typeof window === 'undefined') return []
+  try { const r = localStorage.getItem(INVOICES_KEY); return r ? JSON.parse(r) : [] } catch { return [] }
+}
+function saveInvoices(d: Invoice[]): void {
+  try { localStorage.setItem(INVOICES_KEY, JSON.stringify(d)) } catch {}
+}
+
+// ─── Social post types & storage ─────────────────────────────────────────────
+
+type SocialPlatform = 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok'
+const PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  twitter: 'X', linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok',
+}
+const PLATFORM_COLORS: Record<SocialPlatform, string> = {
+  twitter: '#000000', linkedin: '#0A66C2', facebook: '#1877F2', instagram: '#E1306C', tiktok: '#010101',
+}
+
+interface SocialPost {
+  id: string
+  content: string
+  platforms: SocialPlatform[]
+  status: 'draft' | 'scheduled' | 'posted'
+  scheduledFor?: number
+  postedAt?: number
+  createdAt: number
+  category?: string
+}
+
+const SOCIAL_POSTS_KEY = 'tagett-social-posts-v1'
+function loadSocialPosts(): SocialPost[] {
+  if (typeof window === 'undefined') return []
+  try { const r = localStorage.getItem(SOCIAL_POSTS_KEY); return r ? JSON.parse(r) : [] } catch { return [] }
+}
+function saveSocialPosts(d: SocialPost[]): void {
+  try { localStorage.setItem(SOCIAL_POSTS_KEY, JSON.stringify(d)) } catch {}
 }
 
 // ─── Social & WhatsApp helpers ────────────────────────────────────────────────
@@ -2708,6 +2772,553 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
       {waModal && (
         <WhatsAppModal deal={waModal} onClose={() => setWaModal(null)} onSent={handleWaSent} />
       )}
+    </div>
+  )
+}
+
+// ─── InvoicesView ────────────────────────────────────────────────────────────
+
+const INV_STATUS_LABEL: Record<Invoice['status'], string> = {
+  draft: 'Draft', sent: 'Sent', partial: 'Part Paid', paid: 'Paid',
+}
+const INV_STATUS_COLOR: Record<Invoice['status'], string> = {
+  draft: '#6B7280', sent: '#3B82F6', partial: '#F59E0B', paid: '#10B981',
+}
+
+function InvoicesView({ deals }: { deals: Deal[] }) {
+  const [invoices, setInvoices] = useState<Invoice[]>(loadInvoices)
+  const [tab, setTab] = useState<'all' | 'pending' | 'paid'>('all')
+  const [showForm, setShowForm] = useState(false)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [payModal, setPayModal] = useState<{ invoiceId: string; milestone: InvoiceMilestone } | null>(null)
+  const [payForm, setPayForm] = useState({ method: 'Momo', notes: '' })
+  const [form, setForm] = useState({ clientName: '', description: '', totalGHS: '', dealId: '', dueDate: '', notes: '' })
+
+  useEffect(() => { saveInvoices(invoices) }, [invoices])
+
+  const createInvoice = () => {
+    if (!form.clientName || !form.totalGHS) return
+    const total = parseInt(form.totalGHS, 10) || 0
+    const dep = Math.round(total * 0.5)
+    const inv: Invoice = {
+      id: Date.now().toString(),
+      clientName: form.clientName,
+      description: form.description,
+      dealId: form.dealId || undefined,
+      totalGHS: total,
+      status: 'draft',
+      createdAt: Date.now(),
+      dueAt: form.dueDate ? new Date(form.dueDate).getTime() : undefined,
+      notes: form.notes || undefined,
+      milestones: [
+        { id: '1', label: 'Deposit (50%)', amountGHS: dep },
+        { id: '2', label: 'Balance (50%)', amountGHS: total - dep },
+      ],
+    }
+    setInvoices(prev => [...prev, inv])
+    setForm({ clientName: '', description: '', totalGHS: '', dealId: '', dueDate: '', notes: '' })
+    setShowForm(false)
+    setExpandedId(inv.id)
+  }
+
+  const recordPayment = () => {
+    if (!payModal) return
+    const { invoiceId, milestone } = payModal
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id !== invoiceId) return inv
+      const milestones = inv.milestones.map(m =>
+        m.id === milestone.id ? { ...m, paidAt: Date.now(), paymentMethod: payForm.method, notes: payForm.notes || undefined } : m
+      )
+      const paidCount = milestones.filter(m => m.paidAt).length
+      const status: Invoice['status'] = paidCount === milestones.length ? 'paid' : paidCount > 0 ? 'partial' : inv.status
+      return { ...inv, milestones, status }
+    }))
+    setPayModal(null)
+    setPayForm({ method: 'Momo', notes: '' })
+  }
+
+  const unpayMilestone = (invoiceId: string, milestoneId: string) => {
+    setInvoices(prev => prev.map(inv => {
+      if (inv.id !== invoiceId) return inv
+      const milestones = inv.milestones.map(m => m.id === milestoneId ? { ...m, paidAt: undefined, paymentMethod: undefined, notes: undefined } : m)
+      const paidCount = milestones.filter(m => m.paidAt).length
+      const status: Invoice['status'] = paidCount === milestones.length ? 'paid' : paidCount > 0 ? 'partial' : 'sent'
+      return { ...inv, milestones, status }
+    }))
+  }
+
+  const markSent = (id: string) => {
+    setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, status: 'sent', sentAt: Date.now() } : inv))
+  }
+
+  const deleteInvoice = (id: string) => setInvoices(prev => prev.filter(inv => inv.id !== id))
+
+  const printInvoice = (inv: Invoice) => {
+    const html = `<!DOCTYPE html><html><head><title>Invoice — ${inv.clientName}</title>
+<style>body{font-family:Arial,sans-serif;padding:48px;max-width:700px;margin:0 auto;color:#111}
+h1{color:#E84040;font-size:28px;margin-bottom:4px}
+.company{color:#666;font-size:13px;margin-bottom:28px}
+.meta{margin-bottom:24px;font-size:14px;line-height:1.8}
+table{width:100%;border-collapse:collapse;margin:20px 0}
+th{background:#f5f5f5;padding:10px 12px;text-align:left;font-size:12px;text-transform:uppercase;letter-spacing:0.05em}
+td{padding:10px 12px;border-bottom:1px solid #eee;font-size:14px}
+.total-row td{font-weight:700;font-size:16px;border-top:2px solid #111;border-bottom:none}
+.paid{color:#10B981}.pending{color:#F59E0B}
+.footer{margin-top:32px;font-size:12px;color:#999}
+@media print{body{padding:24px}}</style></head><body>
+<h1>INVOICE</h1>
+<div class="company">Ecstasy Technologies · ecstasytechnologies.com · info@ecstasytechnologies.com</div>
+<div class="meta">
+<strong>Billed to:</strong> ${inv.clientName}<br>
+${inv.description ? `<strong>Project:</strong> ${inv.description}<br>` : ''}
+<strong>Date:</strong> ${new Date(inv.createdAt).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}<br>
+${inv.dueAt ? `<strong>Due:</strong> ${new Date(inv.dueAt).toLocaleDateString('en-GB',{day:'numeric',month:'long',year:'numeric'})}<br>` : ''}
+</div>
+<table>
+<tr><th>Milestone</th><th>Amount (GHS)</th><th>Status</th></tr>
+${inv.milestones.map(m=>`<tr><td>${m.label}</td><td>${m.amountGHS.toLocaleString()}</td>
+<td class="${m.paidAt?'paid':'pending'}">${m.paidAt?`✓ Paid ${new Date(m.paidAt).toLocaleDateString('en-GB')} · ${m.paymentMethod??''}`:m.notes??'Pending'}</td></tr>`).join('')}
+<tr class="total-row"><td>Total</td><td>${inv.totalGHS.toLocaleString()}</td><td></td></tr>
+</table>
+${inv.notes?`<p style="font-size:13px;color:#555">${inv.notes}</p>`:''}
+<div class="footer">Thank you for your business! · Payment via Mobile Money or Bank Transfer</div>
+</body></html>`
+    const w = window.open('', '_blank')
+    if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
+  }
+
+  const totalInvoiced = invoices.reduce((s, inv) => s + inv.totalGHS, 0)
+  const totalCollected = invoices.reduce((s, inv) =>
+    s + inv.milestones.filter(m => m.paidAt).reduce((ms, m) => ms + m.amountGHS, 0), 0)
+  const outstanding = totalInvoiced - totalCollected
+
+  const filtered = invoices.filter(inv =>
+    tab === 'pending' ? inv.status !== 'paid' : tab === 'paid' ? inv.status === 'paid' : true
+  )
+
+  const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Stats header */}
+      <div style={{ padding: '14px 16px 10px', flexShrink: 0, borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16, color: TEXT }}>Invoices</div>
+          <button onClick={() => setShowForm(v => !v)} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+            + Invoice
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 12 }}>
+          {[['Invoiced', totalInvoiced, TEXT], ['Collected', totalCollected, '#10B981'], ['Outstanding', outstanding, outstanding > 0 ? GOLD : MUTED]].map(([label, val, color]) => (
+            <div key={label as string} style={{ flex: 1, padding: '8px 10px', borderRadius: 10, background: SURFACE2, border: `1px solid ${BORDER}` }}>
+              <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
+              <div style={{ fontSize: 14, fontFamily: FONT_HEADING, fontWeight: 700, color: color as string, marginTop: 2 }}>GHS {(val as number).toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+
+        {showForm && (
+          <div style={{ marginTop: 12, padding: 14, borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}06`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <input value={form.clientName} onChange={e => setForm(p => ({ ...p, clientName: e.target.value }))} placeholder="Client name *" style={inputStyle} />
+            <input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} placeholder="Project description" style={inputStyle} />
+            <input value={form.totalGHS} onChange={e => setForm(p => ({ ...p, totalGHS: e.target.value }))} placeholder="Total value (GHS) *" type="number" style={inputStyle} />
+            <select value={form.dealId} onChange={e => setForm(p => ({ ...p, dealId: e.target.value }))} style={{ ...inputStyle }}>
+              <option value="">Link to deal (optional)</option>
+              {deals.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <input value={form.dueDate} onChange={e => setForm(p => ({ ...p, dueDate: e.target.value }))} type="date" placeholder="Due date" style={inputStyle} />
+            <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder="Notes / payment terms" rows={2} style={{ ...inputStyle, resize: 'none', lineHeight: 1.5 }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={createInvoice} style={{ flex: 1, padding: '9px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Create</button>
+              <button onClick={() => setShowForm(false)} style={{ padding: '9px 14px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        {(['all', 'pending', 'paid'] as const).map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{ flex: 1, height: 36, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? GOLD : MUTED, borderBottom: `2px solid ${tab === t ? GOLD : 'transparent'}`, background: 'none', border: 'none', borderBottomStyle: 'solid', borderBottomWidth: 2, borderBottomColor: tab === t ? GOLD : 'transparent', cursor: 'pointer', textTransform: 'capitalize' }}>
+            {t === 'all' ? 'All' : t === 'pending' ? 'Pending' : 'Paid'}
+          </button>
+        ))}
+      </div>
+
+      {/* Invoice list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: MUTED, fontFamily: FONT_BODY, fontSize: 14 }}>
+            No invoices yet — create one above
+          </div>
+        )}
+        {filtered.map(inv => {
+          const paidGHS = inv.milestones.filter(m => m.paidAt).reduce((s, m) => s + m.amountGHS, 0)
+          const isExpanded = expandedId === inv.id
+          const col = INV_STATUS_COLOR[inv.status]
+          return (
+            <div key={inv.id} style={{ marginBottom: 10, borderRadius: 12, border: `1px solid ${inv.status === 'paid' ? '#10B98140' : BORDER}`, background: inv.status === 'paid' ? '#10B98108' : SURFACE, overflow: 'hidden' }}>
+              {/* Invoice header */}
+              <div style={{ padding: '12px 14px', cursor: 'pointer', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }} onClick={() => setExpandedId(isExpanded ? null : inv.id)}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{inv.clientName}</span>
+                    <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: `${col}20`, color: col, fontFamily: FONT_HEADING, fontWeight: 600 }}>{INV_STATUS_LABEL[inv.status]}</span>
+                  </div>
+                  {inv.description && <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{inv.description}</div>}
+                  <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+                    <span style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT }}>GHS {inv.totalGHS.toLocaleString()}</span>
+                    {paidGHS > 0 && <span style={{ fontSize: 12, color: '#10B981', fontFamily: FONT_BODY }}>GHS {paidGHS.toLocaleString()} received</span>}
+                    {inv.totalGHS - paidGHS > 0 && inv.status !== 'draft' && <span style={{ fontSize: 12, color: GOLD, fontFamily: FONT_BODY }}>GHS {(inv.totalGHS - paidGHS).toLocaleString()} outstanding</span>}
+                  </div>
+                </div>
+                <span style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{isExpanded ? '▲' : '▼'}</span>
+              </div>
+
+              {/* Expanded detail */}
+              {isExpanded && (
+                <div style={{ borderTop: `1px solid ${BORDER}`, padding: '12px 14px', background: SURFACE2 }}>
+                  {/* Milestones */}
+                  <div style={{ marginBottom: 12 }}>
+                    {inv.milestones.map(m => (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, padding: '8px 10px', borderRadius: 8, background: SURFACE, border: `1px solid ${m.paidAt ? '#10B98130' : BORDER}` }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 500, color: TEXT }}>{m.label}</div>
+                          <div style={{ fontSize: 12, color: m.paidAt ? '#10B981' : MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>
+                            GHS {m.amountGHS.toLocaleString()}
+                            {m.paidAt && ` · Paid ${new Date(m.paidAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} via ${m.paymentMethod ?? ''}`}
+                            {m.notes && ` · ${m.notes}`}
+                          </div>
+                        </div>
+                        {m.paidAt
+                          ? <button onClick={() => unpayMilestone(inv.id, m.id)} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Undo</button>
+                          : <button onClick={() => { setPayModal({ invoiceId: inv.id, milestone: m }); setPayForm({ method: 'Momo', notes: '' }) }} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 6, border: 'none', background: '#10B981', color: '#fff', cursor: 'pointer', fontFamily: FONT_HEADING, fontWeight: 600 }}>Mark Paid</button>
+                        }
+                      </div>
+                    ))}
+                  </div>
+
+                  {inv.dueAt && (
+                    <div style={{ fontSize: 12, color: inv.dueAt < Date.now() && inv.status !== 'paid' ? '#e05c5c' : MUTED, fontFamily: FONT_BODY, marginBottom: 8 }}>
+                      Due: {new Date(inv.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      {inv.dueAt < Date.now() && inv.status !== 'paid' ? ' — Overdue' : ''}
+                    </div>
+                  )}
+
+                  {/* Actions */}
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {inv.status === 'draft' && <button onClick={() => markSent(inv.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer', fontFamily: FONT_HEADING }}>Mark Sent</button>}
+                    <button onClick={() => printInvoice(inv)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: 'pointer', fontFamily: FONT_HEADING }}>Print / PDF</button>
+                    <button onClick={() => deleteInvoice(inv.id)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 7, border: `1px solid #e05c5c40`, background: 'transparent', color: '#e05c5c', cursor: 'pointer', fontFamily: FONT_HEADING }}>Delete</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Record payment modal */}
+      {payModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+          <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', padding: '20px 20px 28px' }}>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, marginBottom: 4 }}>Record Payment</div>
+            <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY, marginBottom: 16 }}>
+              {payModal.milestone.label} · GHS {payModal.milestone.amountGHS.toLocaleString()}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              {['Momo', 'Bank', 'Cash', 'Other'].map(m => (
+                <button key={m} onClick={() => setPayForm(p => ({ ...p, method: m }))} style={{ flex: 1, padding: '8px 4px', borderRadius: 8, border: `1px solid ${payForm.method === m ? GOLD : BORDER}`, background: payForm.method === m ? `${GOLD}15` : 'transparent', color: payForm.method === m ? GOLD : TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: payForm.method === m ? 600 : 400, cursor: 'pointer' }}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <input value={payForm.notes} onChange={e => setPayForm(p => ({ ...p, notes: e.target.value }))} placeholder="Notes (optional)" style={{ ...inputStyle, marginBottom: 12 }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={recordPayment} style={{ flex: 1, padding: '10px', borderRadius: 8, background: '#10B981', color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, border: 'none', cursor: 'pointer' }}>Confirm Payment</button>
+              <button onClick={() => setPayModal(null)} style={{ padding: '10px 16px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── SocialCalendarView ───────────────────────────────────────────────────────
+
+const SOCIAL_CATEGORIES = [
+  { id: 'tip', label: 'Website Tip', prompt: 'Write 3 short social media posts (for X/Twitter, LinkedIn, and Instagram separately) with practical website tips for Ghanaian businesses — clinics, schools, hotels, shops. Label each post with the platform name. Make them punchy and shareable.' },
+  { id: 'pain-point', label: 'Pain Point', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) about the real cost of not having a professional website for a business in Ghana. Make them relatable and end with a soft CTA for Ecstasy Technologies. Label each post with the platform.' },
+  { id: 'deal-win', label: 'Client Win', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) celebrating a new website project completion for a Ghanaian business. Keep it professional, proud, and specific. Label each post with the platform.' },
+  { id: 'local', label: 'Ghana Market', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) in a conversational, Ghana-market tone about why local businesses need a strong digital presence in 2025. Reference real Ghanaian sectors. Label each post with the platform.' },
+  { id: 'portfolio', label: 'Portfolio', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) showcasing Ecstasy Technologies\' portfolio of websites for Ghanaian businesses. Talk about the variety: clinics, real estate, hotels, schools. Label each post with the platform.' },
+]
+
+const PLATFORM_ICONS: Record<SocialPlatform, string> = {
+  twitter: '𝕏', linkedin: 'in', facebook: 'f', instagram: '◎', tiktok: '♪',
+}
+
+function SocialCalendarView() {
+  const [posts, setPosts] = useState<SocialPost[]>(loadSocialPosts)
+  const [tab, setTab] = useState<'drafts' | 'scheduled' | 'posted'>('drafts')
+  const [generating, setGenerating] = useState(false)
+  const [category, setCategory] = useState('tip')
+  const [profiles, setProfiles] = useState<BufferProfile[]>([])
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editContent, setEditContent] = useState('')
+  const [postingId, setPostingId] = useState<string | null>(null)
+  const [newContent, setNewContent] = useState('')
+  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>(['twitter'])
+  const [showCompose, setShowCompose] = useState(false)
+
+  useEffect(() => { saveSocialPosts(posts) }, [posts])
+  useEffect(() => {
+    fetch('/api/social/buffer')
+      .then(r => r.ok ? r.json() : [])
+      .then(d => { if (Array.isArray(d)) setProfiles(d) })
+      .catch(() => {})
+  }, [])
+
+  const generate = async () => {
+    setGenerating(true)
+    try {
+      const cat = SOCIAL_CATEGORIES.find(c => c.id === category)!
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Ghana. Generate engaging social media content. Output exactly 3 posts, each labelled "X:", "LinkedIn:", or "Instagram:" on its own line, followed by the post text.',
+          messages: [{ role: 'user', content: cat.prompt }],
+        }),
+      })
+      const d = await res.json()
+      const text: string = d.text ?? ''
+      const platformMap: Record<string, SocialPlatform> = { 'x': 'twitter', 'twitter': 'twitter', 'linkedin': 'linkedin', 'instagram': 'instagram', 'facebook': 'facebook', 'tiktok': 'tiktok' }
+      const parsed: SocialPost[] = []
+      const lines = text.split('\n')
+      let current: { platform: SocialPlatform; lines: string[] } | null = null
+      for (const line of lines) {
+        const m = line.match(/^(X|Twitter|LinkedIn|Instagram|Facebook|TikTok):\s*/i)
+        if (m) {
+          if (current && current.lines.join('\n').trim()) {
+            parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
+          }
+          current = { platform: platformMap[m[1].toLowerCase()] ?? 'twitter', lines: [line.replace(m[0], '').trim()] }
+        } else if (current) {
+          current.lines.push(line)
+        }
+      }
+      if (current && current.lines.join('\n').trim()) {
+        parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
+      }
+      if (parsed.length === 0) {
+        parsed.push({ id: Date.now().toString(), content: text.trim(), platforms: ['twitter'], status: 'draft', createdAt: Date.now(), category })
+      }
+      setPosts(prev => [...parsed, ...prev])
+    } finally { setGenerating(false) }
+  }
+
+  const addManual = () => {
+    if (!newContent.trim()) return
+    setPosts(prev => [{ id: Date.now().toString(), content: newContent.trim(), platforms: selectedPlatforms, status: 'draft', createdAt: Date.now() }, ...prev])
+    setNewContent('')
+    setShowCompose(false)
+  }
+
+  const postNow = async (post: SocialPost) => {
+    setPostingId(post.id)
+    try {
+      if (profiles.length > 0) {
+        const res = await fetch('/api/social/buffer', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: post.content, profileIds: profiles.map(p => p.id), now: true }),
+        })
+        if (res.ok) {
+          setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'posted', postedAt: Date.now() } : p))
+        }
+      }
+    } finally { setPostingId(null) }
+  }
+
+  const queuePost = async (post: SocialPost) => {
+    setPostingId(post.id)
+    try {
+      if (profiles.length > 0) {
+        const res = await fetch('/api/social/buffer', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: post.content, profileIds: profiles.map(p => p.id), now: false }),
+        })
+        if (res.ok) {
+          setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'scheduled' } : p))
+        }
+      }
+    } finally { setPostingId(null) }
+  }
+
+  const copyPost = async (content: string) => {
+    try { await navigator.clipboard.writeText(content) } catch {}
+  }
+
+  const deletePost = (id: string) => setPosts(prev => prev.filter(p => p.id !== id))
+
+  const saveEdit = (id: string) => {
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, content: editContent } : p))
+    setEditingId(null)
+  }
+
+  const filtered = posts.filter(p =>
+    tab === 'drafts' ? p.status === 'draft' :
+    tab === 'scheduled' ? p.status === 'scheduled' :
+    p.status === 'posted'
+  )
+
+  const tweetUrl = (text: string) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text.slice(0, 280))}`
+  const liUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent('https://ecstasytechnologies.com')}`
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Header */}
+      <div style={{ padding: '14px 16px 12px', flexShrink: 0, borderBottom: `1px solid ${BORDER}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16, color: TEXT }}>Social Calendar</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setShowCompose(v => !v)} style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
+              + Write
+            </button>
+            {profiles.length > 0 && (
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, padding: '6px 10px', background: SURFACE2, borderRadius: 8, border: `1px solid ${BORDER}` }}>
+                Buffer: {profiles.map(p => p.service).join(' · ')}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Manual compose */}
+        {showCompose && (
+          <div style={{ marginBottom: 10, padding: 12, borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+            <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Write a post…" rows={4} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 8 }} />
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
+              {(['twitter', 'linkedin', 'facebook', 'instagram'] as SocialPlatform[]).map(p => (
+                <button key={p} onClick={() => setSelectedPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, border: `1px solid ${selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : BORDER}`, background: selectedPlatforms.includes(p) ? `${PLATFORM_COLORS[p]}18` : 'transparent', color: selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : MUTED, fontFamily: FONT_HEADING, fontWeight: 500, cursor: 'pointer' }}>
+                  {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={addManual} style={{ flex: 1, padding: '8px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Add to Drafts</button>
+              <button onClick={() => setShowCompose(false)} style={{ padding: '8px 12px', borderRadius: 8, background: 'transparent', color: MUTED, border: `1px solid ${BORDER}`, cursor: 'pointer', fontFamily: FONT_BODY, fontSize: 13 }}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* AI generate */}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <select value={category} onChange={e => setCategory(e.target.value)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }}>
+            {SOCIAL_CATEGORIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+          </select>
+          <button onClick={generate} disabled={generating} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: generating ? 'wait' : 'pointer', opacity: generating ? 0.7 : 1, whiteSpace: 'nowrap' }}>
+            {generating ? 'Generating…' : '✦ Generate 3'}
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display: 'flex', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        {(['drafts', 'scheduled', 'posted'] as const).map(t => {
+          const count = posts.filter(p => t === 'drafts' ? p.status === 'draft' : t === 'scheduled' ? p.status === 'scheduled' : p.status === 'posted').length
+          return (
+            <button key={t} onClick={() => setTab(t)} style={{ flex: 1, height: 36, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: tab === t ? 600 : 400, color: tab === t ? GOLD : MUTED, borderBottom: `2px solid ${tab === t ? GOLD : 'transparent'}`, background: 'none', border: 'none', borderBottomStyle: 'solid', borderBottomWidth: 2, borderBottomColor: tab === t ? GOLD : 'transparent', cursor: 'pointer' }}>
+              {t.charAt(0).toUpperCase() + t.slice(1)} {count > 0 ? `(${count})` : ''}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Posts list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+        {filtered.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: MUTED, fontFamily: FONT_BODY, fontSize: 14 }}>
+            {tab === 'drafts' ? 'Generate or write posts above' : tab === 'scheduled' ? 'No posts queued in Buffer yet' : 'No posts sent yet'}
+          </div>
+        )}
+        {filtered.map(post => {
+          const isPosting = postingId === post.id
+          const isEditing = editingId === post.id
+          return (
+            <div key={post.id} style={{ marginBottom: 10, padding: '12px 14px', borderRadius: 12, border: `1px solid ${post.status === 'posted' ? '#10B98130' : BORDER}`, background: SURFACE }}>
+              {/* Platform badges */}
+              {post.platforms.length > 0 && (
+                <div style={{ display: 'flex', gap: 5, marginBottom: 8, flexWrap: 'wrap' }}>
+                  {post.platforms.map(p => (
+                    <span key={p} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: `${PLATFORM_COLORS[p]}15`, color: PLATFORM_COLORS[p], fontFamily: FONT_HEADING, fontWeight: 600 }}>
+                      {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
+                    </span>
+                  ))}
+                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label}</span>}
+                </div>
+              )}
+
+              {/* Content */}
+              {isEditing ? (
+                <div style={{ marginBottom: 8 }}>
+                  <textarea value={editContent} onChange={e => setEditContent(e.target.value)} rows={5} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box' }} />
+                  <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
+                    <button onClick={() => saveEdit(post.id)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 7, border: 'none', background: GOLD, color: '#fff', cursor: 'pointer', fontFamily: FONT_HEADING, fontWeight: 600 }}>Save</button>
+                    <button onClick={() => setEditingId(null)} style={{ fontSize: 12, padding: '4px 10px', borderRadius: 7, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: 14, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
+                  {post.content}
+                </div>
+              )}
+
+              {/* Post timestamp */}
+              {post.postedAt && (
+                <div style={{ fontSize: 11, color: '#10B981', fontFamily: FONT_BODY, marginBottom: 6 }}>
+                  ✓ Posted {new Date(post.postedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+
+              {/* Actions */}
+              {!isEditing && (
+                <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                  {post.status === 'draft' && (
+                    <>
+                      {profiles.length > 0 && (
+                        <>
+                          <button onClick={() => postNow(post)} disabled={isPosting} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', cursor: isPosting ? 'wait' : 'pointer', fontFamily: FONT_HEADING, fontWeight: 600, opacity: isPosting ? 0.6 : 1 }}>
+                            {isPosting ? '…' : '↑ Post Now'}
+                          </button>
+                          <button onClick={() => queuePost(post)} disabled={isPosting} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: isPosting ? 'wait' : 'pointer', fontFamily: FONT_HEADING, opacity: isPosting ? 0.6 : 1 }}>
+                            📅 Queue
+                          </button>
+                        </>
+                      )}
+                      {post.platforms.includes('twitter') && (
+                        <a href={tweetUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid #00000030`, background: '#00000008', color: '#000', fontFamily: FONT_HEADING, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          𝕏 Tweet
+                        </a>
+                      )}
+                      {post.platforms.includes('linkedin') && (
+                        <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          in Post
+                        </a>
+                      )}
+                    </>
+                  )}
+                  <button onClick={() => copyPost(post.content)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Copy</button>
+                  {!isEditing && post.status !== 'posted' && <button onClick={() => { setEditingId(post.id); setEditContent(post.content) }} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Edit</button>}
+                  <button onClick={() => deletePost(post.id)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid #e05c5c30`, background: 'transparent', color: '#e05c5c', cursor: 'pointer', fontFamily: FONT_BODY }}>✕</button>
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -4166,7 +4777,7 @@ export default function Page() {
       if (tab === 'home') { setActiveView('home'); setError(null); return }
       if (tab === 'work'   && !WORK_VIEWS.includes(activeView))  { setActiveView('pipeline'); setError(null); return }
       if (tab === 'agents' && !AGENT_VIEWS.includes(activeView)) { setActiveView('council');  setError(null); return }
-      if (tab === 'more'   && !MORE_VIEWS.includes(activeView))  { setActiveView('website');  setError(null); return }
+      if (tab === 'more'   && !MORE_VIEWS.includes(activeView))  { setActiveView('social');   setError(null); return }
       setError(null)
     }
 
@@ -4205,12 +4816,13 @@ export default function Page() {
       <>
         {viewHeader('Work')}
         <SubTabs
-          items={[{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }]}
+          items={[{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }, { id: 'invoices', label: 'Invoices' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
         {activeView === 'pipeline' && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
         {activeView === 'clients'  && <ClientsView onOpenAgent={handleOpenAgent} />}
+        {activeView === 'invoices' && <InvoicesView deals={deals} />}
       </>
     )
 
@@ -4219,12 +4831,13 @@ export default function Page() {
       <>
         {viewHeader('More')}
         <SubTabs
-          items={[{ id: 'website', label: 'Website Projects' }, { id: 'history', label: 'Run History' }]}
+          items={[{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'history', label: 'History' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'website' && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />}
-        {activeView === 'history' && <AgentRunHistory />}
+        {activeView === 'social'   && <SocialCalendarView />}
+        {activeView === 'website'  && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />}
+        {activeView === 'history'  && <AgentRunHistory />}
       </>
     )
 
@@ -4333,9 +4946,11 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
-    if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
-    if (activeView === 'history') return <AgentRunHistory />
-    if (activeView === 'clients') return <ClientsView onOpenAgent={handleOpenAgent} />
+    if (activeView === 'council')   return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+    if (activeView === 'history')   return <AgentRunHistory />
+    if (activeView === 'clients')   return <ClientsView onOpenAgent={handleOpenAgent} />
+    if (activeView === 'invoices')  return <InvoicesView deals={deals} />
+    if (activeView === 'social')    return <SocialCalendarView />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -4389,6 +5004,8 @@ export default function Page() {
           {renderDesktopNavBtn('council', '⊙', 'Council Chamber', 'All 5 advisors respond together')}
           {renderDesktopNavBtn('history', '◷', 'Run History', 'Browse every autonomous agent run')}
           {renderDesktopNavBtn('clients', '👥', 'Clients', 'Contact database')}
+          {renderDesktopNavBtn('invoices', '◎', 'Invoices', 'Billing & payment tracking')}
+          {renderDesktopNavBtn('social', '⌖', 'Social Calendar', 'Schedule & publish content')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
             <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
