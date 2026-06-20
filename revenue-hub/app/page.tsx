@@ -81,7 +81,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -170,15 +170,20 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
     short: 'Content',
     description: 'X posts & client proposals',
     briefingLabel: "Today's Content Pack",
-    dailyPrompt: `Generate today's content package for Ecstasy Technologies (ecstasytechnologies.com). All content must be based on real projects we have built — use the portfolio at ecstasytechnologies.com/projects as your source. Deliver:
+    dailyPrompt: `Generate today's content package for Ecstasy Technologies (ecstasytechnologies.com). Mix project proof with generic value content. Deliver:
 
-1. TWO PROJECT SHOWCASE POSTS (X/Twitter, under 280 characters each)
-   — Pick two real completed projects (e.g. Lavimac Royal Hotel, Nhyiraba Hotel, Clems Akinaabi, Solani Construction, etc.)
-   — Frame as: what we built + who it's for + proof it's real
+1. ONE PROJECT SHOWCASE POST (X/Twitter, under 280 characters)
+   — Pick a real completed project (e.g. Lavimac Royal Hotel, Nhyiraba HMS, Solani Construction, Royal Ecclesia Church, etc.)
+   — Frame as: what we built + who it's for + what changed for them
    — End with ecstasytechnologies.com
-   — Note what screenshot to attach (e.g. "Attach: homepage screenshot of lavimachotel.com")
+   — Specify what screenshot to attach
 
-2. ONE WHATSAPP PROSPECT MESSAGE
+2. ONE GENERIC VALUE POST (X/Twitter, under 280 characters)
+   — Educational, opinion, or insight about running a business in Ghana
+   — e.g. "3 things every Ghanaian hotel loses by not having an online booking system" or an industry observation
+   — No project mention needed — just value
+
+3. ONE WHATSAPP PROSPECT MESSAGE
    — Reference a specific project as social proof
    — Confident, brief, one clear CTA
 
@@ -190,13 +195,13 @@ Keep everything on-brand: premium, confident, no filler phrases. Tagline: "Build
 2. Client proposals and pitches — formal business proposals for Ghanaian clients. Include: executive summary, scope of work, deliverables, timeline, pricing in GHS, and terms. For WhatsApp messages: conversational, brief, one clear CTA that references a similar real project as proof.
 
 Services offered:
-- Web design & development: GHS 5,000–18,000
+- Web design & development: GHS 3,500–4,000
 - Web applications: GHS 8,000–25,000
 - Mobile apps: GHS 10,000–30,000
 - Business software: GHS 15,000–40,000
 - GIS solutions: GHS 3,000–10,000
 
-CONTENT RULE: Never write generic "did you know you need a website?" content. Every post must be rooted in a specific project we actually built — name the client type, describe what was built, and tell what screenshot to post as proof.
+CONTENT MIX RULE: Aim for roughly half project showcase, half generic value content. Project posts: name the real client, describe what was built, specify what screenshot to post as proof. Generic posts: educational tips, Ghanaian business observations, bold opinions about tech in Africa, or "unpopular opinions" that make people stop scrolling — no project mention needed. Never write hollow filler like "every business needs a website."
 
 Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.
 
@@ -231,7 +236,7 @@ Make it professional enough to forward directly to a client. All amounts in GHS.
 4. Flag risks and assumptions
 
 Service pricing ranges (always in GHS):
-- Web design & development: GHS 5,000–18,000 (complexity-dependent)
+- Web design & development: GHS 3,500–4,000
 - Web applications: GHS 8,000–25,000
 - Mobile apps (iOS/Android): GHS 10,000–30,000
 - Business software & automation: GHS 15,000–40,000
@@ -269,7 +274,7 @@ When given revenue data, you:
 5. Project the month-end total based on current pace
 
 Service pricing context:
-- Web design & development: GHS 5,000–18,000
+- Web design & development: GHS 3,500–4,000
 - Web applications: GHS 8,000–25,000
 - Mobile apps: GHS 10,000–30,000
 - Business software: GHS 15,000–40,000
@@ -297,32 +302,29 @@ COUNCIL ACCOUNTABILITY — After your response, always include a "— Council Ch
     short: 'Viral',
     description: 'Go viral on X, LinkedIn, TikTok & Instagram',
     briefingLabel: "Today's Viral Strategy",
-    dailyPrompt: `Give me today's complete viral content strategy for Ecstasy Technologies (ecstasytechnologies.com). Every piece of content must be built around a REAL project from our portfolio — use ecstasytechnologies.com/projects. Pick a specific project and show proof through screenshots.
+    dailyPrompt: `Give me today's complete viral content strategy for Ecstasy Technologies (ecstasytechnologies.com). Mix project proof posts with generic viral content that builds an audience even without showing specific work.
 
 Deliver:
 
-1. VIRAL X THREAD (6 tweets) — Project reveal format
-   — Tweet 1: "We just built [X] for a [client type] in Ghana 🇬🇭" — hook with the project name
-   — Tweets 2-4: walk through what was built (features, tech, problem it solved)
-   — Tweet 5: "Screenshot below 👇" — tell me which screenshot to attach
+1. VIRAL X THREAD (6 tweets) — Project reveal
+   — Tweet 1: "We just built [X] for a [client type] in Ghana 🇬🇭" — hook with real project name
+   — Tweets 2-4: walk through what was built, what it solved, one surprising detail
+   — Tweet 5: "Screenshot below 👇" — specify which screenshot to attach
    — Tweet 6: CTA → ecstasytechnologies.com
 
-2. INSTAGRAM / TIKTOK REELS SCRIPT (60 seconds) — Screen recording walkthrough
-   — 0-3s: "We built this for a [hotel/school/church/construction company] in Ghana"
-   — Show the actual product (specify which screens to record)
-   — End: "Link in bio → ecstasytechnologies.com"
+2. GENERIC VIRAL POST (X or LinkedIn) — No project needed
+   — Bold opinion, hot take, or insight about tech/business in Ghana/Africa
+   — e.g. "Unpopular opinion: most Ghanaian businesses don't need a GHS 20,000 app. They need a GHS 4,000 website and WhatsApp integration."
+   — Something that makes people argue in the comments
 
-3. LINKEDIN POST — Founder case study
-   — Tell the real story: what the client needed, what we built, what changed for them
-   — Use the real project name and client type
-   — End with what a similar business should do
+3. INSTAGRAM / TIKTOK REELS SCRIPT (60 seconds)
+   — Alternate between: (a) screen recording walkthrough of a real project, OR (b) talking head "here's what I learned building software in Ghana"
+   — Specify which format today and what to show/say
 
-Pick the specific project for each format. Specify exactly which screenshots or screen recordings to capture.
-
-Write everything as Dominic Agyapong. Make it immediately postable.`,
+Write everything as Dominic Agyapong. Immediately postable.`,
     systemPrompt: `You are ViralBot, a viral social media strategist for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You help Dominic Agyapong build a massive following that converts to inbound software clients — by showcasing REAL completed projects with screenshots as social proof.
 
-THE CORE RULE: Every piece of content must be anchored to a real project from the Ecstasy Technologies portfolio. Generic "get a website" content is banned. Real project names, real client types, real screenshots. Proof is the product.
+CONTENT MIX: Roughly half of all content should be project showcases — real project names, real client types, specific screenshots as proof. The other half should be generic viral content: bold opinions, industry observations, Ghanaian business insights, "unpopular takes" that spark debate. Both types build the audience; project posts convert them into clients.
 
 REAL PROJECTS TO DRAW FROM (ecstasytechnologies.com/projects):
 - Lavimac Royal Hotel Website (hotel, Website)
@@ -1741,7 +1743,12 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
 
       {/* Council quick-access */}
       <div style={{ padding: '12px 16px 24px' }}>
-        <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>The Council</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase' }}>The Council</div>
+          <button onClick={() => onNavigate('council')} style={{ fontSize: 10, padding: '3px 10px', borderRadius: 10, border: `1px solid ${GOLD}50`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', letterSpacing: '0.04em' }}>
+            ⊙ Open Chamber
+          </button>
+        </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {COUNCIL_AGENT_IDS.map(id => {
             const a = AGENTS[id]
@@ -2193,6 +2200,125 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
   )
 }
 
+// ─── CouncilChamber ──────────────────────────────────────────────────────────
+
+function CouncilChamber() {
+  const [input, setInput] = useState('')
+  const [topic, setTopic] = useState('')
+  const [responses, setResponses] = useState<Partial<Record<AgentId, string>>>({})
+  const [loading, setLoading] = useState<Partial<Record<AgentId, boolean>>>({})
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  const anyLoading = Object.values(loading).some(Boolean)
+
+  const convene = async () => {
+    const q = input.trim()
+    if (!q || anyLoading) return
+    setTopic(q)
+    setInput('')
+    setResponses({})
+    const init: Partial<Record<AgentId, boolean>> = {}
+    COUNCIL_AGENT_IDS.forEach(id => { init[id] = true })
+    setLoading(init)
+    await Promise.allSettled(
+      COUNCIL_AGENT_IDS.map(async (agentId) => {
+        try {
+          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }])
+          setResponses(prev => ({ ...prev, [agentId]: text }))
+        } catch (err) {
+          setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
+        } finally {
+          setLoading(prev => ({ ...prev, [agentId]: false }))
+        }
+      })
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Council Chamber</div>
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>All five advisors respond simultaneously. Bring a decision, idea, or dilemma.</div>
+      </div>
+
+      {topic && (
+        <div style={{ padding: '8px 16px', background: `${GOLD}08`, borderBottom: `1px solid ${GOLD}20`, flexShrink: 0 }}>
+          <div style={{ fontSize: 9, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 2 }}>Topic</div>
+          <div style={{ fontSize: 13, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.5 }}>{topic}</div>
+        </div>
+      )}
+
+      <div style={{ flex: 1, overflowY: 'auto', padding: 12 } as React.CSSProperties}>
+        {!topic ? (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 10, opacity: 0.45 }}>
+            <div style={{ fontSize: 36, lineHeight: 1 }}>⊙</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: MUTED }}>The Council awaits</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, textAlign: 'center', maxWidth: 240, lineHeight: 1.5 }}>
+              Type a question or decision below. All five advisors will respond at once.
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
+            {COUNCIL_AGENT_IDS.map(agentId => {
+              const a = AGENTS[agentId]
+              const response = responses[agentId]
+              const isLoading = loading[agentId]
+              const done = !!response && !isLoading
+              return (
+                <div key={agentId} style={{
+                  padding: '12px 14px', borderRadius: 12,
+                  border: `1px solid ${done ? BORDER : `${BORDER}80`}`,
+                  background: done ? SURFACE2 : `${SURFACE2}60`,
+                  display: 'flex', flexDirection: 'column', gap: 8,
+                  transition: 'all 0.2s',
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 17, lineHeight: 1, color: done ? TEXT : MUTED }}>{a.icon}</span>
+                    <span style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 11, color: done ? TEXT : MUTED, letterSpacing: '0.02em' }}>{a.short ?? a.label.replace(/^\d+\s*/, '')}</span>
+                    {isLoading && <ThinkingDots />}
+                    {done && <span style={{ marginLeft: 'auto', fontSize: 9, padding: '2px 6px', borderRadius: 6, background: `${GOLD}15`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.06em' }}>SPOKE</span>}
+                  </div>
+                  {isLoading && !response && (
+                    <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.6 }}>Deliberating…</div>
+                  )}
+                  {response && (
+                    <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{response}</div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <div style={{ padding: '10px 12px 12px', borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '8px 8px 8px 14px' }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); convene() } }}
+            placeholder="Bring a decision to The Council… (Enter to convene)"
+            rows={1}
+            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: TEXT, fontSize: 15, resize: 'none', lineHeight: 1.5, maxHeight: 100, overflowY: 'auto', fontFamily: FONT_BODY }}
+            onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 100) + 'px' }}
+          />
+          <button onClick={convene} disabled={!input.trim() || anyLoading} style={{
+            padding: '8px 14px', borderRadius: 8,
+            background: input.trim() && !anyLoading ? GOLD : SURFACE2,
+            color: input.trim() && !anyLoading ? BG : MUTED,
+            fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13,
+            border: 'none', cursor: input.trim() && !anyLoading ? 'pointer' : 'not-allowed',
+            transition: 'all 0.15s', flexShrink: 0,
+          }}>
+            {anyLoading ? '…' : 'Convene'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── BottomNav ────────────────────────────────────────────────────────────────
 
 function BottomNav({ activeView, allChats, onSelect }: {
@@ -2240,6 +2366,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {renderViewBtn('home', '⌂', 'Home')}
         {renderViewBtn('pipeline', '◫', 'Deals')}
         {renderViewBtn('website', '↑', 'Website')}
+        {renderViewBtn('council', '⊙', 'Council')}
         {divider('d1')}
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
@@ -2501,6 +2628,8 @@ export default function Page() {
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
 
+    if (activeView === 'council') return shell(<CouncilChamber />)
+
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
@@ -2566,6 +2695,7 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
+    if (activeView === 'council') return <CouncilChamber />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -2602,6 +2732,7 @@ export default function Page() {
           {renderDesktopNavBtn('home', '⌂', 'Command Center', 'Goal, brief & overview')}
           {renderDesktopNavBtn('pipeline', '◫', 'Deal Pipeline', 'Track deals by stage')}
           {renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
+          {renderDesktopNavBtn('council', '⊙', 'Council Chamber', 'All 5 advisors respond together')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
             <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
