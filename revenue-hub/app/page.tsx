@@ -3960,7 +3960,9 @@ export default function Page() {
 
     const shell = (content: React.ReactNode) => (
       <div style={{ display: 'flex', flexDirection: 'column', height: '100svh', background: BG, overflow: 'hidden' }}>
-        {content}
+        <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {content}
+        </div>
         <BottomNav activeView={activeView} onSelect={handleTabSelect} />
       </div>
     )
