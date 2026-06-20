@@ -131,7 +131,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -2963,6 +2963,145 @@ function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; work
   )
 }
 
+// ─── AgentRunHistory ──────────────────────────────────────────────────────────
+
+interface AgentRun {
+  id: string
+  run_at: string
+  industry: string | null
+  city: string | null
+  social_results: string | null
+  prospect_results: string | null
+  pitch_drafts: string | null
+  pipeline_summary: string | null
+}
+
+function RunCard({ run }: { run: AgentRun }) {
+  const [open, setOpen] = useState<string | null>(null)
+
+  const dt = new Date(run.run_at)
+  const dateStr = dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+  const timeStr = dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+
+  const sections: Array<{ key: string; icon: string; label: string; content: string | null }> = [
+    { key: 'social', icon: '⌖', label: 'SocialScout — Social Leads', content: run.social_results },
+    { key: 'prospect', icon: '◎', label: 'ProspectBot — Business Leads', content: run.prospect_results },
+    { key: 'pitches', icon: '✦', label: 'ContentBot — Pitch Drafts', content: run.pitch_drafts },
+    { key: 'pipeline', icon: '⊙', label: 'RevenueBot — Pipeline Status', content: run.pipeline_summary },
+  ]
+
+  const filledCount = sections.filter(s => s.content?.trim()).length
+
+  return (
+    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: 'hidden', marginBottom: 10 }}>
+      <div
+        style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: SURFACE }}
+        onClick={() => setOpen(open === 'all' ? null : 'all')}
+      >
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{dateStr} · {timeStr}</span>
+            {run.industry && <span style={{ fontSize: 10, fontFamily: FONT_HEADING, color: GOLD, background: `${GOLD}18`, padding: '2px 7px', borderRadius: 10, fontWeight: 600 }}>{run.industry}</span>}
+            {run.city && <span style={{ fontSize: 10, fontFamily: FONT_HEADING, color: MUTED, background: SURFACE2, padding: '2px 7px', borderRadius: 10 }}>{run.city}</span>}
+          </div>
+          <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 3 }}>{filledCount}/4 agents reported</div>
+        </div>
+        <span style={{ fontSize: 14, color: MUTED, transform: open === 'all' ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>▾</span>
+      </div>
+
+      {open === 'all' && (
+        <div style={{ borderTop: `1px solid ${BORDER}` }}>
+          {sections.map(s => (
+            <div key={s.key} style={{ borderBottom: `1px solid ${BORDER}` }}>
+              <button
+                onClick={() => setOpen(open === s.key ? 'all' : s.key)}
+                style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'none', border: 'none', cursor: s.content ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 8 }}
+              >
+                <span style={{ fontSize: 13, color: GOLD }}>{s.icon}</span>
+                <span style={{ fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 600, color: s.content ? TEXT : MUTED, letterSpacing: '0.04em', flex: 1 }}>{s.label}</span>
+                {!s.content && <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>no data</span>}
+                {s.content && <span style={{ fontSize: 12, color: MUTED }}>▾</span>}
+              </button>
+              {open === s.key && s.content && (
+                <div style={{ padding: '0 14px 14px', background: SURFACE2 }}>
+                  <pre style={{ margin: 0, fontFamily: FONT_BODY, fontSize: 12, color: TEXT, whiteSpace: 'pre-wrap', lineHeight: 1.65, wordBreak: 'break-word' }}>{s.content}</pre>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AgentRunHistory() {
+  const [runs, setRuns] = useState<AgentRun[]>([])
+  const [total, setTotal] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [offset, setOffset] = useState(0)
+  const limit = 10
+
+  const load = async (off: number) => {
+    setLoading(true)
+    try {
+      const res = await fetch(`/api/agents/history?limit=${limit}&offset=${off}`)
+      const data = await res.json()
+      setRuns(off === 0 ? data.runs : prev => [...prev, ...data.runs])
+      setTotal(data.total)
+    } catch { /* non-fatal */ }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { load(0) }, [])
+
+  const hasMore = runs.length < total
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
+      <div style={{ maxWidth: 740, margin: '0 auto' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, letterSpacing: '0.04em' }}>Agent Run History</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
+              {total > 0 ? `${total} autonomous run${total !== 1 ? 's' : ''} saved` : 'No runs yet — the cron fires every 3 hours'}
+            </div>
+          </div>
+          <button onClick={() => { setOffset(0); load(0) }} style={{ fontSize: 11, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, background: 'none', cursor: 'pointer' }}>
+            Refresh
+          </button>
+        </div>
+
+        {loading && runs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>
+            <ThinkingDots />
+          </div>
+        )}
+
+        {!loading && runs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '64px 0', color: MUTED, fontFamily: FONT_BODY }}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>🤖</div>
+            <div style={{ fontSize: 14, marginBottom: 6 }}>No runs recorded yet</div>
+            <div style={{ fontSize: 12 }}>The agents run every 3 hours automatically. Check back soon.</div>
+          </div>
+        )}
+
+        {runs.map(run => <RunCard key={run.id} run={run} />)}
+
+        {hasMore && (
+          <button
+            onClick={() => { const next = offset + limit; setOffset(next); load(next) }}
+            disabled={loading}
+            style={{ width: '100%', padding: '10px 0', marginTop: 4, background: 'none', border: `1px solid ${BORDER}`, borderRadius: 8, color: loading ? MUTED : TEXT, fontFamily: FONT_HEADING, fontSize: 12, cursor: loading ? 'default' : 'pointer' }}
+          >
+            {loading ? 'Loading…' : `Load more (${total - runs.length} remaining)`}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── BottomNav ────────────────────────────────────────────────────────────────
 
 function BottomNav({ activeView, allChats, onSelect }: {
@@ -3011,6 +3150,7 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {renderViewBtn('pipeline', '◫', 'Deals')}
         {renderViewBtn('website', '↑', 'Website')}
         {renderViewBtn('council', '⊙', 'Council')}
+        {renderViewBtn('history', '◷', 'History')}
         {divider('d1')}
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
@@ -3463,6 +3603,8 @@ export default function Page() {
 
     if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />)
 
+    if (activeView === 'history') return shell(<AgentRunHistory />)
+
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
@@ -3532,6 +3674,7 @@ export default function Page() {
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
     if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+    if (activeView === 'history') return <AgentRunHistory />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -3582,6 +3725,7 @@ export default function Page() {
           {renderDesktopNavBtn('pipeline', '◫', 'Deal Pipeline', 'Track deals by stage')}
           {renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
           {renderDesktopNavBtn('council', '⊙', 'Council Chamber', 'All 5 advisors respond together')}
+          {renderDesktopNavBtn('history', '◷', 'Run History', 'Browse every autonomous agent run')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
             <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>Operators</span>
