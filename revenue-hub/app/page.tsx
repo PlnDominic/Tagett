@@ -1922,7 +1922,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
   const pipelineValue = deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0)
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 'env(safe-area-inset-top)' } as React.CSSProperties}>
+    <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 'max(48px, env(safe-area-inset-top))' } as React.CSSProperties}>
       <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
         <div>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 20, color: TEXT, letterSpacing: '-0.02em' }}>Command Center</div>
