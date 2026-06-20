@@ -16,6 +16,45 @@ const FONT_BODY    = "var(--font-inter), 'Inter', sans-serif"
 
 const MONTHLY_GOAL_GHS = 12_000
 
+// ─── SVG Icons ───────────────────────────────────────────────────────────────
+
+const IconBell = ({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2a5 5 0 00-5 5v2.5L2 11h12l-1-1.5V7a5 5 0 00-5-5z" />
+    <path d="M6.5 13a1.5 1.5 0 003 0" />
+  </svg>
+)
+
+const IconBellOff = ({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 2a5 5 0 00-5 5v2.5L2 11h8" />
+    <path d="M13.5 11H14l-1-1.5V7a5 5 0 00-.8-2.7" />
+    <path d="M6.5 13a1.5 1.5 0 003 0" />
+    <line x1="2" y1="2" x2="14" y2="14" />
+  </svg>
+)
+
+const IconPlay = ({ size = 11, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 11 11" fill={color}>
+    <polygon points="2,1 10,5.5 2,10" />
+  </svg>
+)
+
+const IconWarning = ({ size = 12, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 12 12" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 1.5L11 10.5H1L6 1.5z" />
+    <line x1="6" y1="5" x2="6" y2="7.5" />
+    <circle cx="6" cy="9" r="0.6" fill={color} stroke="none" />
+  </svg>
+)
+
+const IconBellSmall = ({ size = 11, color = 'currentColor' }: { size?: number; color?: string }) => (
+  <svg width={size} height={size} viewBox="0 0 11 11" fill="none" stroke={color} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5.5 1.5a3.5 3.5 0 00-3.5 3.5V7L1 8.5h9L9 7V5a3.5 3.5 0 00-3.5-3.5z" />
+    <path d="M4.5 9a1 1 0 002 0" />
+  </svg>
+)
+
 // ─── Prospect intake data ─────────────────────────────────────────────────────
 
 const INDUSTRIES = [
@@ -1365,7 +1404,7 @@ function NotifToggle({ status, onSubscribe, onUnsubscribe, onTest }: {
       onPointerUp={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
       onPointerLeave={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
     >
-      {isOn ? '🔔' : '🔕'}
+      {isOn ? <IconBell color={GOLD} /> : <IconBellOff />}
     </IconButton>
   )
 }
@@ -1995,7 +2034,7 @@ function BriefingButton({ label, onClick, loading, size = 'large' }: {
           whiteSpace: 'nowrap',
         }}
       >
-        ▶ Run
+        <IconPlay size={9} color={loading ? MUTED : GOLD} /> Run
       </button>
     )
   }
@@ -2015,7 +2054,7 @@ function BriefingButton({ label, onClick, loading, size = 'large' }: {
         cursor: loading ? 'not-allowed' : 'pointer',
       }}
     >
-      {loading ? <><ThinkingDots /> Generating…</> : <>▶ {label}</>}
+      {loading ? <><ThinkingDots /> Generating…</> : <><IconPlay color={BG} /> {label}</>}
     </button>
   )
 }
@@ -2198,7 +2237,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
             fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13,
             border: 'none', cursor: briefLoading ? 'not-allowed' : 'pointer', flexShrink: 0,
           }}>
-            {briefLoading ? <ThinkingDots /> : '▶ Run'}
+            {briefLoading ? <ThinkingDots /> : <><IconPlay color={BG} size={10} /> Run</>}
           </button>
         </div>
         {briefResult && (
@@ -2303,7 +2342,10 @@ function DealCard({ deal, onMove, onDelete, onOpenAgent, onPublishToWebsite, onS
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7 }}>
         {followUpLabel && (
           <span style={{ fontSize: 10, fontFamily: FONT_BODY, color: followUpColor, fontWeight: isOverdue ? 700 : 400 }}>
-            {isOverdue ? '⚠ ' : '🔔 '}{followUpLabel}
+            {isOverdue
+              ? <><IconWarning size={11} color={followUpColor} /> {followUpLabel}</>
+              : <><IconBellSmall color={followUpColor} /> {followUpLabel}</>
+            }
           </span>
         )}
         <label style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', marginLeft: followUpLabel ? 'auto' : 0 }}>
@@ -3637,7 +3679,10 @@ export default function Page() {
     fetch('/api/conversations')
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data && typeof data === 'object') {
+        // Only overwrite localStorage when Supabase actually has conversations.
+        // An empty {} means Supabase isn't set up or the table is empty — keep
+        // whatever localStorage already loaded so messages survive refresh.
+        if (data && typeof data === 'object' && Object.keys(data).length > 0) {
           setAllChats(data as AllChats)
           saveAllChats(data as AllChats)
         }
