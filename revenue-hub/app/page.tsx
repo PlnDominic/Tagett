@@ -3859,22 +3859,40 @@ export default function Page() {
       </div>
     )
 
+    const viewHeader = (title: string) => (
+      <div style={{ paddingTop: 'env(safe-area-inset-top)', background: SURFACE, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ height: 48, padding: '0 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 11, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Tagett</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{title}</div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {notifToggle}
+            <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <GoalRing earned={earnedGHS} mini />
+          </div>
+        </div>
+      </div>
+    )
+
     if (activeView === 'home') return shell(
       <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
     )
 
     if (activeView === 'pipeline') return shell(
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
+      <>{viewHeader('Deal Pipeline')}<DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} /></>
     )
 
     if (activeView === 'website') return shell(
-      <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
+      <>{viewHeader('Website Projects')}<WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} /></>
     )
 
-    if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />)
+    if (activeView === 'council') return shell(
+      <>{viewHeader('Council Chamber')}<CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} /></>
+    )
 
-    if (activeView === 'history') return shell(<AgentRunHistory />)
-    if (activeView === 'clients') return shell(<ClientsView onOpenAgent={handleOpenAgent} />)
+    if (activeView === 'history') return shell(<>{viewHeader('Run History')}<AgentRunHistory /></>)
+    if (activeView === 'clients') return shell(<>{viewHeader('Clients')}<ClientsView onOpenAgent={handleOpenAgent} /></>)
 
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
