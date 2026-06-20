@@ -4,15 +4,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
-const GOLD = '#C8A96E'          // same in both themes
+const GOLD = '#E84040'          // coral-red accent (same in both themes)
 const BG = 'var(--bg)'
 const SURFACE = 'var(--surface)'
 const SURFACE2 = 'var(--surface2)'
 const BORDER = 'var(--border)'
 const TEXT = 'var(--text)'
 const MUTED = 'var(--muted)'
-const FONT_HEADING = "var(--font-space-grotesk), 'Space Grotesk', sans-serif"
-const FONT_BODY = "var(--font-inter), 'Inter', sans-serif"
+const FONT_HEADING = "var(--font-inter), 'Inter', sans-serif"
+const FONT_BODY    = "var(--font-inter), 'Inter', sans-serif"
 
 const MONTHLY_GOAL_GHS = 12_000
 
@@ -1373,11 +1373,11 @@ function NotifToggle({ status, onSubscribe, onUnsubscribe, onTest }: {
 // ─── Theme ────────────────────────────────────────────────────────────────────
 
 function useTheme() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark')
+  const [theme, setTheme] = useState<'dark' | 'light'>('light')
 
   useEffect(() => {
     const saved = localStorage.getItem('revenue-hub-theme') as 'dark' | 'light' | null
-    const initial = saved ?? 'dark'
+    const initial = saved ?? 'light'
     setTheme(initial)
     document.documentElement.setAttribute('data-theme', initial)
   }, [])
@@ -1396,8 +1396,8 @@ function useTheme() {
 
 function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: () => void }) {
   return (
-    <IconButton onClick={onToggle} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-      {theme === 'dark' ? '☀' : '☽'}
+    <IconButton onClick={onToggle} title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
+      {theme === 'light' ? '☽' : '☀'}
     </IconButton>
   )
 }
@@ -1440,7 +1440,7 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
 
       {step === 0 && (
         <>
-          <img src="/icon-192.png" alt="Tagett" width={72} height={72} style={{ borderRadius: 18, marginBottom: 22, boxShadow: `0 0 36px ${GOLD}40` }} />
+          <img src="/icon-192.png" alt="Tagett" width={72} height={72} style={{ borderRadius: 18, marginBottom: 22 }} />
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 800, fontSize: 28, color: TEXT, marginBottom: 10, letterSpacing: '-0.02em' }}>
             Tagett
           </div>
@@ -1959,7 +1959,6 @@ function ProspectIntakeScreen({ onSubmit, loading }: {
           fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
           transition: 'background 0.15s, color 0.15s',
-          boxShadow: canSubmit && !loading ? `0 0 24px ${GOLD}30` : 'none',
           cursor: canSubmit && !loading ? 'pointer' : 'not-allowed',
           marginTop: selectedCity ? 0 : 8,
         }}
@@ -2014,7 +2013,6 @@ function BriefingButton({ label, onClick, loading, size = 'large' }: {
         transition: 'background 0.15s, color 0.15s',
         marginTop: 20,
         cursor: loading ? 'not-allowed' : 'pointer',
-        boxShadow: loading ? 'none' : `0 0 24px ${GOLD}30`,
       }}
     >
       {loading ? <><ThinkingDots /> Generating…</> : <>▶ {label}</>}

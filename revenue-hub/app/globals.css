@@ -6,26 +6,27 @@
 
 /* ─── Theme tokens ─────────────────────────────────────────────────────────── */
 
+/* Light (default — matches Mistral admin aesthetic) */
 :root {
-  --bg: #0B0B0D;
-  --surface: #111114;
-  --surface2: #18181C;
-  --border: #222226;
-  --text: #F0EDE8;
-  --muted: #6B6870;
-  --scrollbar-thumb: #2a2a2e;
-  --scrollbar-thumb-hover: #3a3a3e;
+  --bg:       #FFFFFF;
+  --surface:  #FFFFFF;
+  --surface2: #F7F8FA;
+  --border:   #E5E7EB;
+  --text:     #111111;
+  --muted:    #6B7280;
+  --scrollbar-thumb: #D1D5DB;
+  --scrollbar-thumb-hover: #9CA3AF;
 }
 
-[data-theme="light"] {
-  --bg: #FAF8F5;
-  --surface: #FFFFFF;
-  --surface2: #F2EFE9;
-  --border: #E3DDD5;
-  --text: #1C1A18;
-  --muted: #9A9490;
-  --scrollbar-thumb: #D5D0C8;
-  --scrollbar-thumb-hover: #B8B3AA;
+[data-theme="dark"] {
+  --bg:       #0B0B0D;
+  --surface:  #111114;
+  --surface2: #18181C;
+  --border:   #222226;
+  --text:     #F0EDE8;
+  --muted:    #6B6870;
+  --scrollbar-thumb: #2a2a2e;
+  --scrollbar-thumb-hover: #3a3a3e;
 }
 
 html,
@@ -33,7 +34,6 @@ body {
   height: 100%;
   width: 100%;
   overflow: hidden;
-  /* Prevent elastic scroll bounce on iOS revealing background */
   overscroll-behavior: none;
 }
 
@@ -42,7 +42,6 @@ body {
   color: var(--text);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent text size adjustment on orientation change */
   -webkit-text-size-adjust: 100%;
 }
 
@@ -51,7 +50,6 @@ button {
   border: none;
   background: none;
   font-family: inherit;
-  /* Prevent tap highlight on mobile */
   -webkit-tap-highlight-color: transparent;
 }
 

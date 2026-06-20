@@ -11,7 +11,7 @@ const spaceGrotesk = Space_Grotesk({
 
 const inter = Inter({
   subsets: ['latin'],
-  weight: ['400', '500'],
+  weight: ['400', '500', '600', '700'],
   variable: '--font-inter',
   display: 'swap',
 })
@@ -22,7 +22,7 @@ export const viewport: Viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  themeColor: '#0B0B0D',
+  themeColor: '#FFFFFF',
 }
 
 export const metadata: Metadata = {
@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: 'Tagett',
-    statusBarStyle: 'black',
+    statusBarStyle: 'default',
   },
   icons: {
     apple: '/apple-touch-icon.png',
