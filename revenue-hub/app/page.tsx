@@ -83,24 +83,25 @@ interface Message {
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
 type ViewId = 'home' | 'pipeline' | 'website' | AgentId
 
-// ─── Website project types (mirrors API route) ────────────────────────────────
+// ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
-type ProjectStatus = 'completed' | 'in-progress'
 const PROJECT_CATEGORIES: ProjectCategory[] = ['Website', 'Web Application', 'Mobile App', 'Business Software', 'GIS']
 
 interface WebsiteProject {
-  id: string
+  id: number
   title: string
   category: ProjectCategory
   description: string
-  year: number
+  image: string
+  features: string[]
+  technologies: string[]
   link?: string
-  image?: string
+  // Tagett extras stored in JSON but not rendered by the website
+  year?: number
   client?: string
-  featured: boolean
-  status: ProjectStatus
-  techStack: string[]
-  updatedAt: string
+  featured?: boolean
+  status?: 'completed' | 'in-progress'
+  updatedAt?: string
 }
 
 interface Agent {
@@ -1884,8 +1885,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onOpenAgent, onPublishTo
 // ─── WebsiteProjectsView ─────────────────────────────────────────────────────
 
 const BLANK_PROJECT = (): Partial<WebsiteProject> => ({
-  title: '', category: 'Website', description: '', year: new Date().getFullYear(),
-  link: '', client: '', featured: false, status: 'completed', techStack: [],
+  title: '', category: 'Website', description: '', image: '',
+  features: [], technologies: [], link: '', client: '',
+  year: new Date().getFullYear(), featured: false, status: 'completed',
 })
 
 function WebsiteProjectsView({ prefill, onClearPrefill }: {
@@ -1896,11 +1898,12 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState('')
   const [form, setForm] = useState<Partial<WebsiteProject>>(BLANK_PROJECT())
-  const [editing, setEditing] = useState<string | null>(null)
+  const [editing, setEditing] = useState<number | 'new' | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<number | null>(null)
   const [techInput, setTechInput] = useState('')
+  const [featureInput, setFeatureInput] = useState('')
   const showForm = editing !== null
 
   useEffect(() => {
@@ -1918,8 +1921,8 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
     onClearPrefill?.()
   }, [prefill, onClearPrefill])
 
-  const openNew = () => { setForm(BLANK_PROJECT()); setEditing('new'); setTechInput(''); setSaveMsg('') }
-  const openEdit = (p: WebsiteProject) => { setForm({ ...p }); setEditing(p.id); setTechInput(''); setSaveMsg('') }
+  const openNew = () => { setForm(BLANK_PROJECT()); setEditing('new'); setTechInput(''); setFeatureInput(''); setSaveMsg('') }
+  const openEdit = (p: WebsiteProject) => { setForm({ ...p }); setEditing(p.id); setTechInput(''); setFeatureInput(''); setSaveMsg('') }
   const cancel = () => { setEditing(null); setSaveMsg('') }
 
   const set = (key: keyof WebsiteProject, val: unknown) => setForm(prev => ({ ...prev, [key]: val }))
@@ -1927,34 +1930,43 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   const addTech = () => {
     const t = techInput.trim()
     if (!t) return
-    setForm(prev => ({ ...prev, techStack: [...(prev.techStack ?? []), t] }))
+    setForm(prev => ({ ...prev, technologies: [...(prev.technologies ?? []), t] }))
     setTechInput('')
   }
+  const removeTech = (t: string) => setForm(prev => ({ ...prev, technologies: (prev.technologies ?? []).filter(x => x !== t) }))
 
-  const removeTech = (t: string) => setForm(prev => ({ ...prev, techStack: (prev.techStack ?? []).filter(x => x !== t) }))
+  const addFeature = () => {
+    const f = featureInput.trim()
+    if (!f) return
+    setForm(prev => ({ ...prev, features: [...(prev.features ?? []), f] }))
+    setFeatureInput('')
+  }
+  const removeFeature = (f: string) => setForm(prev => ({ ...prev, features: (prev.features ?? []).filter(x => x !== f) }))
 
   const handleSave = async () => {
     if (!form.title?.trim() || !form.description?.trim()) { setSaveMsg('Title and description are required.'); return }
     setSaving(true); setSaveMsg('')
-    const project: WebsiteProject = {
-      id: editing === 'new' ? Date.now().toString() : editing!,
+    const payload: Partial<WebsiteProject> & { title: string; description: string } = {
+      ...(editing !== 'new' && { id: editing as number }),
       title: form.title!.trim(),
       category: form.category ?? 'Website',
       description: form.description!.trim(),
+      image: form.image?.trim() || '',
+      features: form.features ?? [],
+      technologies: form.technologies ?? [],
       year: form.year ?? new Date().getFullYear(),
       link: form.link?.trim() || undefined,
-      image: form.image?.trim() || undefined,
       client: form.client?.trim() || undefined,
       featured: form.featured ?? false,
       status: form.status ?? 'completed',
-      techStack: form.techStack ?? [],
       updatedAt: new Date().toISOString(),
     }
     try {
-      const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(project) })
+      const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Publish failed')
-      setProjects(prev => { const i = prev.findIndex(p => p.id === project.id); return i >= 0 ? prev.map((p, j) => j === i ? project : p) : [project, ...prev] })
+      const saved: WebsiteProject = { ...payload, id: d.id ?? (editing as number) } as WebsiteProject
+      setProjects(prev => { const i = prev.findIndex(p => p.id === saved.id); return i >= 0 ? prev.map((p, j) => j === i ? saved : p) : [saved, ...prev] })
       setSaveMsg('✓ Published to website!')
       setEditing(null)
     } catch (err) {
@@ -1962,7 +1974,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
     } finally { setSaving(false) }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     setDeleting(id)
     try {
       const res = await fetch('/api/website/projects', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
@@ -2036,17 +2048,34 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
               <input value={form.image ?? ''} onChange={e => set('image', e.target.value)} placeholder="https://…" style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Tech Stack</label>
+              <label style={labelStyle}>Technologies</label>
               <div style={{ display: 'flex', gap: 6 }}>
                 <input value={techInput} onChange={e => setTechInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTech() }}} placeholder="e.g. Next.js" style={{ ...inputStyle, flex: 1 }} />
                 <button onClick={addTech} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Add</button>
               </div>
-              {(form.techStack ?? []).length > 0 && (
+              {(form.technologies ?? []).length > 0 && (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
-                  {(form.techStack ?? []).map(t => (
+                  {(form.technologies ?? []).map(t => (
                     <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 12, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 11, fontFamily: FONT_BODY }}>
                       {t}
                       <button onClick={() => removeTech(t)} style={{ background: 'none', border: 'none', color: GOLD, cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1 }}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <label style={labelStyle}>Key Features</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input value={featureInput} onChange={e => setFeatureInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addFeature() }}} placeholder="e.g. Online booking system" style={{ ...inputStyle, flex: 1 }} />
+                <button onClick={addFeature} style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Add</button>
+              </div>
+              {(form.features ?? []).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                  {(form.features ?? []).map(f => (
+                    <span key={f} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontSize: 11, fontFamily: FONT_BODY }}>
+                      {f}
+                      <button onClick={() => removeFeature(f)} style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 11, padding: 0, lineHeight: 1 }}>×</button>
                     </span>
                   ))}
                 </div>
@@ -2105,9 +2134,9 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
                 </div>
                 <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{p.category} · {p.year}{p.client ? ` · ${p.client}` : ''}</div>
                 <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 4, lineHeight: 1.5 }}>{p.description.slice(0, 100)}{p.description.length > 100 ? '…' : ''}</div>
-                {p.techStack.length > 0 && (
+                {(p.technologies ?? []).length > 0 && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
-                    {p.techStack.map(t => <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, border: `1px solid ${BORDER}`, color: MUTED, fontFamily: FONT_BODY }}>{t}</span>)}
+                    {p.technologies.map(t => <span key={t} style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, border: `1px solid ${BORDER}`, color: MUTED, fontFamily: FONT_BODY }}>{t}</span>)}
                   </div>
                 )}
               </div>
@@ -2410,7 +2439,6 @@ export default function Page() {
 
   const handlePublishDealToWebsite = useCallback((deal: Deal) => {
     setWebsitePrefill({
-      id: `deal-${deal.id}`,
       title: deal.name,
       category: deal.industry ? (
         /mobile|app/i.test(deal.industry) ? 'Mobile App' :
@@ -2422,7 +2450,8 @@ export default function Page() {
       year: new Date().getFullYear(),
       status: 'completed',
       featured: false,
-      techStack: [],
+      technologies: [],
+      features: [],
     })
     setActiveView('website')
     setError(null)

@@ -17,18 +17,20 @@ function githubHeaders() {
 }
 
 export interface WebsiteProject {
-  id: string
+  id: number
   title: string
   category: 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
   description: string
-  year: number
+  image: string
+  features: string[]
+  technologies: string[]
   link?: string
-  image?: string
+  // Tagett extras — present in JSON, ignored by the website renderer
+  year?: number
   client?: string
-  featured: boolean
-  status: 'completed' | 'in-progress'
-  techStack: string[]
-  updatedAt: string
+  featured?: boolean
+  status?: 'completed' | 'in-progress'
+  updatedAt?: string
 }
 
 async function readFile(): Promise<{ projects: WebsiteProject[]; sha: string | null }> {
@@ -67,14 +69,21 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!TOKEN) return NextResponse.json({ error: 'GITHUB_WEBSITE_TOKEN not set' }, { status: 500 })
   try {
-    const project: WebsiteProject = await req.json()
-    if (!project.id || !project.title) return NextResponse.json({ error: 'id and title required' }, { status: 400 })
+    const body = await req.json()
+    if (!body.title) return NextResponse.json({ error: 'title required' }, { status: 400 })
     const { projects, sha } = await readFile()
-    const idx = projects.findIndex(p => p.id === project.id)
-    if (idx >= 0) projects[idx] = project
-    else projects.unshift(project)
-    await writeFile(projects, sha, `[Tagett] ${idx >= 0 ? 'Update' : 'Add'} project: ${project.title}`)
-    return NextResponse.json({ ok: true })
+    const existingIdx = body.id ? projects.findIndex(p => p.id === body.id) : -1
+    let project: WebsiteProject
+    if (existingIdx >= 0) {
+      project = { ...projects[existingIdx], ...body }
+      projects[existingIdx] = project
+    } else {
+      const maxId = projects.reduce((m, p) => Math.max(m, p.id), 0)
+      project = { image: '', features: [], technologies: [], ...body, id: maxId + 1, updatedAt: new Date().toISOString() }
+      projects.unshift(project)
+    }
+    await writeFile(projects, sha, `[Tagett] ${existingIdx >= 0 ? 'Update' : 'Add'} project: ${project.title}`)
+    return NextResponse.json({ ok: true, id: project.id })
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
   }
