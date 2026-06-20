@@ -825,6 +825,20 @@ function saveAllChats(chats: AllChats): void {
   } catch { /* quota exceeded */ }
 }
 
+// ─── Supabase conversation persistence ────────────────────────────────────────
+
+function saveMessage(agentId: string, role: 'user' | 'assistant', content: string) {
+  fetch('/api/conversations', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ agent_id: agentId, role, content }),
+  }).catch(() => {})
+}
+
+function clearMessages(agentId: string) {
+  fetch(`/api/conversations?agent_id=${encodeURIComponent(agentId)}`, { method: 'DELETE' }).catch(() => {})
+}
+
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
 const TEAM_LABELS: Record<string, string> = {
@@ -3210,7 +3224,19 @@ export default function Page() {
     catch { return {} }
   })
 
-  useEffect(() => { setAllChats(loadAllChats()) }, [])
+  useEffect(() => {
+    // Show localStorage immediately, then hydrate from Supabase
+    setAllChats(loadAllChats())
+    fetch('/api/conversations')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && typeof data === 'object') {
+          setAllChats(data as AllChats)
+          saveAllChats(data as AllChats)
+        }
+      })
+      .catch(() => {})
+  }, [])
 
   // Load pinned notes from Supabase on mount (localStorage shows immediately)
   useEffect(() => {
@@ -3294,10 +3320,12 @@ export default function Page() {
     const userMsg: Message = { role: 'user', content: text }
     const next = [...(allChats[activeAgent] ?? []), userMsg]
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
+    saveMessage(activeAgent, 'user', text)
     setLoading(true); setError(null)
     try {
       const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, workspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
+      saveMessage(activeAgent, 'assistant', reply)
       setWorkspace((prev) => ({ ...prev, [activeAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -3321,6 +3349,7 @@ export default function Page() {
   const handleClear = useCallback(() => {
     if (!activeAgent) return
     setAllChats((prev) => ({ ...prev, [activeAgent]: [] }))
+    clearMessages(activeAgent)
     setError(null)
   }, [activeAgent])
 
@@ -3329,10 +3358,12 @@ export default function Page() {
     const userMsg: Message = { role: 'user', content: prompt }
     let msgs: Message[] = []
     setAllChats((prev) => { msgs = [...(prev[targetAgent] ?? []), userMsg]; return { ...prev, [targetAgent]: msgs } })
+    saveMessage(targetAgent, 'user', prompt)
     setLoading(true)
     try {
       const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent, workspace)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
+      saveMessage(targetAgent, 'assistant', reply)
       setWorkspace((prev) => ({ ...prev, [targetAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')

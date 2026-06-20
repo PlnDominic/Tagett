@@ -27,7 +27,19 @@ create table if not exists settings (
   updated_at timestamptz default now()
 );
 
--- 4. Autonomous agent run log
+-- 4. Agent conversation history (all chat messages persisted here)
+create table if not exists conversations (
+  id         uuid default gen_random_uuid() primary key,
+  agent_id   text not null,
+  role       text not null check (role in ('user', 'assistant')),
+  content    text not null,
+  created_at timestamptz default now()
+);
+
+create index if not exists conversations_agent_created
+  on conversations (agent_id, created_at);
+
+-- 5. Autonomous agent run log
 create table if not exists agent_runs (
   id               uuid default gen_random_uuid() primary key,
   run_at           timestamptz default now(),
