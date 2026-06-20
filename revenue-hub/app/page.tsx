@@ -1261,6 +1261,17 @@ interface Deal {
   whatsappHistory?: Array<{ text: string; sentAt: number }>
 }
 
+interface ParsedProspect {
+  name: string
+  industry: string
+  address?: string
+  phone?: string
+  whyNeedsWebsite?: string
+  servicePitch?: string
+  valueGHS: number
+  phonePitch?: string
+}
+
 const DEALS_KEY = 'tagett-deals-v1'
 const STAGE_MIGRATE: Record<string, DealStage> = { called: 'contacted', scoped: 'interested' }
 function loadDeals(): Deal[] {
@@ -1367,6 +1378,58 @@ function extractProspects(text: string): Array<{ phone: string; pitch: string; n
     results.push({ phone, pitch: pitchMatch ? pitchMatch[1] : '', name })
   }
   return results
+}
+
+function parseProspects(text: string): ParsedProspect[] {
+  // Split on numbered prospect blocks (1., 2., 3. …)
+  const blocks = text.split(/(?=\n\s*\d+\.\s+Business Name|\n\s*---|\n\s*\*\*\d+\.)/i)
+  const results: ParsedProspect[] = []
+
+  for (const block of blocks) {
+    const nameMatch = block.match(/Business Name\s*[—–\-]+\s*(.+?)(?:\n|$)/i)
+      || block.match(/^\s*\d+\.\s+\*{0,2}(.+?)\*{0,2}\s*(?:\n|$)/)
+    if (!nameMatch) continue
+    const name = nameMatch[1].replace(/\*+/g, '').trim()
+    if (name.length < 2) continue
+
+    const field = (label: string) => {
+      const m = block.match(new RegExp(label + '\\s*:?\\s*(.+?)(?:\\n|$)', 'i'))
+      return m ? m[1].replace(/\*+/g, '').trim() : undefined
+    }
+
+    const phoneRaw = field('Phone')
+    let phone: string | undefined
+    if (phoneRaw) {
+      const digits = phoneRaw.replace(/\D/g, '')
+      if (digits.startsWith('233') && digits.length === 12) phone = '+' + digits
+      else if (digits.startsWith('0') && digits.length === 10) phone = '+233' + digits.slice(1)
+      else if (digits.length === 9) phone = '+233' + digits
+      else phone = phoneRaw
+    }
+
+    const valueRaw = field('Estimated value')
+    let valueGHS = 0
+    if (valueRaw) {
+      const m = valueRaw.match(/GHS\s*([\d,]+)|₵\s*([\d,]+)|([\d,]+)/)
+      if (m) valueGHS = parseInt((m[1] || m[2] || m[3]).replace(/,/g, ''), 10) || 0
+    }
+
+    const pitchRaw = field('Phone pitch')
+    const phonePitch = pitchRaw ? pitchRaw.replace(/^["""'`]|["""'`]$/g, '').trim() : undefined
+
+    results.push({
+      name,
+      industry: field('Industry') ?? 'Unknown',
+      address: field('Address'),
+      phone,
+      whyNeedsWebsite: field('Why they need a website'),
+      servicePitch: field('Service to pitch'),
+      valueGHS,
+      phonePitch,
+    })
+  }
+
+  return results.filter(p => p.name.length > 1)
 }
 
 function extractXPosts(text: string): string[] {
@@ -1738,9 +1801,10 @@ function HandoffChips({ agentId, content, onHandoff }: {
 
 // ─── ProspectActionChips ─────────────────────────────────────────────────────
 
-function ProspectActionChips({ content }: { content: string }) {
+function ProspectActionChips({ content, onOpenImport }: { content: string; onOpenImport?: (p: ParsedProspect[]) => void }) {
   const prospects = extractProspects(content)
-  if (prospects.length === 0) return null
+  const parsed = parseProspects(content)
+  if (prospects.length === 0 && parsed.length === 0) return null
   return (
     <div style={{ marginTop: 8, paddingLeft: 34, display: 'flex', flexDirection: 'column', gap: 6 }}>
       {prospects.map(({ phone, pitch, name }) => {
@@ -1761,6 +1825,11 @@ function ProspectActionChips({ content }: { content: string }) {
           </div>
         )
       })}
+      {parsed.length > 0 && onOpenImport && (
+        <button onClick={() => onOpenImport(parsed)} style={{ alignSelf: 'flex-start', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 14px', borderRadius: 20, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>
+          ＋ Import {parsed.length} lead{parsed.length !== 1 ? 's' : ''} to Pipeline
+        </button>
+      )}
     </div>
   )
 }
@@ -1928,11 +1997,12 @@ function ProposalDownload({ content }: { content: string }) {
 
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
-function ChatMessage({ message, agentId, isLast, onHandoff }: {
+function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport }: {
   message: Message
   agentId?: AgentId
   isLast?: boolean
   onHandoff?: (targetAgent: AgentId, prompt: string) => void
+  onOpenImport?: (p: ParsedProspect[]) => void
 }) {
   const isUser = message.role === 'user'
 
@@ -1960,7 +2030,7 @@ function ChatMessage({ message, agentId, isLast, onHandoff }: {
         </div>
       </div>
       {!isUser && agentId === 'prospect' && (
-        <ProspectActionChips content={message.content} />
+        <ProspectActionChips content={message.content} onOpenImport={onOpenImport} />
       )}
       {!isUser && isLast && (agentId === 'content' || agentId === 'viral') && (
         <SocialShareBar content={message.content} schedule={agentId === 'viral'} />
@@ -1971,6 +2041,104 @@ function ChatMessage({ message, agentId, isLast, onHandoff }: {
       {!isUser && isLast && agentId && onHandoff && (
         <HandoffChips agentId={agentId} content={message.content} onHandoff={onHandoff} />
       )}
+    </div>
+  )
+}
+
+// ─── ImportProspectsModal ─────────────────────────────────────────────────────
+
+function ImportProspectsModal({ prospects, existingDeals, onImport, onClose }: {
+  prospects: ParsedProspect[]
+  existingDeals: Deal[]
+  onImport: (selected: ParsedProspect[], followUpDays: number) => void
+  onClose: () => void
+}) {
+  const [selected, setSelected] = useState<Set<number>>(() => new Set(prospects.map((_, i) => i)))
+  const [followUpDays, setFollowUpDays] = useState(2)
+  const [done, setDone] = useState(false)
+
+  const existingPhones = new Set(existingDeals.map(d => d.phone?.replace(/\D/g, '')).filter(Boolean))
+  const existingNames = new Set(existingDeals.map(d => d.name.toLowerCase().trim()))
+
+  const dupType = (p: ParsedProspect): 'phone' | 'name' | null => {
+    if (p.phone && existingPhones.has(p.phone.replace(/\D/g, ''))) return 'phone'
+    if (existingNames.has(p.name.toLowerCase().trim())) return 'name'
+    return null
+  }
+
+  const toggle = (i: number) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(i)) next.delete(i); else next.add(i)
+    return next
+  })
+
+  const handleConfirm = () => {
+    onImport(prospects.filter((_, i) => selected.has(i)), followUpDays)
+    setDone(true)
+    setTimeout(onClose, 1200)
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: '#00000090', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }} onClick={onClose}>
+      <div style={{ background: SURFACE, borderRadius: 14, padding: 20, maxWidth: 460, width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', border: `1px solid ${BORDER}` }} onClick={e => e.stopPropagation()}>
+
+        {done ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '30px 0' }}>
+            <div style={{ fontSize: 32 }}>✓</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: GOLD }}>{selected.size} lead{selected.size !== 1 ? 's' : ''} imported</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY }}>Added to Found stage with {followUpDays}-day follow-up</div>
+          </div>
+        ) : (
+          <>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, marginBottom: 2 }}>Import to Pipeline</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 14 }}>{prospects.length} prospect{prospects.length !== 1 ? 's' : ''} parsed · tap to deselect</div>
+
+            <div style={{ flex: 1, overflowY: 'auto', marginBottom: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {prospects.map((p, i) => {
+                const dup = dupType(p)
+                const on = selected.has(i)
+                return (
+                  <div key={i} onClick={() => toggle(i)} style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${dup ? '#F59E0B40' : on ? `${GOLD}40` : BORDER}`, background: dup ? '#F59E0B06' : on ? `${GOLD}06` : SURFACE2, cursor: 'pointer', opacity: on ? 1 : 0.5 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ width: 17, height: 17, borderRadius: 4, border: `2px solid ${on ? GOLD : BORDER}`, background: on ? GOLD : 'transparent', flexShrink: 0, marginTop: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.12s' }}>
+                        {on && <span style={{ color: '#fff', fontSize: 10, lineHeight: 1 }}>✓</span>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT }}>{p.name}</div>
+                        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>
+                          {p.industry}{p.phone ? ` · ${p.phone}` : ''}{p.valueGHS > 0 ? ` · ₵${p.valueGHS.toLocaleString()}` : ''}
+                        </div>
+                        {p.address && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{p.address}</div>}
+                        {p.servicePitch && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1, fontStyle: 'italic' }}>{p.servicePitch}</div>}
+                        {dup && <div style={{ fontSize: 10, color: '#F59E0B', fontFamily: FONT_BODY, marginTop: 3 }}>⚠ Possible duplicate ({dup === 'phone' ? 'same phone' : 'similar name'})</div>}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Follow-up selector */}
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 6 }}>Auto-schedule first follow-up in</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {[1, 2, 3, 5, 7].map(d => (
+                  <button key={d} onClick={() => setFollowUpDays(d)} style={{ flex: 1, padding: '6px 0', borderRadius: 16, border: `1px solid ${followUpDays === d ? GOLD : BORDER}`, background: followUpDays === d ? `${GOLD}15` : 'none', color: followUpDays === d ? GOLD : MUTED, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: followUpDays === d ? 600 : 400, cursor: 'pointer' }}>
+                    {d}d
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={onClose} style={{ flex: 1, padding: '10px 0', border: `1px solid ${BORDER}`, borderRadius: 8, background: 'none', color: MUTED, fontSize: 13, fontFamily: FONT_BODY, cursor: 'pointer' }}>Cancel</button>
+              <button onClick={handleConfirm} disabled={selected.size === 0} style={{ flex: 2, padding: '10px 0', border: 'none', borderRadius: 8, background: selected.size === 0 ? SURFACE2 : GOLD, color: selected.size === 0 ? MUTED : '#fff', fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, cursor: selected.size === 0 ? 'default' : 'pointer', transition: 'background 0.15s' }}>
+                Import {selected.size} Lead{selected.size !== 1 ? 's' : ''} →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -4754,13 +4922,14 @@ function ChatInput({ agentShort, onSend, loading, prefill, onClearPrefill }: {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandoff }: {
+function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandoff, onOpenImport }: {
   messages: Message[]
   loading: boolean
   agent: Agent
   onSend: (text: string) => void
   onRunBriefing: () => void
   onHandoff: (targetAgent: AgentId, prompt: string) => void
+  onOpenImport?: (p: ParsedProspect[]) => void
 }) {
   const bottomRef = useRef<HTMLDivElement>(null)
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, loading])
@@ -4791,6 +4960,7 @@ function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandof
               agentId={agent.id}
               isLast={i === lastAssistantIdx && !loading}
               onHandoff={onHandoff}
+              onOpenImport={onOpenImport}
             />
           ))}
           {loading && (
@@ -4835,6 +5005,7 @@ export default function Page() {
   const [viralPrefill, setViralPrefill] = useState<string | null>(null)
   const [notesOpen, setNotesOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [importModal, setImportModal] = useState<ParsedProspect[] | null>(null)
   const [pinnedNotes, setPinnedNotes] = useState(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tagett-pinned-notes-v1') ?? '') : ''
   )
@@ -4999,6 +5170,26 @@ export default function Page() {
 
   const handleAddDeal = useCallback((d: Omit<Deal, 'id' | 'createdAt'>) => {
     setDeals(prev => [...prev, { ...d, id: Date.now().toString(), createdAt: Date.now() }])
+  }, [])
+
+  const handleImportProspects = useCallback((selected: ParsedProspect[], followUpDays: number) => {
+    const base = Date.now()
+    const followUpAt = base + followUpDays * 24 * 60 * 60 * 1000
+    setDeals(prev => [
+      ...prev,
+      ...selected.map((p, i) => ({
+        id: (base + i).toString(),
+        name: p.name,
+        industry: p.industry,
+        valueGHS: p.valueGHS,
+        stage: 'found' as DealStage,
+        phone: p.phone,
+        followUpAt,
+        createdAt: base + i,
+        stageChangedAt: base + i,
+      })),
+    ])
+    setImportModal(null)
   }, [])
 
   const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
@@ -5196,11 +5387,12 @@ export default function Page() {
           {AgentSubheader}
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
+          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
           {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
         <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
+        {importModal && <ImportProspectsModal prospects={importModal} existingDeals={deals} onImport={handleImportProspects} onClose={() => setImportModal(null)} />}
       </>
     )
   }
@@ -5274,7 +5466,7 @@ export default function Page() {
         </div>
         <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
+        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
         {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
@@ -5329,6 +5521,7 @@ export default function Page() {
       </div>
       <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
       {searchOpen && <ConversationSearch onClose={() => setSearchOpen(false)} />}
+      {importModal && <ImportProspectsModal prospects={importModal} existingDeals={deals} onImport={handleImportProspects} onClose={() => setImportModal(null)} />}
     </div>
   )
 }
