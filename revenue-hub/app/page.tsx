@@ -42,33 +42,83 @@ const INDUSTRIES = [
 ]
 
 const GHANA_LOCATIONS: Record<string, string[]> = {
-  Accra: [
-    'East Legon', 'Osu', 'Labone', 'Cantonments', 'Spintex',
-    'Tema', 'Achimota', 'Madina', 'Adenta', 'Dansoman',
-    'Kasoa', 'Lapaz', 'Teshie', 'Nungua', 'Dzorwulu',
-    'Airport Residential', 'Haatso', 'Dome', 'Okponglo',
-  ],
-  Kumasi: [
-    'Adum', 'Bantama', 'Asokwa', 'Nhyiaeso', 'Suame',
-    'Oforikrom', 'Kwadaso', 'Roman Hill', 'Tafo',
-    'Asante Mampong', 'Kronum', 'Ayigya',
-  ],
-  Takoradi: [
-    'Sekondi', 'Effia', 'Kojokrom', 'Tanokrom',
-    'Fijai', 'Airport Ridge', 'New Takoradi', 'Anaji',
-  ],
-  Tamale: [
-    'Lamashegu', 'Kukuo', 'Kalpohin', 'Sagnarigu',
-    'Choggu', 'Nyohini', 'Vittin', 'Datoyili',
-  ],
-  'Cape Coast': [
-    'Ola', 'Abura', 'Pedu', 'Adisadel',
-    'Kotokuraba', 'Amamoma', 'University Area',
-  ],
-  Sunyani: ['Berekum', 'Dormaa', 'Techiman', 'Drobo', 'Wenchi'],
-  Ho: ['Aflao', 'Hohoe', 'Keta', 'Anloga', 'Sogakope'],
-  Koforidua: ['Nsawam', 'Nkawkaw', 'Suhum', 'Mpraeso', 'Oda'],
-  Bolgatanga: ['Navrongo', 'Bawku', 'Wa', 'Zebilla', 'Sandema'],
+  // Greater Accra
+  Accra: ['East Legon', 'Osu', 'Labone', 'Cantonments', 'Spintex', 'Achimota', 'Madina', 'Adenta', 'Dansoman', 'Lapaz', 'Teshie', 'Nungua', 'Dzorwulu', 'Airport Residential', 'Haatso', 'Dome', 'Okponglo', 'Labadi', 'Kotobabi', 'North Kaneshie', 'Darkuman', 'Mataheko', 'Mallam', 'Weija'],
+  Tema: ['Community 1', 'Community 2', 'Community 3', 'Community 4', 'Community 5', 'Community 6', 'Community 7', 'Community 8', 'Community 9', 'Community 10', 'Tema New Town', 'Manhean', 'Sakumono', 'Kpone', 'Afienya'],
+  Kasoa: ['Millennium City', 'Akweley', 'Rainbow', 'Galilea', 'New Bortianor', 'Buduburam', 'Opeikuma'],
+  Ashaiman: ['Ashaiman Township', 'Zenu', 'Tulako', 'Newtown', 'Ashiaman Community'],
+  // Ashanti
+  Kumasi: ['Adum', 'Bantama', 'Asokwa', 'Nhyiaeso', 'Suame', 'Oforikrom', 'Kwadaso', 'Roman Hill', 'Tafo', 'Kronum', 'Ayigya', 'Asafo', 'Patase', 'Buokrom', 'Fante New Town', 'Ahodwo', 'Kaase', 'Deduako', 'Santasi'],
+  Obuasi: ['Obuasi Township', 'Sanso', 'Anyinam', 'Wioso'],
+  Ejisu: ['Ejisu', 'Juaben', 'Kuntanase', 'Bonwire', 'Onwe'],
+  'Asante Mampong': ['Mampong', 'Agogo', 'Effiduase', 'Juaben'],
+  Konongo: ['Konongo', 'Odumase', 'Juaso', 'Agogo'],
+  Bekwai: ['Bekwai', 'Fomena', 'Nkawie', 'Mankranso'],
+  // Western
+  Takoradi: ['Sekondi', 'Effia', 'Kojokrom', 'Tanokrom', 'Fijai', 'Airport Ridge', 'New Takoradi', 'Anaji', 'Market Circle', 'Kansaworodo', 'Adiembra', 'Kwesimintsim'],
+  Tarkwa: ['Tarkwa Township', 'Aboso', 'Bogoso', 'Prestea', 'Huni Valley'],
+  Axim: ['Axim', 'Beyin', 'Ellembelle', 'Ankobra'],
+  Bibiani: ['Bibiani', 'Anhwiaso', 'Bekwai West', 'Sefwi Wiawso'],
+  // Western North
+  'Sefwi Wiawso': ['Sefwi Wiawso', 'Sefwi Bekwai', 'Sefwi Bodi', 'Debiso'],
+  Enchi: ['Enchi', 'Aowin', 'Boin', 'Dadieso'],
+  // Central
+  'Cape Coast': ['Ola', 'Abura', 'Pedu', 'Adisadel', 'Kotokuraba', 'Amamoma', 'University Area', 'Aboom', 'Batsonaa', 'Siwdu'],
+  Winneba: ['Winneba Township', 'Apam', 'Gomoa East', 'Ekumfi'],
+  'Agona Swedru': ['Swedru', 'Agona Duakwa', 'Agona Abodom', 'Nyakrom'],
+  'Assin Fosu': ['Assin Fosu', 'Assin Bereku', 'Assin Nsuta', 'Assin Manso'],
+  Saltpond: ['Saltpond', 'Anomabo', 'Biriwa', 'Abandze'],
+  Mankessim: ['Mankessim', 'Ajumako', 'Breman Asikuma', 'Esiam'],
+  'Dunkwa-on-Offin': ['Dunkwa', 'Upper Denkyira East', 'Hemang'],
+  Elmina: ['Elmina', 'Komenda', 'Edina', 'Kissi'],
+  // Eastern
+  Koforidua: ['Koforidua Township', 'Jackson Park', 'Effiduase', 'Nsukwao', 'Old Estate'],
+  Nkawkaw: ['Nkawkaw', 'Kwahu Nteso', 'Pepease', 'Bokuruwa'],
+  Nsawam: ['Nsawam', 'Apapam', 'Adoagyiri', 'Adeiso'],
+  Oda: ['Oda', 'Akim Oda', 'Kade', 'Apapam'],
+  Suhum: ['Suhum', 'Coaltar', 'Apedwa', 'Accra Newtown'],
+  'Akropong-Akuapem': ['Akropong', 'Abiriw', 'Adukrom', 'Larteh', 'Dawu'],
+  Asamankese: ['Asamankese', 'Apedwa', 'Kade', 'Achiase'],
+  Somanya: ['Somanya', 'Odumase-Krobo', 'Akuse', 'Asesewa'],
+  Aburi: ['Aburi', 'Mamfe', 'Mampong Akuapem', 'Amanfro'],
+  Mpraeso: ['Mpraeso', 'Nkwatia', 'Kwahu Praso', 'Obo'],
+  // Volta
+  Ho: ['Ho Township', 'Bankoe', 'Kpenoe', 'Mawuli', 'Sokode', 'Agorve'],
+  Hohoe: ['Hohoe', 'Gbi Wegbe', 'Likpe', 'Golokwati'],
+  Keta: ['Keta', 'Anloga', 'Anyanui', 'Kedzi', 'Tegbi'],
+  Aflao: ['Aflao', 'Klikor', 'Agbozume', 'Denu', 'Dabala'],
+  Sogakope: ['Sogakope', 'Battor', 'Adidome', 'Aveyime', 'Mepe'],
+  Kpando: ['Kpando', 'Kpeve', 'Avatime', 'Hohoe-Kpando'],
+  Akatsi: ['Akatsi', 'Tongu', 'Vume', 'Adidome'],
+  // Oti
+  Dambai: ['Dambai', 'Nkwanta', 'Kadjebi', 'Kpassa'],
+  // Northern
+  Tamale: ['Lamashegu', 'Kukuo', 'Kalpohin', 'Sagnarigu', 'Choggu', 'Nyohini', 'Vittin', 'Datoyili', 'Kamina', 'Gumbihini', 'Nyohini Industrial', 'Gurugu'],
+  Yendi: ['Yendi', 'Zabzugu', 'Tatale', 'Demon'],
+  Savelugu: ['Savelugu', 'Nanton', 'Gushegu', 'Karaga'],
+  // Savannah
+  Damongo: ['Damongo', 'West Gonja', 'Bole', 'Sawla'],
+  Salaga: ['Salaga', 'Yapei', 'Tolon', 'East Gonja'],
+  // North East
+  Walewale: ['Walewale', 'Nalerigu', 'Gambaga', 'Chereponi'],
+  // Upper East
+  Bolgatanga: ['Bolga Central', 'Zuarungu', 'Bongo', 'Nayoriko', 'Soe'],
+  Bawku: ['Bawku', 'Pusiga', 'Garu', 'Zebilla', 'Binduri'],
+  Navrongo: ['Navrongo', 'Sandema', 'Paga', 'Chiana', 'Kayoro'],
+  // Upper West
+  Wa: ['Wa Township', 'Kpongu', 'Funsi', 'Nandom', 'Ko'],
+  Lawra: ['Lawra', 'Jirapa', 'Nandom', 'Hamile', 'Eremon'],
+  Tumu: ['Tumu', 'Gwolu', 'Sissala East', 'Pulima'],
+  // Bono
+  Sunyani: ['Sunyani Township', 'Fiapre', 'Odumasi', 'Jinijini', 'Chiraa'],
+  Berekum: ['Berekum', 'Dormaa Ahenkro', 'Japekrom', 'Nsuatre'],
+  Wenchi: ['Wenchi', 'Nsawkaw', 'Badu', 'Seikwa'],
+  // Bono East
+  Techiman: ['Techiman Township', 'Krobo', 'Tuobodom', 'Offuman', 'Techiman North'],
+  Kintampo: ['Kintampo Township', 'Jema', 'Nkoranza', 'Prang'],
+  Atebubu: ['Atebubu', 'Prang', 'Yeji', 'Kwame Danso'],
+  // Ahafo
+  Goaso: ['Goaso', 'Kukuom', 'Mim', 'Kenyase', 'Hwidiem'],
 }
 
 const CITIES = Object.keys(GHANA_LOCATIONS)
@@ -141,21 +191,29 @@ That is [X]% of my GHS 120,000 monthly goal.
 Fastest to close: [Business Name] — call them first.`,
     systemPrompt: `You are ProspectBot, a lead generation AI for Ecstasy Technologies based in Ghana (ecstasytechnologies.com).
 
-Your job is to find businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
+Your job is to find REAL businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
 
-IMPORTANT: Always include phone numbers for every prospect in Ghanaian format (+233XXXXXXXXX or 0XXXXXXXXX).
+CRITICAL — REAL BUSINESSES ONLY: You MUST use the search_web tool to find actual businesses. Search Google/DuckDuckGo for queries like:
+- "[industry] [location] Ghana"
+- "[industry] in [location] site:facebook.com OR site:google.com"
+- "[business type] [location] contact phone Ghana"
+- "best [industry] in [location] Ghana"
+Search multiple times if needed. NEVER invent or make up businesses, phone numbers, or addresses. Only report what you find in search results.
 
-Output format for each prospect:
-1. Business Name — [name]
+How to find phone numbers: Search for the business name + "Ghana" + "phone" or "contact". Check Facebook pages, Google Maps listings, and business directories.
+
+Output format for each REAL prospect found:
+1. Business Name — [exact name from search]
    Industry: [type]
-   Address: [specific location in Ghana]
-   Phone: +233XXXXXXXXX
-   Why they need a website: [specific reason]
+   Address: [actual address from search results]
+   Phone: [real number found online, or "Not found — search '[business name] Ghana phone'"]
+   Why they need a website: [specific reason based on what you found]
    Service to pitch: [web design / mobile app / business software / GIS]
    Estimated value: GHS [amount]
    Phone pitch: "[one sentence to say when they pick up]"
+   Source: [where you found this business — Google, Facebook, etc.]
 
-Cover all industries and business types. Be specific about Ghanaian towns, streets, and areas. All pricing in GHS.
+If you find fewer than 5 real businesses, say so honestly and suggest better search terms. Do NOT pad with invented entries.
 
 PIPELINE ROLE: You are the top of the funnel in a 5-agent revenue machine targeting GHS 120,000/month. Your leads feed ContentBot (writes the pitch), ProjectBot (scopes the proposal), and ViralBot (finds patterns across your lead lists to create viral content attracting similar clients inbound). Always end your lead list with a PIPELINE SUMMARY showing total estimated GHS value and % of the GHS 120,000 monthly goal.
 
@@ -769,14 +827,14 @@ function saveAllChats(chats: AllChats): void {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
-async function callChat(systemPrompt: string, messages: Message[], pinnedNotes?: string): Promise<string> {
+async function callChat(systemPrompt: string, messages: Message[], pinnedNotes?: string, agentId?: string): Promise<string> {
   const fullPrompt = pinnedNotes?.trim()
     ? `${systemPrompt}\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
     : systemPrompt
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ systemPrompt: fullPrompt, messages }),
+    body: JSON.stringify({ systemPrompt: fullPrompt, messages, agentId }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
@@ -1754,7 +1812,7 @@ function ProspectIntakeScreen({ onSubmit, loading }: {
           Find Today&apos;s Prospects
         </div>
         <div style={{ fontSize: 13, color: MUTED, marginTop: 4, fontFamily: FONT_BODY }}>
-          Select an industry and location. ProspectBot finds businesses without websites and gives you their phone numbers.
+          Select an industry and location. ProspectBot searches Google and business directories to find real businesses without websites — with actual phone numbers.
         </div>
       </div>
 
@@ -2764,7 +2822,7 @@ function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
     await Promise.allSettled(
       COUNCIL_AGENT_IDS.map(async (agentId) => {
         try {
-          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes)
+          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes, agentId)
           setResponses(prev => ({ ...prev, [agentId]: text }))
         } catch (err) {
           setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
@@ -2912,6 +2970,36 @@ function BottomNav({ activeView, allChats, onSelect }: {
         {MAIN_AGENT_IDS.map(renderAgentBtn)}
         {divider('d2')}
         {COUNCIL_AGENT_IDS.map(renderAgentBtn)}
+      </div>
+    </div>
+  )
+}
+
+// ─── ScoutToolbar ─────────────────────────────────────────────────────────────
+
+const SCOUT_PRESETS = [
+  { label: 'Need website Ghana', query: 'Search Reddit and web for Ghana businesses saying they need a website or web developer. Find at least 3 specific businesses or individuals looking for websites.' },
+  { label: 'Poor website complaints', query: 'Find businesses in Ghana complaining about their current website being slow, outdated, or unprofessional. Check social media and forums.' },
+  { label: 'New domain registrations', query: 'Search for businesses in Accra or Kumasi that recently registered a domain in the last 6 months but may not have a proper website yet. Check if their domains are active.' },
+  { label: 'Web dev keywords', query: 'Search Reddit for recent posts with keywords: "need a web developer", "website for my business", "website developer Ghana", "how to get a website". List the most relevant prospects.' },
+  { label: 'Expired websites', query: 'Find businesses in Ghana whose websites appear to be down, expired, or have broken links. These are warm leads for a rebuild.' },
+  { label: 'Competitor analysis', query: 'Search for other web development companies in Ghana. What are they offering? What gaps exist that Ecstasy Technologies can fill?' },
+]
+
+function ScoutToolbar({ onSend, loading }: { onSend: (q: string) => void; loading: boolean }) {
+  return (
+    <div style={{ padding: '8px 12px 6px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, flexShrink: 0 }}>
+      <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick searches</div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        {SCOUT_PRESETS.map(p => (
+          <button key={p.label} onClick={() => !loading && onSend(p.query)}
+            disabled={loading}
+            style={{ fontSize: 11, fontFamily: FONT_BODY, color: loading ? MUTED : GOLD, border: `1px solid ${loading ? BORDER : GOLD + '60'}`, borderRadius: 14, padding: '3px 10px', background: 'transparent', cursor: loading ? 'default' : 'pointer', transition: 'background 0.15s, border-color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = `${GOLD}14` }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}>
+            {p.label}
+          </button>
+        ))}
       </div>
     </div>
   )
@@ -3132,7 +3220,7 @@ export default function Page() {
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
     setLoading(true); setError(null)
     try {
-      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes)
+      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -3146,7 +3234,7 @@ export default function Page() {
   const handleRunBrief = useCallback(async () => {
     setBriefLoading(true); setBriefResult('')
     try {
-      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes)
+      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes, 'executor')
       setBriefResult(reply)
     } catch (err) {
       setBriefResult('Error: ' + (err instanceof Error ? err.message : 'Unknown'))
@@ -3166,7 +3254,7 @@ export default function Page() {
     setAllChats((prev) => { msgs = [...(prev[targetAgent] ?? []), userMsg]; return { ...prev, [targetAgent]: msgs } })
     setLoading(true)
     try {
-      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes)
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -3277,6 +3365,7 @@ export default function Page() {
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
+          {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
         <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
@@ -3347,6 +3436,7 @@ export default function Page() {
         </div>
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
         <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
+        {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
     )
