@@ -520,11 +520,14 @@ function saveAllChats(chats: AllChats): void {
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
-async function callChat(systemPrompt: string, messages: Message[]): Promise<string> {
+async function callChat(systemPrompt: string, messages: Message[], pinnedNotes?: string): Promise<string> {
+  const fullPrompt = pinnedNotes?.trim()
+    ? `${systemPrompt}\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
+    : systemPrompt
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ systemPrompt, messages }),
+    body: JSON.stringify({ systemPrompt: fullPrompt, messages }),
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
@@ -1682,6 +1685,51 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
 
 // ─── CommandCenter ────────────────────────────────────────────────────────────
 
+// ─── ForecastCard ─────────────────────────────────────────────────────────────
+
+function ForecastCard({ deals }: { deals: Deal[] }) {
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+  const dayOfMonth = now.getDate()
+  const daysLeft = daysInMonth - dayOfMonth
+
+  const closedThisMonth = deals.filter(d => {
+    if (d.stage !== 'closed') return false
+    return new Date(d.stageChangedAt ?? d.createdAt) >= monthStart
+  })
+  const earned = closedThisMonth.reduce((s, d) => s + d.valueGHS, 0)
+  const dailyRate = earned / Math.max(dayOfMonth, 1)
+  const projected = Math.round(dailyRate * daysInMonth)
+  const pct = Math.min(100, Math.round((projected / MONTHLY_GOAL_GHS) * 100))
+  const gap = Math.max(0, MONTHLY_GOAL_GHS - earned)
+  const avgDeal = closedThisMonth.length > 0 ? earned / closedThisMonth.length : 3750
+  const dealsNeeded = Math.ceil(gap / avgDeal)
+
+  return (
+    <div style={{ margin: '10px 16px 0', padding: '12px 14px', borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+      <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 8 }}>Month Forecast</div>
+      <div style={{ background: BG, borderRadius: 4, height: 5, marginBottom: 10, overflow: 'hidden' }}>
+        <div style={{ height: '100%', borderRadius: 4, background: GOLD, width: `${pct}%`, transition: 'width 0.5s ease' }} />
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+        <div>
+          <span style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 18, color: TEXT }}>GHS {projected.toLocaleString()}</span>
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginLeft: 5 }}>projected</span>
+        </div>
+        <span style={{ fontSize: 12, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 700 }}>{pct}%</span>
+      </div>
+      <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.55 }}>
+        {earned === 0
+          ? `No closed deals yet · need ~${dealsNeeded} deals at GHS ${Math.round(avgDeal).toLocaleString()} avg to hit goal`
+          : gap <= 0
+          ? '🎯 On track to hit GHS 120,000 this month!'
+          : `GHS ${gap.toLocaleString()} gap · ~${dealsNeeded} more deal${dealsNeeded !== 1 ? 's' : ''} · ${daysLeft} day${daysLeft !== 1 ? 's' : ''} left`}
+      </div>
+    </div>
+  )
+}
+
 function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading }: {
   deals: Deal[]
   earnedGHS: number
@@ -1746,6 +1794,9 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
           </button>
         ))}
       </div>
+
+      {/* Forecast */}
+      <ForecastCard deals={deals} />
 
       {/* Morning Brief */}
       <div style={{ margin: '16px 16px 0', padding: 16, borderRadius: 12, border: `1px solid ${GOLD}40`, background: `${GOLD}08` }}>
@@ -1952,6 +2003,77 @@ const BLANK_PROJECT = (): Partial<WebsiteProject> => ({
   year: new Date().getFullYear(), featured: false, status: 'completed',
 })
 
+// ─── ImageUploader ─────────────────────────────────────────────────────────────
+
+function ImageUploader({ value, onChange }: { value: string; onChange: (url: string) => void }) {
+  const [uploading, setUploading] = useState(false)
+  const [preview, setPreview] = useState<string | null>(value && !value.startsWith('data:') ? null : value || null)
+  const [dragOver, setDragOver] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const upload = async (file: File) => {
+    setUploading(true)
+    const reader = new FileReader()
+    reader.onload = async (e) => {
+      const base64 = e.target?.result as string
+      setPreview(base64)
+      try {
+        const res = await fetch('/api/website/upload', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ base64, filename: file.name }),
+        })
+        const data = await res.json()
+        if (res.ok) { onChange(data.path) }
+        else { onChange(base64) } // fall back to data URL
+      } catch { onChange(base64) }
+      finally { setUploading(false) }
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragOver(false)
+    const file = e.dataTransfer.files[0]
+    if (file?.type.startsWith('image/')) upload(file)
+  }
+
+  const displayUrl = value && !value.startsWith('data:') ? value : ''
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div
+        onDrop={handleDrop}
+        onDragOver={e => { e.preventDefault(); setDragOver(true) }}
+        onDragLeave={() => setDragOver(false)}
+        onClick={() => inputRef.current?.click()}
+        style={{
+          border: `2px dashed ${dragOver ? GOLD : BORDER}`, borderRadius: 10,
+          padding: preview ? 4 : '18px 16px', cursor: 'pointer', textAlign: 'center',
+          background: dragOver ? `${GOLD}08` : SURFACE2, transition: 'all 0.15s',
+          minHeight: 56, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        {preview ? (
+          <img src={preview} alt="preview" style={{ maxHeight: 100, maxWidth: '100%', borderRadius: 6, objectFit: 'cover' }} />
+        ) : (
+          <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.5 }}>
+            {uploading ? 'Uploading…' : '↑ Drop screenshot here or tap to select'}
+          </div>
+        )}
+      </div>
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; if (f) upload(f) }} />
+      <input
+        value={displayUrl}
+        onChange={e => { onChange(e.target.value); setPreview(null) }}
+        placeholder="Or paste image URL manually"
+        style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }}
+      />
+    </div>
+  )
+}
+
 function WebsiteProjectsView({ prefill, onClearPrefill }: {
   prefill?: Partial<WebsiteProject> | null
   onClearPrefill?: () => void
@@ -2106,8 +2228,8 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
               <input value={form.link ?? ''} onChange={e => set('link', e.target.value)} placeholder="https://lavimachotel.com" style={inputStyle} />
             </div>
             <div>
-              <label style={labelStyle}>Cover Image URL</label>
-              <input value={form.image ?? ''} onChange={e => set('image', e.target.value)} placeholder="https://…" style={inputStyle} />
+              <label style={labelStyle}>Cover Image</label>
+              <ImageUploader value={form.image ?? ''} onChange={v => set('image', v)} />
             </div>
             <div>
               <label style={labelStyle}>Technologies</label>
@@ -2224,14 +2346,58 @@ function WebsiteProjectsView({ prefill, onClearPrefill }: {
   )
 }
 
+// ─── PinnedNotesPanel ─────────────────────────────────────────────────────────
+
+function PinnedNotesPanel({ open, notes, onClose, onChange }: {
+  open: boolean; notes: string; onClose: () => void; onChange: (v: string) => void
+}) {
+  if (!open) return null
+  const lineCount = notes.trim().split('\n').filter(Boolean).length
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex' } as React.CSSProperties}>
+      <div onClick={onClose} style={{ flex: 1, background: '#00000050' }} />
+      <div style={{ width: Math.min(340, window.innerWidth - 40), background: SURFACE, display: 'flex', flexDirection: 'column', borderLeft: `1px solid ${BORDER}` }}>
+        <div style={{ padding: '14px 16px 12px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: TEXT }}>📌 Pinned Context</div>
+            <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Injected into every agent automatically</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ padding: 12, flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.55 }}>
+            Write anything agents should always know: agreed prices, active client names, your focus this week, personal rules.
+          </div>
+          <textarea
+            value={notes}
+            onChange={e => onChange(e.target.value)}
+            placeholder={'e.g.\n• Current clients: Solani Construction (GHS 3,800), Jokran Hotel (GHS 4,000)\n• Website price: GHS 3,500–4,000\n• This week: follow up on stale proposals first'}
+            style={{ flex: 1, background: SURFACE2, border: `1px solid ${BORDER}`, borderRadius: 10, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, padding: 12, resize: 'none', lineHeight: 1.6, outline: 'none', minHeight: 200 }}
+          />
+        </div>
+        {notes.trim() && (
+          <div style={{ padding: '0 14px 14px' }}>
+            <div style={{ fontSize: 10, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, flexShrink: 0, display: 'inline-block' }} />
+              Active · {lineCount} line{lineCount !== 1 ? 's' : ''} injected into all agents
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── MobileHeader ─────────────────────────────────────────────────────────────
 
-function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
+function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle, onOpenNotes, hasNotes }: {
   agent: Agent
   earnedGHS: number
   theme: 'dark' | 'light'
   onToggleTheme: () => void
   notifToggle: React.ReactNode
+  onOpenNotes: () => void
+  hasNotes: boolean
 }) {
   return (
     <div style={{ background: SURFACE, borderBottom: `1px solid ${BORDER}`, paddingTop: 'env(safe-area-inset-top)', flexShrink: 0 }}>
@@ -2242,6 +2408,7 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {notifToggle}
+          <button onClick={onOpenNotes} title="Pinned Context" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, color: hasNotes ? GOLD : MUTED, padding: '2px 4px', lineHeight: 1 }}>📌</button>
           <ThemeToggle theme={theme} onToggle={onToggleTheme} />
           <GoalRing earned={earnedGHS} mini />
         </div>
@@ -2252,7 +2419,7 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle }: {
 
 // ─── CouncilChamber ──────────────────────────────────────────────────────────
 
-function CouncilChamber() {
+function CouncilChamber({ pinnedNotes }: { pinnedNotes?: string }) {
   const [input, setInput] = useState('')
   const [topic, setTopic] = useState('')
   const [responses, setResponses] = useState<Partial<Record<AgentId, string>>>({})
@@ -2273,7 +2440,7 @@ function CouncilChamber() {
     await Promise.allSettled(
       COUNCIL_AGENT_IDS.map(async (agentId) => {
         try {
-          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }])
+          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes)
           setResponses(prev => ({ ...prev, [agentId]: text }))
         } catch (err) {
           setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
@@ -2551,9 +2718,21 @@ export default function Page() {
   const [briefLoading, setBriefLoading] = useState(false)
   const [websitePrefill, setWebsitePrefill] = useState<Partial<WebsiteProject> | null>(null)
   const [viralPrefill, setViralPrefill] = useState<string | null>(null)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [pinnedNotes, setPinnedNotes] = useState(() =>
+    typeof window !== 'undefined' ? (localStorage.getItem('tagett-pinned-notes-v1') ?? '') : ''
+  )
 
   useEffect(() => { setAllChats(loadAllChats()) }, [])
-  useEffect(() => { setDeals(loadDeals()) }, [])
+  useEffect(() => {
+    // Show local data immediately, then hydrate from KV
+    const local = loadDeals()
+    if (local.length > 0) setDeals(local)
+    fetch('/api/deals')
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) { setDeals(d); saveDeals(d) } })
+      .catch(() => {})
+  }, [])
 
   // ── Stale proposal notifications ─────────────────────────────────────────
   useEffect(() => {
@@ -2582,7 +2761,20 @@ export default function Page() {
     localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified))
   }, [deals])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
-  useEffect(() => { saveDeals(deals) }, [deals])
+  useEffect(() => { localStorage.setItem('tagett-pinned-notes-v1', pinnedNotes) }, [pinnedNotes])
+
+  const kvSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    saveDeals(deals) // Always write to localStorage immediately
+    if (kvSyncRef.current) clearTimeout(kvSyncRef.current)
+    kvSyncRef.current = setTimeout(() => {
+      fetch('/api/deals', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(deals),
+      }).catch(() => {})
+    }, 1500)
+  }, [deals])
 
   const activeAgent: AgentId | null = AGENT_IDS.includes(activeView as AgentId) ? activeView as AgentId : null
   const agent = activeAgent ? AGENTS[activeAgent] : AGENTS.prospect
@@ -2595,7 +2787,7 @@ export default function Page() {
     setAllChats((prev) => ({ ...prev, [activeAgent]: next }))
     setLoading(true); setError(null)
     try {
-      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next)
+      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -2609,7 +2801,7 @@ export default function Page() {
   const handleRunBrief = useCallback(async () => {
     setBriefLoading(true); setBriefResult('')
     try {
-      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }])
+      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes)
       setBriefResult(reply)
     } catch (err) {
       setBriefResult('Error: ' + (err instanceof Error ? err.message : 'Unknown'))
@@ -2629,7 +2821,7 @@ export default function Page() {
     setAllChats((prev) => { msgs = [...(prev[targetAgent] ?? []), userMsg]; return { ...prev, [targetAgent]: msgs } })
     setLoading(true)
     try {
-      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs)
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
@@ -2721,7 +2913,7 @@ export default function Page() {
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
 
-    if (activeView === 'council') return shell(<CouncilChamber />)
+    if (activeView === 'council') return shell(<CouncilChamber pinnedNotes={pinnedNotes} />)
 
     const AgentSubheader = (
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
@@ -2735,13 +2927,14 @@ export default function Page() {
 
     return shell(
       <>
-        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} />
+        <MobileHeader agent={agent} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onOpenNotes={() => setNotesOpen(true)} hasNotes={!!pinnedNotes.trim()} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {AgentSubheader}
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
+        <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
       </>
     )
   }
@@ -2788,7 +2981,7 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} />
     )
-    if (activeView === 'council') return <CouncilChamber />
+    if (activeView === 'council') return <CouncilChamber pinnedNotes={pinnedNotes} />
     return (
       <>
         <div style={{ padding: '16px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 }}>
@@ -2809,7 +3002,7 @@ export default function Page() {
         </div>
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
         <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} />
-        <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} />
+        <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
     )
   }
@@ -2822,6 +3015,17 @@ export default function Page() {
           <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>Ecstasy Technologies</div>
         </div>
         <nav style={{ padding: '12px 10px', flex: 1, overflowY: 'auto' }}>
+          <button onClick={() => setNotesOpen(true)} style={{ width: '100%', display: 'block', textAlign: 'left', padding: '9px 12px', borderRadius: 8, marginBottom: 2, background: pinnedNotes.trim() ? `${GOLD}18` : 'transparent', transition: 'background 0.15s', border: 'none', cursor: 'pointer' }}
+            onMouseEnter={(e) => { if (!pinnedNotes.trim()) e.currentTarget.style.background = `${GOLD}0A` }}
+            onMouseLeave={(e) => { if (!pinnedNotes.trim()) e.currentTarget.style.background = 'transparent' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 15, color: pinnedNotes.trim() ? GOLD : MUTED }}>📌</span>
+              <span style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: pinnedNotes.trim() ? 600 : 400, color: pinnedNotes.trim() ? GOLD : TEXT }}>Notes</span>
+            </div>
+            <div style={{ fontSize: 11, color: MUTED, marginTop: 2, fontFamily: FONT_BODY, paddingLeft: 23 }}>
+              {pinnedNotes.trim() ? 'Context active — all agents see this' : 'Pinned context for all agents'}
+            </div>
+          </button>
           {renderDesktopNavBtn('home', '⌂', 'Command Center', 'Goal, brief & overview')}
           {renderDesktopNavBtn('pipeline', '◫', 'Deal Pipeline', 'Track deals by stage')}
           {renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
@@ -2850,6 +3054,7 @@ export default function Page() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {renderMainContent()}
       </div>
+      <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
     </div>
   )
 }
