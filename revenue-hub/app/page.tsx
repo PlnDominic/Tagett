@@ -2964,6 +2964,27 @@ function InvoicesView({ deals }: { deals: Deal[] }) {
 
   useEffect(() => { saveInvoices(invoices) }, [invoices])
 
+  // Hydrate from Supabase on mount
+  useEffect(() => {
+    fetch('/api/invoices')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) { setInvoices(d); saveInvoices(d) } })
+      .catch(() => {})
+  }, [])
+
+  // Debounced sync to Supabase on every change
+  const invoiceSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (invoiceSyncRef.current) clearTimeout(invoiceSyncRef.current)
+    invoiceSyncRef.current = setTimeout(() => {
+      fetch('/api/invoices', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(invoices),
+      }).catch(() => {})
+    }, 1500)
+  }, [invoices])
+
   const createInvoice = () => {
     if (!form.clientName || !form.totalGHS) return
     const total = parseInt(form.totalGHS, 10) || 0
@@ -3241,6 +3262,28 @@ function SocialCalendarView() {
   const [showCompose, setShowCompose] = useState(false)
 
   useEffect(() => { saveSocialPosts(posts) }, [posts])
+
+  // Hydrate from Supabase on mount
+  useEffect(() => {
+    fetch('/api/social-posts')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) { setPosts(d); saveSocialPosts(d) } })
+      .catch(() => {})
+  }, [])
+
+  // Debounced sync to Supabase on every change
+  const socialSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (socialSyncRef.current) clearTimeout(socialSyncRef.current)
+    socialSyncRef.current = setTimeout(() => {
+      fetch('/api/social-posts', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(posts),
+      }).catch(() => {})
+    }, 1500)
+  }, [posts])
+
   useEffect(() => {
     fetch('/api/social/buffer')
       .then(r => r.ok ? r.json() : [])
@@ -3944,6 +3987,28 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
   const [bulkMsg, setBulkMsg] = useState('')
   const [caseStudies, setCaseStudies] = useState<Record<number, string>>(() => loadCaseStudies())
   const [generatingId, setGeneratingId] = useState<number | null>(null)
+
+  // Hydrate case studies from Supabase on mount
+  useEffect(() => {
+    fetch('/api/case-studies')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && typeof d === 'object' && Object.keys(d).length > 0) { setCaseStudies(d); saveCaseStudies(d) } })
+      .catch(() => {})
+  }, [])
+
+  // Sync case studies to Supabase whenever they change
+  const csSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (Object.keys(caseStudies).length === 0) return
+    if (csSyncRef.current) clearTimeout(csSyncRef.current)
+    csSyncRef.current = setTimeout(() => {
+      fetch('/api/case-studies', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(caseStudies),
+      }).catch(() => {})
+    }, 1500)
+  }, [caseStudies])
   const [openStudyId, setOpenStudyId] = useState<number | null>(null)
   const [matchIndustry, setMatchIndustry] = useState('')
   const [studyError, setStudyError] = useState('')
