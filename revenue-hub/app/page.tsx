@@ -2966,7 +2966,7 @@ function InvoicesView({ deals }: { deals: Deal[] }) {
 
   // Hydrate from Supabase on mount
   useEffect(() => {
-    fetch('/api/invoices')
+    fetch('/api/invoices', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (Array.isArray(d) && d.length > 0) { setInvoices(d); saveInvoices(d) } })
       .catch(() => {})
@@ -3265,7 +3265,7 @@ function SocialCalendarView() {
 
   // Hydrate from Supabase on mount
   useEffect(() => {
-    fetch('/api/social-posts')
+    fetch('/api/social-posts', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (Array.isArray(d) && d.length > 0) { setPosts(d); saveSocialPosts(d) } })
       .catch(() => {})
@@ -3990,7 +3990,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
 
   // Hydrate case studies from Supabase on mount
   useEffect(() => {
-    fetch('/api/case-studies')
+    fetch('/api/case-studies', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d && typeof d === 'object' && Object.keys(d).length > 0) { setCaseStudies(d); saveCaseStudies(d) } })
       .catch(() => {})
@@ -5250,7 +5250,7 @@ export default function Page() {
   useEffect(() => {
     // Show localStorage immediately, then hydrate from Supabase
     setAllChats(loadAllChats())
-    fetch('/api/conversations')
+    fetch('/api/conversations', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         // Only overwrite localStorage when Supabase actually has conversations.
@@ -5266,7 +5266,7 @@ export default function Page() {
 
   // Load pinned notes from Supabase on mount (localStorage shows immediately)
   useEffect(() => {
-    fetch('/api/notes')
+    fetch('/api/notes', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.value) { setPinnedNotes(d.value); localStorage.setItem('tagett-pinned-notes-v1', d.value) } })
       .catch(() => {})
@@ -5274,7 +5274,7 @@ export default function Page() {
 
   // Load workspace (team intel) from Supabase on mount
   useEffect(() => {
-    fetch('/api/workspace')
+    fetch('/api/workspace', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d && typeof d === 'object' && Object.keys(d).some(k => d[k]?.trim())) {
@@ -5289,9 +5289,9 @@ export default function Page() {
     // Show local data immediately, then hydrate from Supabase
     const local = loadDeals()
     if (local.length > 0) setDeals(local)
-    fetch('/api/deals')
+    fetch('/api/deals', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) { setDeals(d); saveDeals(d) } })
+      .then(d => { if (Array.isArray(d) && d.length > 0) { setDeals(d); saveDeals(d) } })
       .catch(() => {})
   }, [])
 
