@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 function parseSections(text: string) {
   const parts = text.split(/\n(?=PROBLEM|SOLUTION|RESULT|PROOF_SNIPPET)/i)
   const s: Record<string, string> = {}
