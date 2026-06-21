@@ -5272,6 +5272,19 @@ export default function Page() {
       .catch(() => {})
   }, [])
 
+  // Load workspace (team intel) from Supabase on mount
+  useEffect(() => {
+    fetch('/api/workspace')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d && typeof d === 'object' && Object.keys(d).some(k => d[k]?.trim())) {
+          setWorkspace(d)
+          localStorage.setItem('tagett-workspace-v1', JSON.stringify(d))
+        }
+      })
+      .catch(() => {})
+  }, [])
+
   useEffect(() => {
     // Show local data immediately, then hydrate from Supabase
     const local = loadDeals()
@@ -5309,7 +5322,19 @@ export default function Page() {
     localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notified))
   }, [deals])
   useEffect(() => { saveAllChats(allChats) }, [allChats])
-  useEffect(() => { localStorage.setItem('tagett-workspace-v1', JSON.stringify(workspace)) }, [workspace])
+
+  const workspaceSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    localStorage.setItem('tagett-workspace-v1', JSON.stringify(workspace))
+    if (workspaceSyncRef.current) clearTimeout(workspaceSyncRef.current)
+    workspaceSyncRef.current = setTimeout(() => {
+      fetch('/api/workspace', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(workspace),
+      }).catch(() => {})
+    }, 1500)
+  }, [workspace])
 
   const notesSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
