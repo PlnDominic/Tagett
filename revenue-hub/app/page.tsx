@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { getSupabaseBrowser } from '@/lib/supabase-browser'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -1642,6 +1643,20 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
   return (
     <IconButton onClick={onToggle} title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}>
       {theme === 'light' ? '☽' : '☀'}
+    </IconButton>
+  )
+}
+
+function SignOutButton() {
+  const [loading, setLoading] = useState(false)
+  const handleSignOut = async () => {
+    setLoading(true)
+    await fetch('/api/auth/signout', { method: 'POST' })
+    window.location.href = '/login'
+  }
+  return (
+    <IconButton onClick={handleSignOut} title="Sign out" disabled={loading}>
+      ⏻
     </IconButton>
   )
 }
@@ -5556,6 +5571,7 @@ export default function Page() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {notifToggle}
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <SignOutButton />
             <GoalRing earned={earnedGHS} mini />
           </div>
         </div>
@@ -5777,6 +5793,7 @@ export default function Page() {
           <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {notifToggle}
             <ThemeToggle theme={theme} onToggle={toggleTheme} />
+            <SignOutButton />
           </div>
           <GoalRing earned={earnedGHS} />
         </div>
