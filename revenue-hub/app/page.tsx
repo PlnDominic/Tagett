@@ -2814,6 +2814,9 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
         <button onClick={() => onOpenAgent('scope', `Scope this: ${deal.name} (${deal.industry || 'general'}, GHS ${deal.valueGHS})`)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           Scope
         </button>
+        <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${deal.name}${deal.industry ? ' ' + deal.industry : ''} Ghana`)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', textDecoration: 'none' }}>
+          📍 Maps
+        </a>
         <label style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           {followUpLabel ? '+ Change' : '+ Follow-up'}
           <input type="date" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
@@ -4845,6 +4848,7 @@ function ClientsView({ onOpenAgent }: { onOpenAgent: (agentId: AgentId, prompt: 
                   {c.whatsapp && <a href={`https://wa.me/${c.whatsapp.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: WA_GREEN, fontFamily: FONT_BODY, textDecoration: 'none' }}>💬 WhatsApp</a>}
                   {c.email && <a href={`mailto:${c.email}`} style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>✉ {c.email}</a>}
                   {c.website && <a href={c.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: GOLD, fontFamily: FONT_BODY, textDecoration: 'none' }}>↗ Website</a>}
+                  <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${c.name}${c.industry ? ' ' + c.industry : ''} Ghana`)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#4285F4', fontFamily: FONT_BODY, textDecoration: 'none' }}>📍 Maps</a>
                 </div>
                 {c.notes && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 7, lineHeight: 1.5 }}>{c.notes.slice(0, 120)}{c.notes.length > 120 ? '…' : ''}</div>}
               </div>
