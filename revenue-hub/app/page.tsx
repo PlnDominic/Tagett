@@ -204,7 +204,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -718,7 +718,7 @@ const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'o
 type MobileTab = 'home' | 'work' | 'agents' | 'more'
 const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
-const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality']
+const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality', 'analytics']
 function getMobileTab(view: ViewId): MobileTab {
   if (WORK_VIEWS.includes(view))  return 'work'
   if (AGENT_VIEWS.includes(view)) return 'agents'
@@ -908,6 +908,17 @@ function saveAllChats(chats: AllChats): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(chats))
   } catch { /* quota exceeded */ }
+}
+
+// ─── CSV export helper ─────────────────────────────────────────────────────────
+
+function downloadCSV(filename: string, rows: string[][]) {
+  const csv = rows.map(r => r.map(c => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = filename; a.click()
+  URL.revokeObjectURL(url)
 }
 
 // ─── Supabase conversation persistence ────────────────────────────────────────
@@ -2857,8 +2868,32 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   const forecast = Math.round(deals.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0))
   const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }
 
+  const overdueDeals = deals.filter(d => d.followUpAt && d.followUpAt < Date.now() && d.stage !== 'closed' && d.stage !== 'lost')
+
+  const exportDealsCSV = () => {
+    const rows = [
+      ['Name', 'Industry', 'Stage', 'Value (GHS)', 'Phone', 'Follow-up', 'Last Contacted', 'Created'],
+      ...deals.map(d => [
+        d.name, d.industry, STAGE_LABELS[d.stage], String(d.valueGHS), d.phone ?? '',
+        d.followUpAt ? new Date(d.followUpAt).toLocaleDateString('en-GB') : '',
+        d.lastContactedAt ? new Date(d.lastContactedAt).toLocaleDateString('en-GB') : '',
+        new Date(d.createdAt).toLocaleDateString('en-GB'),
+      ])
+    ]
+    downloadCSV(`tagett-deals-${new Date().toISOString().slice(0,10)}.csv`, rows)
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Overdue follow-up banner */}
+      {overdueDeals.length > 0 && (
+        <div style={{ padding: '8px 16px', background: `${GOLD}15`, borderBottom: `1px solid ${GOLD}40`, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 14 }}>⏰</span>
+          <span style={{ flex: 1, fontSize: 12, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600 }}>
+            {overdueDeals.length} overdue follow-up{overdueDeals.length > 1 ? 's' : ''}: {overdueDeals.map(d => d.name).join(', ')}
+          </span>
+        </div>
+      )}
       {/* Header */}
       <div style={{ padding: '14px 16px 10px', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2868,9 +2903,14 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
               GHS {closedValue.toLocaleString()} closed · Forecast GHS {forecast.toLocaleString()}
             </div>
           </div>
-          <button onClick={() => setShowForm(v => !v)} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            + Deal
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={exportDealsCSV} title="Export CSV" style={{ padding: '7px 10px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>
+              ↓ CSV
+            </button>
+            <button onClick={() => setShowForm(v => !v)} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+              + Deal
+            </button>
+          </div>
         </div>
 
         {showForm && (
@@ -3116,9 +3156,23 @@ ${inv.notes?`<p style="font-size:13px;color:#555">${inv.notes}</p>`:''}
       <div style={{ padding: '14px 16px 10px', flexShrink: 0, borderBottom: `1px solid ${BORDER}` }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16, color: TEXT }}>Invoices</div>
-          <button onClick={() => setShowForm(v => !v)} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
-            + Invoice
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => {
+              const rows = [
+                ['Client', 'Description', 'Total GHS', 'Collected GHS', 'Outstanding GHS', 'Status', 'Created', 'Due'],
+                ...invoices.map(inv => {
+                  const collected = inv.milestones.filter(m => m.paidAt).reduce((s, m) => s + m.amountGHS, 0)
+                  return [inv.clientName, inv.description, String(inv.totalGHS), String(collected), String(inv.totalGHS - collected), inv.status, new Date(inv.createdAt).toLocaleDateString('en-GB'), inv.dueAt ? new Date(inv.dueAt).toLocaleDateString('en-GB') : '']
+                })
+              ]
+              downloadCSV(`tagett-invoices-${new Date().toISOString().slice(0,10)}.csv`, rows)
+            }} title="Export CSV" style={{ padding: '7px 10px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>
+              ↓ CSV
+            </button>
+            <button onClick={() => setShowForm(v => !v)} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+              + Invoice
+            </button>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
           {[['Invoiced', totalInvoiced, TEXT], ['Collected', totalCollected, '#10B981'], ['Outstanding', outstanding, outstanding > 0 ? GOLD : MUTED]].map(([label, val, color]) => (
@@ -3176,6 +3230,9 @@ ${inv.notes?`<p style="font-size:13px;color:#555">${inv.notes}</p>`:''}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{inv.clientName}</span>
                     <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: `${col}20`, color: col, fontFamily: FONT_HEADING, fontWeight: 600 }}>{INV_STATUS_LABEL[inv.status]}</span>
+                    {inv.dueAt && inv.dueAt < Date.now() && inv.status !== 'paid' && (
+                      <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: '#EF444420', color: '#EF4444', fontFamily: FONT_HEADING, fontWeight: 600 }}>Overdue</span>
+                    )}
                   </div>
                   {inv.description && <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{inv.description}</div>}
                   <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
@@ -3183,6 +3240,11 @@ ${inv.notes?`<p style="font-size:13px;color:#555">${inv.notes}</p>`:''}
                     {paidGHS > 0 && <span style={{ fontSize: 12, color: '#10B981', fontFamily: FONT_BODY }}>GHS {paidGHS.toLocaleString()} received</span>}
                     {inv.totalGHS - paidGHS > 0 && inv.status !== 'draft' && <span style={{ fontSize: 12, color: GOLD, fontFamily: FONT_BODY }}>GHS {(inv.totalGHS - paidGHS).toLocaleString()} outstanding</span>}
                   </div>
+                  {inv.status !== 'draft' && inv.totalGHS > 0 && (
+                    <div style={{ marginTop: 6, height: 4, borderRadius: 2, background: BORDER, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${Math.round((paidGHS / inv.totalGHS) * 100)}%`, background: '#10B981', borderRadius: 2, transition: 'width 0.3s' }} />
+                    </div>
+                  )}
                 </div>
                 <span style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{isExpanded ? '▲' : '▼'}</span>
               </div>
@@ -4036,7 +4098,28 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
   const [matchIndustry, setMatchIndustry] = useState('')
   const [studyError, setStudyError] = useState('')
   const [copiedProof, setCopiedProof] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState('')
   const showForm = editing !== null
+
+  const handleSyncAll = async () => {
+    if (projects.length === 0) return
+    setSyncing(true); setSyncMsg('')
+    let ok = 0; let failed = 0
+    for (const p of projects) {
+      try {
+        const res = await fetch('/api/website/projects', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(p),
+        })
+        if (res.ok) ok++; else failed++
+      } catch { failed++ }
+    }
+    setSyncing(false)
+    setSyncMsg(failed === 0 ? `✓ ${ok} project${ok !== 1 ? 's' : ''} synced to website` : `${ok} synced, ${failed} failed`)
+    setTimeout(() => setSyncMsg(''), 4000)
+  }
 
   const handleGenerateCaseStudy = async (p: WebsiteProject) => {
     if (openStudyId === p.id) { setOpenStudyId(null); return }
@@ -4178,12 +4261,20 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
             <button onClick={handleBulkImport} disabled={bulkImporting} style={{ padding: '7px 12px', borderRadius: 8, background: 'transparent', color: bulkImporting ? MUTED : GOLD, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid ${GOLD}60`, cursor: bulkImporting ? 'default' : 'pointer' }}>
               {bulkImporting ? '…importing' : '↑ Import Missing'}
             </button>
+            <button onClick={handleSyncAll} disabled={syncing || projects.length === 0} style={{ padding: '7px 12px', borderRadius: 8, background: 'transparent', color: syncing ? MUTED : '#10B981', fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid #10B98160`, cursor: syncing ? 'default' : 'pointer' }}>
+              {syncing ? '…syncing' : '⟳ Sync All'}
+            </button>
             <button onClick={openNew} style={{ padding: '7px 14px', borderRadius: 8, background: GOLD, color: BG, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>
               + Add Project
             </button>
           </div>
         )}
       </div>
+      {syncMsg && (
+        <div style={{ fontSize: 12, color: syncMsg.startsWith('✓') ? '#10B981' : '#f87171', fontFamily: FONT_BODY, marginBottom: 10 }}>
+          {syncMsg}
+        </div>
+      )}
       {bulkMsg && (
         <div style={{ fontSize: 12, color: bulkMsg.startsWith('✓') ? GOLD : '#f87171', fontFamily: FONT_BODY, marginBottom: 10 }}>
           {bulkMsg}
@@ -4777,7 +4868,7 @@ function ClientsView({ onOpenAgent }: { onOpenAgent: (agentId: AgentId, prompt: 
   )
 }
 
-// ─── ConversationSearch ───────────────────────────────────────────────────────
+// ─── GlobalSearch ─────────────────────────────────────────────────────────────
 
 interface SearchHit {
   agent_id: string
@@ -4786,7 +4877,16 @@ interface SearchHit {
   created_at: string
 }
 
-function ConversationSearch({ onClose }: { onClose: () => void }) {
+interface LocalHit {
+  type: 'deal' | 'invoice'
+  id: string
+  title: string
+  subtitle: string
+  badge: string
+  badgeColor: string
+}
+
+function ConversationSearch({ onClose, deals, invoices }: { onClose: () => void; deals: Deal[]; invoices: Invoice[] }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
@@ -4814,6 +4914,23 @@ function ConversationSearch({ onClose }: { onClose: () => void }) {
 
   const agentLabel = (id: string) => AGENTS[id as AgentId]?.label ?? id
 
+  const localHits = useMemo<LocalHit[]>(() => {
+    const q = query.toLowerCase().trim()
+    if (!q) return []
+    const hits: LocalHit[] = []
+    deals.forEach(d => {
+      if ([d.name, d.industry, d.phone ?? ''].some(f => f.toLowerCase().includes(q))) {
+        hits.push({ type: 'deal', id: d.id, title: d.name, subtitle: `${d.industry} · GHS ${d.valueGHS.toLocaleString()}`, badge: STAGE_LABELS[d.stage], badgeColor: STAGE_COLOR[d.stage] })
+      }
+    })
+    invoices.forEach(inv => {
+      if ([inv.clientName, inv.description].some(f => f.toLowerCase().includes(q))) {
+        hits.push({ type: 'invoice', id: inv.id, title: inv.clientName, subtitle: `${inv.description} · GHS ${inv.totalGHS.toLocaleString()}`, badge: INV_STATUS_LABEL[inv.status], badgeColor: INV_STATUS_COLOR[inv.status] })
+      }
+    })
+    return hits
+  }, [query, deals, invoices])
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 60 }}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -4824,18 +4941,33 @@ function ConversationSearch({ onClose }: { onClose: () => void }) {
             ref={inputRef}
             value={query}
             onChange={e => handleChange(e.target.value)}
-            placeholder="Search all conversations…"
+            placeholder="Search deals, invoices, conversations…"
             style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: TEXT, fontSize: 15, fontFamily: FONT_BODY }}
           />
           {searching && <ThinkingDots />}
           <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED, fontSize: 18, cursor: 'pointer', padding: 0 }}>✕</button>
         </div>
         <div style={{ overflowY: 'auto', flex: 1 }}>
-          {results.length === 0 && query && !searching && (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>No messages found for &ldquo;{query}&rdquo;</div>
+          {localHits.length > 0 && (
+            <>
+              <div style={{ padding: '8px 16px 4px', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Deals & Invoices</div>
+              {localHits.map(h => (
+                <div key={`${h.type}-${h.id}`} style={{ padding: '10px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, color: TEXT }}>{h.title}</div>
+                    <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{h.subtitle}</div>
+                  </div>
+                  <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: `${h.badgeColor}20`, color: h.badgeColor, fontFamily: FONT_HEADING, fontWeight: 600, whiteSpace: 'nowrap' }}>{h.badge}</span>
+                </div>
+              ))}
+              {results.length > 0 && <div style={{ padding: '8px 16px 4px', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Conversations</div>}
+            </>
           )}
-          {results.length === 0 && !query && (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Type a keyword to search across all agent conversations</div>
+          {localHits.length === 0 && results.length === 0 && query && !searching && (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>No results for &ldquo;{query}&rdquo;</div>
+          )}
+          {localHits.length === 0 && results.length === 0 && !query && (
+            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Search deals, invoices, and agent conversations</div>
           )}
           {results.map((hit, i) => {
             const dt = new Date(hit.created_at)
@@ -4993,6 +5125,138 @@ function AgentRunHistory() {
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+// ─── AnalyticsView ────────────────────────────────────────────────────────────
+
+function AnalyticsView({ deals }: { deals: Deal[] }) {
+  const [invoices, setInvoices] = useState<Invoice[]>(loadInvoices)
+
+  useEffect(() => {
+    fetch('/api/invoices', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setInvoices(d) })
+      .catch(() => {})
+  }, [])
+
+  // Monthly revenue collected (last 6 months)
+  const months = useMemo(() => {
+    const result: { label: string; collected: number; invoiced: number }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(1)
+      d.setMonth(d.getMonth() - i)
+      const y = d.getFullYear(); const m = d.getMonth()
+      const label = d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' })
+      let collected = 0; let invoiced = 0
+      invoices.forEach(inv => {
+        const created = new Date(inv.createdAt)
+        if (created.getFullYear() === y && created.getMonth() === m) invoiced += inv.totalGHS
+        inv.milestones.forEach(ms => {
+          if (ms.paidAt) {
+            const pd = new Date(ms.paidAt)
+            if (pd.getFullYear() === y && pd.getMonth() === m) collected += ms.amountGHS
+          }
+        })
+      })
+      result.push({ label, collected, invoiced })
+    }
+    return result
+  }, [invoices])
+
+  const maxVal = Math.max(...months.map(m => Math.max(m.collected, m.invoiced)), 1)
+
+  // Deal funnel
+  const stageCounts = useMemo(() => STAGES.map(s => ({ stage: s, count: deals.filter(d => d.stage === s).length, value: deals.filter(d => d.stage === s).reduce((sum, d) => sum + d.valueGHS, 0) })), [deals])
+
+  // Top clients by invoice value
+  const topClients = useMemo(() => {
+    const map: Record<string, number> = {}
+    invoices.forEach(inv => { map[inv.clientName] = (map[inv.clientName] ?? 0) + inv.totalGHS })
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5)
+  }, [invoices])
+
+  const totalCollected = invoices.reduce((s, inv) => s + inv.milestones.filter(m => m.paidAt).reduce((ms, m) => ms + m.amountGHS, 0), 0)
+  const totalInvoiced = invoices.reduce((s, inv) => s + inv.totalGHS, 0)
+  const closedDeals = deals.filter(d => d.stage === 'closed').length
+  const totalDeals = deals.filter(d => d.stage !== 'lost').length
+  const conversionRate = totalDeals > 0 ? Math.round((closedDeals / totalDeals) * 100) : 0
+
+  const card = (label: string, value: string, sub?: string) => (
+    <div style={{ flex: 1, minWidth: 120, padding: '12px 14px', borderRadius: 12, background: SURFACE2, border: `1px solid ${BORDER}` }}>
+      <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
+      <div style={{ fontSize: 18, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT, marginTop: 4 }}>{value}</div>
+      {sub && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{sub}</div>}
+    </div>
+  )
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
+      <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 16, color: TEXT, marginBottom: 14 }}>Analytics</div>
+
+      {/* KPI cards */}
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
+        {card('Collected', `GHS ${totalCollected.toLocaleString()}`, `of GHS ${totalInvoiced.toLocaleString()} invoiced`)}
+        {card('Outstanding', `GHS ${(totalInvoiced - totalCollected).toLocaleString()}`, `${invoices.filter(i => i.status !== 'paid' && i.status !== 'draft').length} open invoices`)}
+        {card('Conversion', `${conversionRate}%`, `${closedDeals} of ${totalDeals} deals closed`)}
+        {card('Pipeline', `GHS ${Math.round(deals.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0)).toLocaleString()}`, 'weighted forecast')}
+      </div>
+
+      {/* Monthly revenue chart */}
+      <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Monthly Revenue (GHS)</div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 80 }}>
+          {months.map(m => (
+            <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+              <div style={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-end', height: 64 }}>
+                <div style={{ flex: 1, background: BORDER, borderRadius: '2px 2px 0 0', height: `${Math.round((m.invoiced / maxVal) * 100)}%`, minHeight: m.invoiced > 0 ? 2 : 0 }} title={`Invoiced: GHS ${m.invoiced.toLocaleString()}`} />
+                <div style={{ flex: 1, background: '#10B981', borderRadius: '2px 2px 0 0', height: `${Math.round((m.collected / maxVal) * 100)}%`, minHeight: m.collected > 0 ? 2 : 0 }} title={`Collected: GHS ${m.collected.toLocaleString()}`} />
+              </div>
+              <div style={{ fontSize: 9, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 500, textAlign: 'center' }}>{m.label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 12, marginTop: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: BORDER }} /><span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>Invoiced</span></div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><div style={{ width: 8, height: 8, borderRadius: 2, background: '#10B981' }} /><span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>Collected</span></div>
+        </div>
+      </div>
+
+      {/* Deal funnel */}
+      <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Deal Funnel</div>
+        {stageCounts.filter(s => s.stage !== 'lost').map(s => (
+          <div key={s.stage} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{ width: 70, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 500, color: STAGE_COLOR[s.stage], flexShrink: 0 }}>{STAGE_LABELS[s.stage]}</div>
+            <div style={{ flex: 1, height: 14, background: SURFACE2, borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${deals.length > 0 ? Math.round((s.count / deals.length) * 100) : 0}%`, background: STAGE_COLOR[s.stage], borderRadius: 3, opacity: 0.8 }} />
+            </div>
+            <div style={{ width: 24, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT, textAlign: 'right', flexShrink: 0 }}>{s.count}</div>
+            <div style={{ width: 80, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, textAlign: 'right', flexShrink: 0 }}>GHS {s.value.toLocaleString()}</div>
+          </div>
+        ))}
+        {stageCounts.find(s => s.stage === 'lost') && (
+          <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
+            {stageCounts.find(s => s.stage === 'lost')!.count} lost deal{stageCounts.find(s => s.stage === 'lost')!.count !== 1 ? 's' : ''}
+          </div>
+        )}
+      </div>
+
+      {/* Top clients */}
+      {topClients.length > 0 && (
+        <div style={{ padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
+          <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Top Clients by Invoice Value</div>
+          {topClients.map(([name, val], i) => (
+            <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i < topClients.length - 1 ? 8 : 0 }}>
+              <div style={{ width: 18, fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 700, color: GOLD }}>{i + 1}</div>
+              <div style={{ flex: 1, fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 500, color: TEXT }}>{name}</div>
+              <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT }}>GHS {val.toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -5252,6 +5516,7 @@ export default function Page() {
   const [activeView, setActiveView] = useState<ViewId>('home')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [deals, setDeals] = useState<Deal[]>([])
+  const [pageInvoices, setPageInvoices] = useState<Invoice[]>(loadInvoices)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [briefResult, setBriefResult] = useState('')
@@ -5292,6 +5557,14 @@ export default function Page() {
     fetch('/api/notes', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.value) { setPinnedNotes(d.value); localStorage.setItem('tagett-pinned-notes-v1', d.value) } })
+      .catch(() => {})
+  }, [])
+
+  // Keep page-level invoices in sync for global search
+  useEffect(() => {
+    fetch('/api/invoices', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d) && d.length > 0) setPageInvoices(d) })
       .catch(() => {})
   }, [])
 
@@ -5603,12 +5876,13 @@ export default function Page() {
       <>
         {viewHeader('More')}
         <SubTabs
-          items={[{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'history', label: 'History' }, { id: 'data-quality', label: 'Data' }]}
+          items={[{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'analytics', label: 'Analytics' }, { id: 'history', label: 'History' }, { id: 'data-quality', label: 'Data' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
         {activeView === 'social'        && <SocialCalendarView />}
         {activeView === 'website'       && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />}
+        {activeView === 'analytics'     && <AnalyticsView deals={deals} />}
         {activeView === 'history'       && <AgentRunHistory />}
         {activeView === 'data-quality'  && <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />}
       </>
@@ -5720,11 +5994,12 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />
     )
-    if (activeView === 'council')   return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
-    if (activeView === 'history')   return <AgentRunHistory />
-    if (activeView === 'clients')   return <ClientsView onOpenAgent={handleOpenAgent} />
-    if (activeView === 'invoices')     return <InvoicesView deals={deals} />
-    if (activeView === 'social')       return <SocialCalendarView />
+    if (activeView === 'council')     return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+    if (activeView === 'history')     return <AgentRunHistory />
+    if (activeView === 'clients')     return <ClientsView onOpenAgent={handleOpenAgent} />
+    if (activeView === 'invoices')    return <InvoicesView deals={deals} />
+    if (activeView === 'social')      return <SocialCalendarView />
+    if (activeView === 'analytics')   return <AnalyticsView deals={deals} />
     if (activeView === 'data-quality') return <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />
     return (
       <>
@@ -5802,7 +6077,7 @@ export default function Page() {
         {renderMainContent()}
       </div>
       <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
-      {searchOpen && <ConversationSearch onClose={() => setSearchOpen(false)} />}
+      {searchOpen && <ConversationSearch onClose={() => setSearchOpen(false)} deals={deals} invoices={pageInvoices} />}
       {importModal && <ImportProspectsModal prospects={importModal} existingDeals={deals} onImport={handleImportProspects} onClose={() => setImportModal(null)} />}
     </div>
   )
