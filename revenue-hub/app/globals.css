@@ -29,9 +29,16 @@
   --scrollbar-thumb-hover: #3a3a3e;
 }
 
-html,
-body {
+html {
   height: 100%;
+  width: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+body {
+  height: 100vh;        /* fallback for browsers without dvh */
+  height: 100dvh;       /* dynamic: always matches current visible viewport */
   width: 100%;
   overflow: hidden;
   overscroll-behavior: none;

@@ -6141,7 +6141,7 @@ export default function Page() {
     }
 
     const shell = (content: React.ReactNode) => (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100svh', background: BG, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {content}
         </div>
@@ -6347,7 +6347,7 @@ export default function Page() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', background: BG, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100dvh', background: BG, overflow: 'hidden' }}>
       <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tagett</div>
