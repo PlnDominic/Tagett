@@ -6405,6 +6405,7 @@ export default function Page() {
           {renderDesktopNavBtn('history', '◷', 'Run History', 'Browse every autonomous agent run')}
           {renderDesktopNavBtn('clients', '👥', 'Clients', 'Contact database')}
           {renderDesktopNavBtn('invoices', '◎', 'Invoices', 'Billing & payment tracking')}
+          {renderDesktopNavBtn('prospect-map', '📍', 'Find Prospects', 'Search local businesses in Ghana')}
           {renderDesktopNavBtn('social', '⌖', 'Social Calendar', 'Schedule & publish content')}
           {renderDesktopNavBtn('data-quality', '◈', 'Data Quality', 'Deduplicate & clean CRM')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
