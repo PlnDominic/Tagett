@@ -5625,6 +5625,7 @@ function BottomNav({ activeView, onSelect }: {
             <button key={tab.id} onClick={() => onSelect(tab.id)} aria-label={tab.label} aria-current={isActive ? 'page' : undefined} style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 2,
+              paddingTop: 6,
               background: 'none', border: 'none', cursor: 'pointer',
               color: isActive ? GOLD : MUTED,
               transition: 'color 0.18s ease',
