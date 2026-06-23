@@ -1050,9 +1050,14 @@ function buildPipelineSnapshot(deals: Deal[], invoices: Invoice[]): string {
   const dealLines = deals.slice(0, 20).map(d =>
     `  ${d.name} | ${STAGE_LABELS[d.stage]} | GHS ${d.valueGHS.toLocaleString()} | ${d.industry}${d.phone ? ` | ${d.phone}` : ''}`
   ).join('\n')
-  return `LIVE PIPELINE (real data):
+  const authorizedNames = deals.length
+    ? deals.map(d => d.name).join(', ')
+    : '(no deals in pipeline yet)'
+  return `LIVE PIPELINE (real data — this is the ONLY authorized source for client names and revenue figures):
   Goal: GHS 12,000/month | Closed: GHS ${closedGHS.toLocaleString()} (${Math.round((closedGHS/12000)*100)}%) | Active: GHS ${activeGHS.toLocaleString()} | Lost: ${lost.length}
   Invoices: GHS ${paidGHS.toLocaleString()} paid, GHS ${unpaidGHS.toLocaleString()} outstanding
+AUTHORIZED CLIENT NAMES (only reference these — do not invent others):
+  ${authorizedNames}
 DEALS (${deals.length} total):
 ${dealLines || '  (none yet)'}`
 }
@@ -1065,7 +1070,14 @@ WRITING RULES — follow these in every single response, no exceptions:
 - Never use ** for bold. If you need to emphasize something, just write it in plain text with weight given through word choice and sentence structure.
 - No bullet points that start with hollow words like "Ensure", "Leverage", "Utilize", "Streamline". Be specific and direct.
 - No AI filler phrases: "Certainly!", "Great question!", "Of course!", "Absolutely!", "I'd be happy to".
-- Sound like a sharp teammate talking to Dominic, not a chatbot writing a report.\n\n`
+- Sound like a sharp teammate talking to Dominic, not a chatbot writing a report.
+
+GROUNDING RULES — non-negotiable, apply to every response:
+- Only reference businesses, clients, and contacts that appear in the LIVE PIPELINE data or TEAM INTEL provided below. Never invent business names, phone numbers, contact names, or revenue figures.
+- Never fabricate statistics. If you want to cite a number, it must come from the LIVE PIPELINE block. If you don't have a specific number, say so plainly.
+- If you don't have enough data to answer something fully, say "I don't have that data yet" rather than guessing or filling in plausible-sounding details.
+- Do not invent project portfolios, past clients, or case studies beyond what is provided. Ecstasy Technologies' real portfolio is on ecstasytechnologies.com.
+- Do not hallucinate team members, partners, or third parties. The only named person is Dominic Kudom.\n\n`
 
 async function callChat(
   systemPrompt: string,
@@ -1088,6 +1100,12 @@ async function callChat(
       fullPrompt += `\n\n— TEAM INTEL (your colleagues' latest outputs — reference and build on these) —\n${intel}\n— END TEAM INTEL —`
     }
   }
+
+  fullPrompt += `\n\n— SCOPE BOUNDARY —
+You are working exclusively for Ecstasy Technologies, a web design and development company based in Bibiani, Ghana, owned by Dominic Kudom.
+Only reference businesses and people that appear in the LIVE PIPELINE or TEAM INTEL above. If you are asked about a client, business, or number that is not listed there, say "I don't have that in the pipeline" rather than guessing.
+Never invent names, phone numbers, prices, or deals that are not in the data above.
+— END SCOPE BOUNDARY —`
 
   const res = await fetch('/api/chat', {
     method: 'POST',

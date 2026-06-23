@@ -39,7 +39,7 @@ async function callLLM(
   messages: ChatMessage[],
   tools: ToolDefinition[]
 ): Promise<Response> {
-  const body: Record<string, unknown> = { model, max_tokens: 2000, messages }
+  const body: Record<string, unknown> = { model, max_tokens: 2000, temperature: 0.3, messages }
   if (tools.length > 0) body.tools = tools
   return fetch(url, {
     method: 'POST',
