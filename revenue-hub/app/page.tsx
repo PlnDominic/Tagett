@@ -1911,7 +1911,13 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
     setTimeout(() => setCopied(false), 2000)
   }, [content])
 
-  const liUrl = `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(ECSTASY_URL)}&title=${encodeURIComponent('Ecstasy Technologies')}&summary=${encodeURIComponent(content.slice(0, 700))}&source=${encodeURIComponent(ECSTASY_URL)}`
+  const [liCopied, setLiCopied] = useState(false)
+  const handleLinkedIn = useCallback(async () => {
+    try { await navigator.clipboard.writeText(content) } catch { /* ignore */ }
+    setLiCopied(true)
+    setTimeout(() => setLiCopied(false), 3000)
+    window.open('https://www.linkedin.com/post/new/', '_blank', 'noopener,noreferrer')
+  }, [content])
 
   const bufferBtnStyle = (s: PostStatus): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -1970,11 +1976,14 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(content.slice(0, 280))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+          𝕏 Post to X
+        </a>
+        <button onClick={handleLinkedIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${liCopied ? LI_BLUE : LI_BLUE + '60'}`, background: liCopied ? `${LI_BLUE}18` : `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
+          {liCopied ? '✓ Copied — paste in LinkedIn' : 'in Post to LinkedIn'}
+        </button>
         <a href={`https://wa.me/?text=${encodeURIComponent(content.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           ✆ WhatsApp
-        </a>
-        <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${LI_BLUE}60`, background: `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
-          in LinkedIn
         </a>
         <button onClick={handleCopy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${copied ? GOLD + '80' : BORDER}`, background: copied ? `${GOLD}18` : SURFACE2, color: copied ? GOLD : MUTED, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500 }}>
           {copied ? '✓ Copied' : '📋 Copy'}
@@ -3473,7 +3482,13 @@ function SocialCalendarView() {
   )
 
   const tweetUrl = (text: string) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text.slice(0, 280))}`
-  const linkedInUrl = (text: string) => `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(ECSTASY_URL)}&title=${encodeURIComponent('Ecstasy Technologies')}&summary=${encodeURIComponent(text.slice(0, 700))}&source=${encodeURIComponent(ECSTASY_URL)}`
+  const [liCopiedId, setLiCopiedId] = useState<string | null>(null)
+  const handleLinkedInPost = async (post: SocialPost) => {
+    try { await navigator.clipboard.writeText(post.content) } catch { /* ignore */ }
+    setLiCopiedId(post.id)
+    setTimeout(() => setLiCopiedId(null), 3000)
+    window.open('https://www.linkedin.com/post/new/', '_blank', 'noopener,noreferrer')
+  }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -3591,9 +3606,9 @@ function SocialCalendarView() {
                         </a>
                       )}
                       {post.platforms.includes('linkedin') && (
-                        <a href={linkedInUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                          in Post to LinkedIn
-                        </a>
+                        <button onClick={() => handleLinkedInPost(post)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: liCopiedId === post.id ? `${LI_BLUE}18` : `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
+                          {liCopiedId === post.id ? '✓ Copied — paste in LinkedIn' : 'in Post to LinkedIn'}
+                        </button>
                       )}
                       {profiles.length > 0 && (
                         <button onClick={() => queuePost(post)} disabled={isPosting} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: isPosting ? 'wait' : 'pointer', fontFamily: FONT_HEADING, opacity: isPosting ? 0.6 : 1 }}>
