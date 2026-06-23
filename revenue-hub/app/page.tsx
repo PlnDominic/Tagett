@@ -204,7 +204,7 @@ interface Message {
 }
 
 type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | AgentId
+type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | 'prospect-map' | AgentId
 
 // ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
 type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
@@ -716,7 +716,7 @@ const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'o
 
 // ─── Mobile tab groupings ─────────────────────────────────────────────────────
 type MobileTab = 'home' | 'work' | 'agents' | 'more'
-const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices']
+const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices', 'prospect-map']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
 const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality', 'analytics']
 function getMobileTab(view: ViewId): MobileTab {
@@ -5133,6 +5133,180 @@ function AgentRunHistory() {
   )
 }
 
+// ─── ProspectMapView ──────────────────────────────────────────────────────────
+
+interface PlaceResult {
+  id: string
+  name: string
+  address: string
+  phone?: string
+  website?: string
+  hasWebsite: boolean
+  rating?: number
+  ratingCount?: number
+  mapsUrl: string
+}
+
+const GHANA_CITIES = ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Sunyani', 'Ho', 'Koforidua', 'Wa', 'Bolgatanga']
+
+function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void }) {
+  const [query, setQuery] = useState('')
+  const [city, setCity] = useState('Accra')
+  const [results, setResults] = useState<PlaceResult[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [noWebsiteOnly, setNoWebsiteOnly] = useState(false)
+  const [added, setAdded] = useState<Set<string>>(new Set())
+
+  const search = async () => {
+    if (!query.trim()) return
+    setLoading(true); setError(''); setResults([])
+    try {
+      const res = await fetch('/api/maps/search', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query, city }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'Search failed'); return }
+      setResults(Array.isArray(data) ? data : [])
+    } catch { setError('Network error') }
+    finally { setLoading(false) }
+  }
+
+  const handleAdd = (p: PlaceResult) => {
+    onAdd({
+      name: p.name,
+      industry: query,
+      valueGHS: 0,
+      stage: 'found',
+      phone: p.phone ? p.phone.replace(/\s/g, '').replace(/^0/, '+233') : undefined,
+    })
+    setAdded(prev => new Set([...prev, p.id]))
+  }
+
+  const visible = noWebsiteOnly ? results.filter(p => !p.hasWebsite) : results
+  const noWebsiteCount = results.filter(p => !p.hasWebsite).length
+
+  const inputStyle: React.CSSProperties = { padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box' }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Search bar */}
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
+        <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, marginBottom: 10 }}>
+          Find Prospects on Google Maps
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && search()}
+            placeholder="e.g. restaurants, clinics, pharmacies…"
+            style={{ ...inputStyle, flex: 2, minWidth: 160 }}
+          />
+          <select
+            value={city}
+            onChange={e => setCity(e.target.value)}
+            style={{ ...inputStyle, flex: 1, minWidth: 100 }}
+          >
+            {GHANA_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button
+            onClick={search}
+            disabled={loading || !query.trim()}
+            style={{ padding: '8px 18px', borderRadius: 8, background: loading || !query.trim() ? SURFACE2 : GOLD, color: loading || !query.trim() ? MUTED : '#fff', border: 'none', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: loading || !query.trim() ? 'default' : 'pointer' }}
+          >
+            {loading ? '…' : 'Search'}
+          </button>
+        </div>
+
+        {results.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY }}>
+              {results.length} businesses found · <span style={{ color: GOLD, fontWeight: 600 }}>{noWebsiteCount} without a website</span>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', marginLeft: 'auto' }}>
+              <input type="checkbox" checked={noWebsiteOnly} onChange={e => setNoWebsiteOnly(e.target.checked)} />
+              <span style={{ fontSize: 11, fontFamily: FONT_BODY, color: MUTED }}>No website only</span>
+            </label>
+          </div>
+        )}
+
+        {error && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', fontFamily: FONT_BODY }}>{error}</div>}
+      </div>
+
+      {/* Results */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px' }}>
+        {!loading && results.length === 0 && !error && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
+            <div style={{ fontSize: 28, marginBottom: 10 }}>📍</div>
+            <div style={{ fontSize: 14 }}>Search for businesses in Ghana</div>
+            <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>Businesses without a website are flagged as prime prospects</div>
+          </div>
+        )}
+        {loading && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
+            <ThinkingDots />
+            <div style={{ fontSize: 12, marginTop: 10 }}>Searching Google Maps…</div>
+          </div>
+        )}
+        {visible.map(p => {
+          const isAdded = added.has(p.id)
+          const isPrime = !p.hasWebsite
+          return (
+            <div key={p.id} style={{
+              marginBottom: 10, borderRadius: 12, padding: '12px 14px',
+              border: `1px solid ${isPrime ? `${GOLD}50` : BORDER}`,
+              background: isPrime ? `${GOLD}06` : SURFACE,
+            }}>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{p.name}</span>
+                    {isPrime && (
+                      <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 10, background: `${GOLD}25`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                        No Website
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 3 }}>{p.address}</div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
+                    {p.phone && (
+                      <a href={`tel:${p.phone}`} style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>📞 {p.phone}</a>
+                    )}
+                    {p.rating && (
+                      <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>⭐ {p.rating.toFixed(1)} ({p.ratingCount?.toLocaleString()})</span>
+                    )}
+                    {p.website && (
+                      <a href={p.website} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 180, whiteSpace: 'nowrap' }}>↗ {p.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}</a>
+                    )}
+                    <a href={p.mapsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#4285F4', fontFamily: FONT_BODY, textDecoration: 'none' }}>📍 View on Maps</a>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleAdd(p)}
+                  disabled={isAdded}
+                  style={{
+                    flexShrink: 0, padding: '5px 12px', borderRadius: 8,
+                    border: `1px solid ${isAdded ? BORDER : isPrime ? GOLD : BORDER}`,
+                    background: isAdded ? SURFACE2 : isPrime ? GOLD : 'transparent',
+                    color: isAdded ? MUTED : isPrime ? '#fff' : MUTED,
+                    fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 11,
+                    cursor: isAdded ? 'default' : 'pointer',
+                  }}
+                >
+                  {isAdded ? '✓ Added' : '+ Pipeline'}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── AnalyticsView ────────────────────────────────────────────────────────────
 
 function AnalyticsView({ deals }: { deals: Deal[] }) {
@@ -5865,13 +6039,14 @@ export default function Page() {
       <>
         {viewHeader('Work')}
         <SubTabs
-          items={[{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }, { id: 'invoices', label: 'Invoices' }]}
+          items={[{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }, { id: 'invoices', label: 'Invoices' }, { id: 'prospect-map', label: '📍 Find' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'pipeline' && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
-        {activeView === 'clients'  && <ClientsView onOpenAgent={handleOpenAgent} />}
-        {activeView === 'invoices' && <InvoicesView deals={deals} />}
+        {activeView === 'pipeline'      && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
+        {activeView === 'clients'       && <ClientsView onOpenAgent={handleOpenAgent} />}
+        {activeView === 'invoices'      && <InvoicesView deals={deals} />}
+        {activeView === 'prospect-map'  && <ProspectMapView onAdd={handleAddDeal} />}
       </>
     )
 
@@ -5998,12 +6173,13 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />
     )
-    if (activeView === 'council')     return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
-    if (activeView === 'history')     return <AgentRunHistory />
-    if (activeView === 'clients')     return <ClientsView onOpenAgent={handleOpenAgent} />
-    if (activeView === 'invoices')    return <InvoicesView deals={deals} />
-    if (activeView === 'social')      return <SocialCalendarView />
-    if (activeView === 'analytics')   return <AnalyticsView deals={deals} />
+    if (activeView === 'council')      return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+    if (activeView === 'history')      return <AgentRunHistory />
+    if (activeView === 'clients')      return <ClientsView onOpenAgent={handleOpenAgent} />
+    if (activeView === 'invoices')     return <InvoicesView deals={deals} />
+    if (activeView === 'social')       return <SocialCalendarView />
+    if (activeView === 'analytics')    return <AnalyticsView deals={deals} />
+    if (activeView === 'prospect-map') return <ProspectMapView onAdd={handleAddDeal} />
     if (activeView === 'data-quality') return <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />
     return (
       <>
