@@ -56,37 +56,61 @@ const IconBellSmall = ({ size = 11, color = 'currentColor' }: { size?: number; c
   </svg>
 )
 
-// Bottom tab icons
+// Bottom tab icons — iOS SF-Symbols pattern: solid glyph when active, outline when inactive.
 const TabIconHome = ({ active }: { active: boolean }) => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
-    <path d="M7.5 18V12h5v6" />
-  </svg>
+  active ? (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M11.3 2.7a1 1 0 011.4 0l8 7.4A1 1 0 0120 11.9v8.3a1.8 1.8 0 01-1.8 1.8H15a1 1 0 01-1-1v-4.6a2 2 0 00-4 0V21a1 1 0 01-1 1H5.8A1.8 1.8 0 014 20.2v-8.3a1 1 0 01.3-.8z" />
+    </svg>
+  ) : (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 11.5L12 4l8 7.5V20a1 1 0 01-1 1h-4v-5a3 3 0 00-6 0v5H5a1 1 0 01-1-1z" />
+    </svg>
+  )
 )
 const TabIconWork = ({ active }: { active: boolean }) => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="2" y="7" width="16" height="11" rx="2" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.12 : 0} />
-    <path d="M7 7V5.5A2.5 2.5 0 0112.5 5.5V7" />
-    <line x1="2" y1="11" x2="18" y2="11" />
-  </svg>
+  active ? (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M9 4.5A2.5 2.5 0 0111.5 2h1A2.5 2.5 0 0115 4.5V6h3.5A2.5 2.5 0 0121 8.5V18a2.5 2.5 0 01-2.5 2.5h-13A2.5 2.5 0 013 18V8.5A2.5 2.5 0 015.5 6H9zm2 1.5h2V4.5a.5.5 0 00-.5-.5h-1a.5.5 0 00-.5.5z" />
+    </svg>
+  ) : (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="6.5" width="18" height="13" rx="2.5" />
+      <path d="M9 6.5V5a2 2 0 012-2h2a2 2 0 012 2v1.5" />
+    </svg>
+  )
 )
 const TabIconAgents = ({ active }: { active: boolean }) => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="4" y="8" width="12" height="9" rx="2" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.12 : 0} />
-    <circle cx="8" cy="13" r="1.2" fill="currentColor" stroke="none" />
-    <circle cx="12" cy="13" r="1.2" fill="currentColor" stroke="none" />
-    <path d="M10 8V5.5" />
-    <path d="M7.5 5.5h5" />
-    <path d="M2 12h2M16 12h2" />
-  </svg>
+  active ? (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M11 2.2a1 1 0 012 0V4h2.5A3.5 3.5 0 0119 7.5V9h1.2a1 1 0 110 2H19v1h1.2a1 1 0 110 2H19v.5A3.5 3.5 0 0115.5 18h-7A3.5 3.5 0 015 14.5V14H3.8a1 1 0 110-2H5v-1H3.8a1 1 0 110-2H5V7.5A3.5 3.5 0 018.5 4H11zM9.3 10.5a1.3 1.3 0 100 2.6 1.3 1.3 0 000-2.6zm5.4 0a1.3 1.3 0 100 2.6 1.3 1.3 0 000-2.6zM9 19.5h6a3 3 0 01-6 0z" />
+    </svg>
+  ) : (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="5" y="6" width="14" height="12" rx="3.5" />
+      <path d="M12 6V3M9 3h6" />
+      <path d="M3.5 11v2M20.5 11v2" />
+      <circle cx="9.5" cy="12" r="0.4" fill="currentColor" />
+      <circle cx="14.5" cy="12" r="0.4" fill="currentColor" />
+    </svg>
+  )
 )
 const TabIconMore = ({ active }: { active: boolean }) => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="6" height="6" rx="1.5" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
-    <rect x="11" y="3" width="6" height="6" rx="1.5" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
-    <rect x="3" y="11" width="6" height="6" rx="1.5" />
-    <rect x="11" y="11" width="6" height="6" rx="1.5" />
-  </svg>
+  active ? (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="3" y="3" width="8" height="8" rx="2.4" />
+      <rect x="13" y="3" width="8" height="8" rx="2.4" />
+      <rect x="3" y="13" width="8" height="8" rx="2.4" />
+      <rect x="13" y="13" width="8" height="8" rx="2.4" />
+    </svg>
+  ) : (
+    <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="3.5" width="7" height="7" rx="2" />
+      <rect x="13.5" y="3.5" width="7" height="7" rx="2" />
+      <rect x="3.5" y="13.5" width="7" height="7" rx="2" />
+      <rect x="13.5" y="13.5" width="7" height="7" rx="2" />
+    </svg>
+  )
 )
 
 // ─── Prospect intake data ─────────────────────────────────────────────────────
@@ -5587,26 +5611,34 @@ function BottomNav({ activeView, onSelect }: {
     { id: 'more',   label: 'More',   icon: (a) => <TabIconMore active={a} /> },
   ]
   return (
-    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
-      <div style={{ display: 'flex', height: 56 }}>
+    <nav style={{
+      flexShrink: 0,
+      background: SURFACE,
+      borderTop: `1px solid ${BORDER}`,
+      // The home-indicator zone gets the SAME background as the bar — no white gap.
+      paddingBottom: 'env(safe-area-inset-bottom)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', height: 52 }}>
         {tabs.map(tab => {
           const isActive = tab.id === activeTab
           return (
-            <button key={tab.id} onClick={() => onSelect(tab.id)} style={{
+            <button key={tab.id} onClick={() => onSelect(tab.id)} aria-label={tab.label} aria-current={isActive ? 'page' : undefined} style={{
               flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', justifyContent: 'center', gap: 3,
+              alignItems: 'center', justifyContent: 'center', gap: 2,
               background: 'none', border: 'none', cursor: 'pointer',
               color: isActive ? GOLD : MUTED,
-              boxShadow: isActive ? `inset 0 2px 0 0 ${GOLD}` : 'none',
-              paddingTop: 10, paddingBottom: 6, transition: 'color 0.15s',
-            }}>
-              {tab.icon(isActive)}
-              <span style={{ fontFamily: FONT_HEADING, fontSize: 9, fontWeight: isActive ? 700 : 400, letterSpacing: '0.04em' }}>{tab.label}</span>
+              transition: 'color 0.18s ease',
+              WebkitTapHighlightColor: 'transparent',
+            } as React.CSSProperties}>
+              <span style={{ display: 'flex', transform: isActive ? 'translateY(-0.5px)' : 'none', transition: 'transform 0.18s ease' }}>
+                {tab.icon(isActive)}
+              </span>
+              <span style={{ fontFamily: FONT_HEADING, fontSize: 10, fontWeight: isActive ? 600 : 500, letterSpacing: '0.01em' }}>{tab.label}</span>
             </button>
           )
         })}
       </div>
-    </div>
+    </nav>
   )
 }
 
@@ -6141,7 +6173,7 @@ export default function Page() {
     }
 
     const shell = (content: React.ReactNode) => (
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: BG, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: BG, overflow: 'hidden' }}>
         <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
           {content}
         </div>
@@ -6347,7 +6379,7 @@ export default function Page() {
   }
 
   return (
-    <div style={{ display: 'flex', height: '100dvh', background: BG, overflow: 'hidden' }}>
+    <div style={{ display: 'flex', height: '100%', background: BG, overflow: 'hidden' }}>
       <div style={{ width: 240, flexShrink: 0, background: SURFACE, borderRight: `1px solid ${BORDER}`, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '20px 20px 16px', borderBottom: `1px solid ${BORDER}` }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: GOLD, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Tagett</div>
