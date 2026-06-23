@@ -53,12 +53,28 @@ const CHECK_DOMAIN: ToolDefinition = {
   },
 }
 
-const ALL_TOOLS: ToolDefinition[] = [SEARCH_WEB, SEARCH_REDDIT, CHECK_DOMAIN]
+const SEARCH_GOOGLE_MAPS: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'search_google_maps',
+    description: 'Search Google Maps for real local businesses in Ghana using SerpAPI. Returns business names, addresses, phone numbers, websites, and ratings. Ideal for finding businesses without websites — those are the prime prospects.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Business type to search for, e.g. "pharmacies" or "restaurants"' },
+        city: { type: 'string', description: 'Ghana city to focus the search on, e.g. "Accra", "Kumasi", "Tamale"' },
+      },
+      required: ['query', 'city'],
+    },
+  },
+}
+
+const ALL_TOOLS: ToolDefinition[] = [SEARCH_WEB, SEARCH_REDDIT, CHECK_DOMAIN, SEARCH_GOOGLE_MAPS]
 
 // Tools available per agent
 const AGENT_TOOLS: Record<string, string[]> = {
   scout: ['search_web', 'search_reddit', 'check_domain'],
-  prospect: ['search_web', 'check_domain'],
+  prospect: ['search_web', 'check_domain', 'search_google_maps'],
   scope: ['search_web', 'check_domain'],
   content: ['search_web'],
   revenue: ['search_web'],
@@ -141,6 +157,36 @@ export async function executeTool(name: string, args: Record<string, string>): P
         `Status: ${(data.status ?? []).join(', ') || 'unknown'}`,
       ]
       return lines.join('\n')
+    }
+
+    if (name === 'search_google_maps') {
+      const key = process.env.SERPAPI_KEY
+      if (!key) return 'Google Maps search not available — SERPAPI_KEY not set.'
+      const city = (args.city ?? 'Accra').trim()
+      const query = (args.query ?? '').trim()
+      const params = new URLSearchParams({
+        engine: 'google_maps',
+        q: `${query} ${city} Ghana`,
+        type: 'search',
+        hl: 'en',
+        api_key: key,
+      })
+      const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) return `SerpAPI error: HTTP ${res.status}`
+      const data = await res.json() as { local_results?: Array<Record<string, unknown>> }
+      const items = (data.local_results ?? []).slice(0, 10)
+      if (!items.length) return 'No Google Maps results found for this query.'
+      const lines = items.map((p, i) => {
+        const website = p.website as string | undefined
+        return [
+          `${i + 1}. ${p.title ?? 'Unknown'}`,
+          `   Address: ${p.address ?? 'N/A'}`,
+          `   Phone: ${(p.phone as string) ?? 'N/A'}`,
+          `   Website: ${website ?? 'NONE — PRIME PROSPECT'}`,
+          `   Rating: ${p.rating ?? 'N/A'} (${p.reviews ?? 0} reviews)`,
+        ].join('\n')
+      })
+      return lines.join('\n\n')
     }
 
     return `Unknown tool: ${name}`

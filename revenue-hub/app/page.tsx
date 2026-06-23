@@ -966,11 +966,13 @@ async function callChat(
   agentId?: string,
   workspace?: Record<string, string>
 ): Promise<string> {
-  let fullPrompt = TEAM_MISSION_HEADER + systemPrompt
+  let fullPrompt = TEAM_MISSION_HEADER
 
   if (pinnedNotes?.trim()) {
-    fullPrompt += `\n\n— PINNED CONTEXT (always use this) —\n${pinnedNotes.trim()}\n— END PINNED CONTEXT —`
+    fullPrompt += `\n\n⚠ OWNER'S RULES — READ FIRST, FOLLOW ABOVE ALL ELSE:\n${pinnedNotes.trim()}\n— END OWNER'S RULES —`
   }
+
+  fullPrompt += '\n\n' + systemPrompt
 
   if (workspace) {
     const intel = buildTeamIntel(workspace, agentId)
@@ -1909,8 +1911,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
     setTimeout(() => setCopied(false), 2000)
   }, [content])
 
-  const liUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(ECSTASY_URL)}`
-  const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(ECSTASY_URL)}&quote=${encodeURIComponent(content.slice(0, 500))}`
+  const liUrl = `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(ECSTASY_URL)}&title=${encodeURIComponent('Ecstasy Technologies')}&summary=${encodeURIComponent(content.slice(0, 700))}&source=${encodeURIComponent(ECSTASY_URL)}`
 
   const bufferBtnStyle = (s: PostStatus): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -1974,9 +1975,6 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
         </a>
         <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${LI_BLUE}60`, background: `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           in LinkedIn
-        </a>
-        <a href={fbUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${FB_BLUE}60`, background: `${FB_BLUE}10`, color: FB_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
-          f Facebook
         </a>
         <button onClick={handleCopy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${copied ? GOLD + '80' : BORDER}`, background: copied ? `${GOLD}18` : SURFACE2, color: copied ? GOLD : MUTED, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500 }}>
           {copied ? '✓ Copied' : '📋 Copy'}
@@ -3325,11 +3323,11 @@ ${inv.notes?`<p style="font-size:13px;color:#555">${inv.notes}</p>`:''}
 // ─── SocialCalendarView ───────────────────────────────────────────────────────
 
 const SOCIAL_CATEGORIES = [
-  { id: 'tip', label: 'Website Tip', prompt: 'Write 3 short social media posts (for X/Twitter, LinkedIn, and Instagram separately) with practical website tips for Ghanaian businesses — clinics, schools, hotels, shops. Label each post with the platform name. Make them punchy and shareable.' },
-  { id: 'pain-point', label: 'Pain Point', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) about the real cost of not having a professional website for a business in Ghana. Make them relatable and end with a soft CTA for Ecstasy Technologies. Label each post with the platform.' },
-  { id: 'deal-win', label: 'Client Win', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) celebrating a new website project completion for a Ghanaian business. Keep it professional, proud, and specific. Label each post with the platform.' },
-  { id: 'local', label: 'Ghana Market', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) in a conversational, Ghana-market tone about why local businesses need a strong digital presence in 2025. Reference real Ghanaian sectors. Label each post with the platform.' },
-  { id: 'portfolio', label: 'Portfolio', prompt: 'Write 3 social media posts (X, LinkedIn, Instagram) showcasing Ecstasy Technologies\' portfolio of websites for Ghanaian businesses. Talk about the variety: clinics, real estate, hotels, schools. Label each post with the platform.' },
+  { id: 'tip', label: 'Website Tip', prompt: 'Write 2 social media posts — one for X (short, punchy, under 280 chars, bold opinion) and one for LinkedIn (professional, 3-5 sentences, founder insight) — about practical website tips for Ghanaian businesses. Label each post with "X:" or "LinkedIn:" on its own line.' },
+  { id: 'pain-point', label: 'Pain Point', prompt: 'Write 2 social media posts — one for X and one for LinkedIn — about the real cost of not having a professional website for a business in Ghana. End with a soft CTA for Ecstasy Technologies. Label each "X:" or "LinkedIn:".' },
+  { id: 'deal-win', label: 'Client Win', prompt: 'Write 2 social media posts — one for X and one for LinkedIn — celebrating a new website project completion for a Ghanaian business. Keep it proud and specific. Label each "X:" or "LinkedIn:".' },
+  { id: 'local', label: 'Ghana Market', prompt: 'Write 2 social media posts — one for X and one for LinkedIn — in a conversational Ghana-market tone about why local businesses need a strong digital presence in 2025. Reference real Ghanaian sectors. Label each "X:" or "LinkedIn:".' },
+  { id: 'portfolio', label: 'Portfolio', prompt: 'Write 2 social media posts — one for X and one for LinkedIn — showcasing Ecstasy Technologies portfolio of websites for Ghanaian businesses: clinics, real estate, hotels, schools. Label each "X:" or "LinkedIn:".' },
 ]
 
 const PLATFORM_ICONS: Record<SocialPlatform, string> = {
@@ -3346,7 +3344,7 @@ function SocialCalendarView() {
   const [editContent, setEditContent] = useState('')
   const [postingId, setPostingId] = useState<string | null>(null)
   const [newContent, setNewContent] = useState('')
-  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>(['twitter'])
+  const [selectedPlatforms, setSelectedPlatforms] = useState<SocialPlatform[]>(['twitter', 'linkedin'])
   const [showCompose, setShowCompose] = useState(false)
 
   useEffect(() => { saveSocialPosts(posts) }, [posts])
@@ -3387,7 +3385,7 @@ function SocialCalendarView() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Ghana. Generate engaging social media content. Output exactly 3 posts, each labelled "X:", "LinkedIn:", or "Instagram:" on its own line, followed by the post text.',
+          systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Ghana. Generate engaging social media content. Output exactly 2 posts: one labelled "X:" (under 280 chars, punchy) and one labelled "LinkedIn:" (professional, 3-5 sentences). Each label must be on its own line followed by the post text.',
           messages: [{ role: 'user', content: cat.prompt }],
         }),
       })
@@ -3475,7 +3473,7 @@ function SocialCalendarView() {
   )
 
   const tweetUrl = (text: string) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text.slice(0, 280))}`
-  const liUrl = `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent('https://ecstasytechnologies.com')}`
+  const linkedInUrl = (text: string) => `https://www.linkedin.com/shareArticle?mini=true&url=${encodeURIComponent(ECSTASY_URL)}&title=${encodeURIComponent('Ecstasy Technologies')}&summary=${encodeURIComponent(text.slice(0, 700))}&source=${encodeURIComponent(ECSTASY_URL)}`
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -3500,7 +3498,7 @@ function SocialCalendarView() {
           <div style={{ marginBottom: 10, padding: 12, borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
             <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Write a post…" rows={4} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 8 }} />
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-              {(['twitter', 'linkedin', 'facebook', 'instagram'] as SocialPlatform[]).map(p => (
+              {(['twitter', 'linkedin'] as SocialPlatform[]).map(p => (
                 <button key={p} onClick={() => setSelectedPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, border: `1px solid ${selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : BORDER}`, background: selectedPlatforms.includes(p) ? `${PLATFORM_COLORS[p]}18` : 'transparent', color: selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : MUTED, fontFamily: FONT_HEADING, fontWeight: 500, cursor: 'pointer' }}>
                   {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                 </button>
@@ -3587,25 +3585,20 @@ function SocialCalendarView() {
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                   {post.status === 'draft' && (
                     <>
-                      {profiles.length > 0 && (
-                        <>
-                          <button onClick={() => postNow(post)} disabled={isPosting} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', cursor: isPosting ? 'wait' : 'pointer', fontFamily: FONT_HEADING, fontWeight: 600, opacity: isPosting ? 0.6 : 1 }}>
-                            {isPosting ? '…' : '↑ Post Now'}
-                          </button>
-                          <button onClick={() => queuePost(post)} disabled={isPosting} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: isPosting ? 'wait' : 'pointer', fontFamily: FONT_HEADING, opacity: isPosting ? 0.6 : 1 }}>
-                            📅 Queue
-                          </button>
-                        </>
-                      )}
-                      {post.platforms.includes('twitter') && (
-                        <a href={tweetUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid #00000030`, background: '#00000008', color: '#000', fontFamily: FONT_HEADING, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                          𝕏 Tweet
+                      {(post.platforms.includes('twitter') || !post.platforms.includes('linkedin')) && (
+                        <a href={tweetUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid #00000030`, background: '#00000008', color: '#000', fontFamily: FONT_HEADING, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          𝕏 Post to X
                         </a>
                       )}
                       {post.platforms.includes('linkedin') && (
-                        <a href={liUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
-                          in Post
+                        <a href={linkedInUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+                          in Post to LinkedIn
                         </a>
+                      )}
+                      {profiles.length > 0 && (
+                        <button onClick={() => queuePost(post)} disabled={isPosting} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, cursor: isPosting ? 'wait' : 'pointer', fontFamily: FONT_HEADING, opacity: isPosting ? 0.6 : 1 }}>
+                          📅 Buffer Queue
+                        </button>
                       )}
                     </>
                   )}
