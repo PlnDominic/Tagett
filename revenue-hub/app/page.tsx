@@ -5587,7 +5587,7 @@ function BottomNav({ activeView, onSelect }: {
     { id: 'more',   label: 'More',   icon: (a) => <TabIconMore active={a} /> },
   ]
   return (
-    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, flexShrink: 0 }}>
+    <div style={{ background: SURFACE, borderTop: `1px solid ${BORDER}`, flexShrink: 0, paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <div style={{ display: 'flex', height: 56 }}>
         {tabs.map(tab => {
           const isActive = tab.id === activeTab
@@ -5597,7 +5597,7 @@ function BottomNav({ activeView, onSelect }: {
               alignItems: 'center', justifyContent: 'center', gap: 3,
               background: 'none', border: 'none', cursor: 'pointer',
               color: isActive ? GOLD : MUTED,
-              borderTop: `2px solid ${isActive ? GOLD : 'transparent'}`,
+              boxShadow: isActive ? `inset 0 2px 0 0 ${GOLD}` : 'none',
               paddingTop: 10, paddingBottom: 6, transition: 'color 0.15s',
             }}>
               {tab.icon(isActive)}
