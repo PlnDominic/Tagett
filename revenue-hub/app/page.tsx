@@ -2705,8 +2705,8 @@ function WhatsAppModal({ deal, onClose, onSent }: {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          systemPrompt: 'You are ContentBot for Ecstasy Technologies, a web design and development company in Accra, Ghana. Write concise, friendly WhatsApp messages for prospect outreach. Output only the message body — no subject line, no labels.',
-          messages: [{ role: 'user', content: `Write a WhatsApp cold-open message for this prospect:\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\nStage: ${STAGE_LABELS[deal.stage]}\n\nRequirements:\n- 3–4 sentences, friendly and direct\n- Briefly introduce Ecstasy Technologies\n- Reference something specific to their industry\n- End with a soft CTA (not pushy)\n- No emojis unless natural` }],
+          systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write concise, friendly WhatsApp messages for prospect outreach. Output only the message body — no subject line, no labels.',
+          messages: [{ role: 'user', content: `Write a WhatsApp cold-open message for this prospect:\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\nStage: ${STAGE_LABELS[deal.stage]}\n\nRequirements:\n- 3–4 sentences, friendly and direct\n- Open by introducing yourself by name exactly like "I am Dominic from Ecstasy Technologies" (a web design and development company based in Bibiani, Ghana)\n- Reference something specific to their industry\n- End with a soft CTA (not pushy)\n- No emojis unless natural` }],
         }),
       })
       const d = await res.json()
