@@ -943,10 +943,34 @@ const TEAM_LABELS: Record<string, string> = {
 }
 
 function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): string {
-  return Object.entries(workspace)
-    .filter(([id, v]) => id !== excludeId && v?.trim())
+  const liveData = workspace['_live'] ?? ''
+  const agentIntel = Object.entries(workspace)
+    .filter(([id, v]) => id !== excludeId && id !== '_live' && v?.trim())
     .map(([id, v]) => `[${TEAM_LABELS[id] ?? id}]: ${v.slice(0, 500)}`)
     .join('\n\n')
+  const parts: string[] = []
+  if (liveData.trim()) parts.push(liveData.trim())
+  if (agentIntel.trim()) parts.push(agentIntel.trim())
+  return parts.join('\n\n')
+}
+
+function buildPipelineSnapshot(deals: Deal[], invoices: Invoice[]): string {
+  if (!deals.length && !invoices.length) return ''
+  const closed = deals.filter(d => d.stage === 'closed')
+  const active = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
+  const lost = deals.filter(d => d.stage === 'lost')
+  const closedGHS = closed.reduce((s, d) => s + d.valueGHS, 0)
+  const activeGHS = active.reduce((s, d) => s + d.valueGHS, 0)
+  const paidGHS = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.totalGHS, 0)
+  const unpaidGHS = invoices.filter(i => i.status !== 'paid').reduce((s, i) => s + i.totalGHS, 0)
+  const dealLines = deals.slice(0, 20).map(d =>
+    `  ${d.name} | ${STAGE_LABELS[d.stage]} | GHS ${d.valueGHS.toLocaleString()} | ${d.industry}${d.phone ? ` | ${d.phone}` : ''}`
+  ).join('\n')
+  return `LIVE PIPELINE (real data):
+  Goal: GHS 12,000/month | Closed: GHS ${closedGHS.toLocaleString()} (${Math.round((closedGHS/12000)*100)}%) | Active: GHS ${activeGHS.toLocaleString()} | Lost: ${lost.length}
+  Invoices: GHS ${paidGHS.toLocaleString()} paid, GHS ${unpaidGHS.toLocaleString()} outstanding
+DEALS (${deals.length} total):
+${dealLines || '  (none yet)'}`
 }
 
 const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Owned by Dominic Kudom, CEO. WhatsApp & phone: +233542855399. Shared goal: GHS 12,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.
@@ -4629,10 +4653,73 @@ function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; work
     const init: Partial<Record<AgentId, boolean>> = {}
     COUNCIL_AGENT_IDS.forEach(id => { init[id] = true })
     setLoading(init)
+
+    // Fetch live project data so advisors respond about REAL context
+    let liveSnapshot = ''
+    try {
+      const [rawDeals, rawClients, rawInvoices] = await Promise.all([
+        fetch('/api/deals').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/clients').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch('/api/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
+      ])
+
+      const deals: Deal[] = Array.isArray(rawDeals) ? rawDeals.map((d: Record<string, unknown>) => ({
+        id: String(d.id ?? ''),
+        name: String(d.name ?? ''),
+        industry: String(d.industry ?? ''),
+        createdAt: Number(d.createdAt ?? d.created_at ?? 0),
+        phone: d.phone as string | undefined,
+        valueGHS: Number(d.value_ghs ?? d.valueGHS ?? 0),
+        stage: (STAGE_MIGRATE[d.stage as string] ?? d.stage) as DealStage,
+      })) : []
+      const clients: Client[] = Array.isArray(rawClients) ? rawClients : []
+      const invoices: Invoice[] = Array.isArray(rawInvoices) ? rawInvoices : []
+
+      const closedDeals = deals.filter(d => d.stage === 'closed')
+      const activeDeals = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
+      const lostDeals = deals.filter(d => d.stage === 'lost')
+      const closedGHS = closedDeals.reduce((s, d) => s + d.valueGHS, 0)
+      const activeGHS = activeDeals.reduce((s, d) => s + d.valueGHS, 0)
+      const paidGHS = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.totalGHS, 0)
+      const outstandingGHS = invoices.filter(i => i.status !== 'paid').reduce((s, i) => s + i.totalGHS, 0)
+
+      const dealLines = deals.length > 0
+        ? deals.slice(0, 25).map(d =>
+            `  - ${d.name} | ${STAGE_LABELS[d.stage]} | GHS ${d.valueGHS.toLocaleString()} | ${d.industry}${d.phone ? ` | ${d.phone}` : ''}`
+          ).join('\n')
+        : '  (no deals in pipeline yet)'
+
+      const clientLines = clients.length > 0
+        ? clients.slice(0, 15).map(c =>
+            `  - ${c.name}${c.industry ? ` | ${c.industry}` : ''}${c.phone ? ` | ${c.phone}` : ''}${c.website ? ` | ${c.website}` : ''}`
+          ).join('\n')
+        : '  (no clients yet)'
+
+      liveSnapshot = `
+— LIVE PROJECT DATA (real data, pulled right now) —
+Company: Ecstasy Technologies | Owner: Dominic Kudom | Goal: GHS 12,000/month
+
+PIPELINE SUMMARY:
+  Closed/Won: ${closedDeals.length} deals — GHS ${closedGHS.toLocaleString()} (${Math.round((closedGHS / 12000) * 100)}% of monthly goal)
+  Active: ${activeDeals.length} deals — GHS ${activeGHS.toLocaleString()} potential
+  Lost: ${lostDeals.length} deals
+
+ALL PIPELINE DEALS (${deals.length} total):
+${dealLines}
+
+CLIENTS ON RECORD (${clients.length} total):
+${clientLines}
+
+INVOICES:
+  Paid: GHS ${paidGHS.toLocaleString()} | Outstanding: GHS ${outstandingGHS.toLocaleString()} across ${invoices.filter(i => i.status !== 'paid').length} invoice(s)
+— END LIVE DATA —`
+    } catch { /* non-fatal — advisors proceed without live data */ }
+
     await Promise.allSettled(
       COUNCIL_AGENT_IDS.map(async (agentId) => {
         try {
-          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: q }], pinnedNotes, agentId, workspace)
+          const enrichedQ = liveSnapshot ? `${q}\n\n${liveSnapshot}` : q
+          const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: enrichedQ }], pinnedNotes, agentId, workspace)
           setResponses(prev => ({ ...prev, [agentId]: text }))
         } catch (err) {
           setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
@@ -5895,14 +5982,15 @@ export default function Page() {
     saveMessage(activeAgent, 'user', text)
     setLoading(true); setError(null)
     try {
-      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, workspace)
+      const liveWorkspace = { ...workspace, _live: buildPipelineSnapshot(deals, pageInvoices) }
+      const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, liveWorkspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(activeAgent, 'assistant', reply)
       setWorkspace((prev) => ({ ...prev, [activeAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [activeAgent, allChats, workspace, pinnedNotes])
+  }, [activeAgent, allChats, workspace, pinnedNotes, deals, pageInvoices])
 
   const handleRunBriefing = useCallback(() => {
     if (agent.dailyPrompt) handleSend(agent.dailyPrompt)
@@ -5911,12 +5999,13 @@ export default function Page() {
   const handleRunBrief = useCallback(async () => {
     setBriefLoading(true); setBriefResult('')
     try {
-      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes, 'executor', workspace)
+      const liveWorkspace = { ...workspace, _live: buildPipelineSnapshot(deals, pageInvoices) }
+      const reply = await callChat(AGENTS.executor.systemPrompt, [{ role: 'user', content: AGENTS.executor.dailyPrompt }], pinnedNotes, 'executor', liveWorkspace)
       setBriefResult(reply)
     } catch (err) {
       setBriefResult('Error: ' + (err instanceof Error ? err.message : 'Unknown'))
     } finally { setBriefLoading(false) }
-  }, [pinnedNotes, workspace])
+  }, [pinnedNotes, workspace, deals, pageInvoices])
 
   const handleClear = useCallback(() => {
     if (!activeAgent) return
@@ -5933,14 +6022,15 @@ export default function Page() {
     saveMessage(targetAgent, 'user', prompt)
     setLoading(true)
     try {
-      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent, workspace)
+      const liveWorkspace = { ...workspace, _live: buildPipelineSnapshot(deals, pageInvoices) }
+      const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent, liveWorkspace)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(targetAgent, 'assistant', reply)
       setWorkspace((prev) => ({ ...prev, [targetAgent]: reply.slice(0, 700) }))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [pinnedNotes, workspace])
+  }, [pinnedNotes, workspace, deals, pageInvoices])
 
   const handleOpenAgent = useCallback((agentId: AgentId, prompt: string) => {
     handleHandoff(agentId, prompt)
