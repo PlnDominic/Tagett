@@ -5071,6 +5071,8 @@ function AgentRunHistory() {
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [offset, setOffset] = useState(0)
+  const [running, setRunning] = useState(false)
+  const [runStatus, setRunStatus] = useState<{ ok: boolean; msg: string } | null>(null)
   const limit = 10
 
   const load = async (off: number) => {
@@ -5078,42 +5080,79 @@ function AgentRunHistory() {
     try {
       const res = await fetch(`/api/agents/history?limit=${limit}&offset=${off}`)
       const data = await res.json()
-      setRuns(off === 0 ? data.runs : prev => [...prev, ...data.runs])
-      setTotal(data.total)
+      setRuns(off === 0 ? (data.runs ?? []) : prev => [...prev, ...(data.runs ?? [])])
+      setTotal(data.total ?? 0)
     } catch { /* non-fatal */ }
     finally { setLoading(false) }
   }
 
   useEffect(() => { load(0) }, [])
 
+  const handleRunNow = async () => {
+    setRunning(true)
+    setRunStatus(null)
+    try {
+      const res = await fetch('/api/agents/run')
+      const data = await res.json()
+      if (res.ok && data.ok) {
+        setRunStatus({ ok: true, msg: `Run complete — ${data.industry ?? ''} · ${data.city ?? ''}` })
+        setOffset(0)
+        await load(0)
+      } else {
+        setRunStatus({ ok: false, msg: data.error ?? `Error ${res.status}` })
+      }
+    } catch (e) {
+      setRunStatus({ ok: false, msg: e instanceof Error ? e.message : 'Network error' })
+    } finally {
+      setRunning(false)
+    }
+  }
+
   const hasMore = runs.length < total
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', padding: '16px 12px' }}>
       <div style={{ maxWidth: 740, margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 10 }}>
           <div>
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, letterSpacing: '0.04em' }}>Agent Run History</div>
             <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
-              {total > 0 ? `${total} autonomous run${total !== 1 ? 's' : ''} saved` : 'No runs yet — the cron fires every 3 hours'}
+              {total > 0 ? `${total} autonomous run${total !== 1 ? 's' : ''} saved` : 'Runs every day at 3 AM — or trigger manually below'}
             </div>
           </div>
-          <button onClick={() => { setOffset(0); load(0) }} style={{ fontSize: 11, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, background: 'none', cursor: 'pointer' }}>
-            Refresh
-          </button>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button onClick={() => { setOffset(0); load(0) }} disabled={loading} style={{ fontSize: 11, color: MUTED, padding: '5px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, background: 'none', cursor: 'pointer' }}>
+              Refresh
+            </button>
+            <button
+              onClick={handleRunNow}
+              disabled={running}
+              style={{ fontSize: 11, color: running ? MUTED : '#fff', padding: '5px 12px', border: 'none', borderRadius: 6, fontFamily: FONT_HEADING, fontWeight: 600, background: running ? SURFACE2 : GOLD, cursor: running ? 'default' : 'pointer', transition: 'background 0.15s' }}
+            >
+              {running ? 'Running…' : '▶ Run Now'}
+            </button>
+          </div>
         </div>
 
-        {loading && runs.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>
-            <ThinkingDots />
+        {runStatus && (
+          <div style={{ marginBottom: 12, padding: '10px 14px', borderRadius: 8, background: runStatus.ok ? '#16a34a18' : '#dc262618', border: `1px solid ${runStatus.ok ? '#16a34a40' : '#dc262640'}`, fontFamily: FONT_BODY, fontSize: 12, color: runStatus.ok ? '#16a34a' : '#dc2626' }}>
+            {runStatus.ok ? '✓ ' : '✗ '}{runStatus.msg}
           </div>
         )}
 
-        {!loading && runs.length === 0 && (
+        {(loading || running) && runs.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>
+            <ThinkingDots />
+            {running && <div style={{ marginTop: 8, fontSize: 11 }}>Agents are working — this takes 30–60 seconds</div>}
+          </div>
+        )}
+
+        {!loading && !running && runs.length === 0 && (
           <div style={{ textAlign: 'center', padding: '64px 0', color: MUTED, fontFamily: FONT_BODY }}>
             <div style={{ fontSize: 28, marginBottom: 12 }}>🤖</div>
             <div style={{ fontSize: 14, marginBottom: 6 }}>No runs recorded yet</div>
-            <div style={{ fontSize: 12 }}>The agents run every 3 hours automatically. Check back soon.</div>
+            <div style={{ fontSize: 12, marginBottom: 16 }}>Click Run Now above to trigger the agents immediately.</div>
+            <div style={{ fontSize: 11, color: MUTED }}>Requires GROQ_API_KEY and Supabase configured in Vercel.</div>
           </div>
         )}
 
