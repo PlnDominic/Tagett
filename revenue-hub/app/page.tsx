@@ -4185,6 +4185,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState('')
   const [deleting, setDeleting] = useState<number | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
   const [techInput, setTechInput] = useState('')
   const [featureInput, setFeatureInput] = useState('')
   const [bulkImporting, setBulkImporting] = useState(false)
@@ -4358,6 +4359,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
   }
 
   const handleDelete = async (id: number) => {
+    setConfirmDeleteId(null)
     setDeleting(id)
     try {
       const res = await fetch('/api/website/projects', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id }) })
@@ -4564,10 +4566,22 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
                         </div>
                       )}
                     </div>
-                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0, alignItems: 'center' }}>
                       {p.link && <a href={p.link} target="_blank" rel="noopener noreferrer" title="View live site" style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>↗</a>}
                       <button onClick={() => openEdit(p)} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer' }}>✎</button>
-                      <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id} style={{ width: 28, height: 28, borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, cursor: 'pointer', opacity: deleting === p.id ? 0.4 : 1 }}>✕</button>
+                      {confirmDeleteId === p.id ? (
+                        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, whiteSpace: 'nowrap' }}>Remove?</span>
+                          <button onClick={() => handleDelete(p.id)} disabled={deleting === p.id} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', background: '#EF4444', color: '#fff', fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', opacity: deleting === p.id ? 0.5 : 1 }}>
+                            {deleting === p.id ? '…' : 'Yes, remove'}
+                          </button>
+                          <button onClick={() => setConfirmDeleteId(null)} style={{ padding: '4px 8px', borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, fontFamily: FONT_BODY, cursor: 'pointer' }}>Cancel</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(p.id)} title="Remove from website" style={{ padding: '4px 10px', borderRadius: 6, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 11, fontFamily: FONT_BODY, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          Remove
+                        </button>
+                      )}
                     </div>
                   </div>
                   {/* Case Study toggle button */}
