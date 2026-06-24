@@ -55,6 +55,7 @@ async function runAgent(opts: {
     const body: Record<string, unknown> = {
       model: MODEL,
       max_tokens: 1500,
+      temperature: 0.3,
       messages: msgs,
     }
     if (opts.tools.length) body.tools = opts.tools
