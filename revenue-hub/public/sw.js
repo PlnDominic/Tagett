@@ -1,11 +1,14 @@
+// Minimal fetch pass-through — keeps the SW active so push events fire on iOS
+self.addEventListener('fetch', () => {})
+
 self.addEventListener('push', (event) => {
   const data = event.data?.json() ?? {}
   event.waitUntil(
-    self.registration.showNotification(data.title ?? 'Revenue Hub', {
+    self.registration.showNotification(data.title ?? 'Tagett', {
       body: data.body ?? '',
       icon: '/icon-192.png',
       badge: '/icon-192.png',
-      tag: 'revenue-hub',
+      tag: 'tagett',
       renotify: true,
       data: { url: data.url ?? '/' },
     })
