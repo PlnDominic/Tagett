@@ -13,6 +13,7 @@ interface SocialPost {
   postedAt?: number
   createdAt: number
   category?: string
+  resultDealId?: string
 }
 
 type Row = Record<string, unknown>
@@ -27,6 +28,7 @@ function toRow(p: SocialPost) {
     posted_at: p.postedAt ?? null,
     created_at: p.createdAt,
     category: p.category ?? null,
+    result_deal_id: p.resultDealId ?? null,
   }
 }
 
@@ -40,6 +42,7 @@ function fromRow(r: Row): SocialPost {
     postedAt: (r.posted_at as number | null) ?? undefined,
     createdAt: r.created_at as number,
     category: (r.category as string | null) ?? undefined,
+    resultDealId: (r.result_deal_id as string | null) ?? undefined,
   }
 }
 
