@@ -14,8 +14,13 @@ interface Deal {
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
+  followUpReason?: string
   lastContactedAt?: number
   whatsappHistory?: Array<{ text: string; sentAt: number }>
+  repliedAt?: number
+  callLog?: Array<{ calledAt: number }>
+  websiteCheck?: string
+  websiteCheckUrl?: string
 }
 
 function toRow(d: Deal) {
@@ -29,8 +34,13 @@ function toRow(d: Deal) {
     created_at: d.createdAt,
     stage_changed_at: d.stageChangedAt ?? null,
     follow_up_at: d.followUpAt ?? null,
+    follow_up_reason: d.followUpReason ?? null,
     last_contacted_at: d.lastContactedAt ?? null,
     whatsapp_history: d.whatsappHistory ?? [],
+    replied_at: d.repliedAt ?? null,
+    call_log: d.callLog ?? [],
+    website_check: d.websiteCheck ?? null,
+    website_check_url: d.websiteCheckUrl ?? null,
   }
 }
 
@@ -45,8 +55,13 @@ function fromRow(r: Record<string, unknown>): Deal {
     createdAt: r.created_at as number,
     stageChangedAt: (r.stage_changed_at as number | null) ?? undefined,
     followUpAt: (r.follow_up_at as number | null) ?? undefined,
+    followUpReason: (r.follow_up_reason as string | null) ?? undefined,
     lastContactedAt: (r.last_contacted_at as number | null) ?? undefined,
     whatsappHistory: (r.whatsapp_history as Deal['whatsappHistory']) ?? undefined,
+    repliedAt: (r.replied_at as number | null) ?? undefined,
+    callLog: (r.call_log as Deal['callLog']) ?? undefined,
+    websiteCheck: (r.website_check as string | null) ?? undefined,
+    websiteCheckUrl: (r.website_check_url as string | null) ?? undefined,
   }
 }
 
