@@ -3,18 +3,27 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-
-// These routes authenticate themselves via a CRON_SECRET bearer token (Vercel Cron),
-// not a Supabase session cookie. A cron invocation carries no session, so the auth
-// check below would redirect it to /login before its own bearer check ever runs —
-// silently breaking the daily notification, agent run, and follow-up jobs.
-const CRON_PATHS = ['/api/notify/send', '/api/agents/run', '/api/follow-up']
+const CRON_SECRET = process.env.CRON_SECRET
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
   const pathname = req.nextUrl.pathname
 
-  if (CRON_PATHS.some(p => pathname.startsWith(p))) return res
+  // Vercel Cron automatically sends Authorization: Bearer <CRON_SECRET> when that
+  // env var is set. A request carrying the correct secret is definitely Vercel
+  // Cron (a session cookie can't be forged), so let it straight through to the
+  // route's own CRON_SECRET check — without this, cron requests get redirected
+  // to /login before that check ever runs, silently breaking the daily
+  // notification, agent run, and follow-up jobs.
+  //
+  // Deliberately NOT a path allowlist: /api/agents/run and /api/notify/send are
+  // also triggered manually from the logged-in app (a "Run Now" button, and
+  // "hold to test" on the notification bell) with no bearer token — those calls
+  // must still go through the normal session check below, or the endpoints
+  // become open to anyone on the internet, not just Vercel Cron.
+  if (CRON_SECRET && req.headers.get('authorization') === `Bearer ${CRON_SECRET}`) {
+    return res
+  }
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     // Every /api/* data route reads with the Supabase service-role key (bypasses
