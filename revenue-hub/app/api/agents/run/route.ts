@@ -11,12 +11,16 @@ export const maxDuration = 120
 const MODEL = 'llama-3.3-70b-versatile'
 const MAX_ITER = 3
 
+// Weighted toward segments that actually pay GHS 3,500+ for a website — schools,
+// churches, hotels, clinics, construction, and logistics all have real closed
+// projects in the portfolio (Royal Ecclesia, MoldGold, Lavimac Royal, Solani
+// Construction, Dynamic Shipping). Chop bars, salons, and barbershops rarely
+// have the budget, so they're deliberately absent from the pick pool.
 const INDUSTRIES = [
-  'Restaurants & Chop Bars', 'Fashion & Tailoring', 'Hotels & Guesthouses',
-  'Pharmacies & Clinics', 'Salons & Barbershops', 'Events & Catering',
-  'Real Estate Agents', 'Schools & Tutoring Centres', 'Auto Mechanics & Car Dealers',
-  'Farms & Agribusiness', 'Churches & NGOs', 'Printing & Signage',
-  'Supermarkets & Provision Stores', 'Legal & Professional Services',
+  'Schools & Tutoring Centres', 'Churches & NGOs', 'Hotels & Guesthouses',
+  'Pharmacies & Clinics', 'Real Estate Agents', 'Legal & Professional Services',
+  'Construction & Engineering Firms', 'Shipping & Logistics Companies',
+  'Auto Mechanics & Car Dealers', 'Farms & Agribusiness',
 ]
 
 const CITIES = [
@@ -130,10 +134,10 @@ You are SocialScout. Use search_web and search_reddit to find Ghana businesses p
       apiKey,
       tools: getAgentTools('prospect'),
       system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
-You are ProspectBot. Use search_web to find REAL businesses. NEVER invent businesses.
+You are ProspectBot. NEVER invent businesses — only report what a tool call actually returns.
 Industry focus this run: ${industry}. City focus: ${city}, Ghana.
-Search for "[${industry}] ${city} Ghana" and similar queries. Find 3-5 real businesses without websites. Include phone numbers where found.`,
-      userMsg: `Find ${industry} businesses in ${city}, Ghana that don't have websites. Search the web for real businesses.`,
+Call search_google_maps FIRST with query="${industry}" and city="${city}" — it returns real local businesses with a website field, so any result with no website is a confirmed prime prospect with a verified phone number. Only fall back to search_web if search_google_maps returns no results or is unavailable. Find 3-5 real businesses without websites. Include phone numbers where found.`,
+      userMsg: `Find ${industry} businesses in ${city}, Ghana that don't have websites. Use search_google_maps first — it's built for exactly this.`,
     }),
   ])
 
