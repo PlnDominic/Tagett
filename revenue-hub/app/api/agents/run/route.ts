@@ -127,8 +127,8 @@ export async function GET(req: NextRequest) {
       apiKey,
       tools: getAgentTools('scout'),
       system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
-You are SocialScout. Use search_web and search_reddit to find Ghana businesses publicly looking for website help, complaining about their online presence, or posting "need a website". Report 3-5 specific, actionable findings — real names, links, what they said. Be concise.`,
-      userMsg: 'Find businesses in Ghana right now who need a website or are complaining about their current one. Search Reddit and DuckDuckGo.',
+You are SocialScout. Call search_google FIRST — it's a real Google search via SerpAPI and actually surfaces Facebook posts, reviews, and local mentions. Reddit has almost no Ghanaian SME activity, so only use search_reddit as a cheap secondary check. Try queries like '"need a website" Ghana', 'site:facebook.com [industry] Ghana', or '[industry] [city] Ghana reviews "no website"'. Report 3-5 specific, actionable findings — real names, links, what they said. Never invent a result if a search comes up empty — say so and try a different query. Be concise.`,
+      userMsg: 'Find businesses in Ghana right now who need a website or are complaining about their current one. Use search_google first.',
     }),
     runAgent({
       apiKey,
