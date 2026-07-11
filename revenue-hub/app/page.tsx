@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import type {
+  Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
+  DealStage, Deal, ParsedProspect, InvoiceMilestone, Invoice, Retainer,
+  SocialPlatform, SocialPost, Client,
+} from '@/lib/types'
+import {
+  PROJECT_CATEGORIES, STAGES, STAGE_LABELS, STAGE_WEIGHT, STAGE_COLOR, STAGE_STALE_MS,
+  PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_ICONS,
+} from '@/lib/types'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -219,50 +228,6 @@ const GHANA_LOCATIONS: Record<string, string[]> = {
 }
 
 const CITIES = Object.keys(GHANA_LOCATIONS)
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | 'prospect-map' | AgentId
-
-// ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
-type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
-const PROJECT_CATEGORIES: ProjectCategory[] = ['Website', 'Web Application', 'Mobile App', 'Business Software', 'GIS']
-
-interface WebsiteProject {
-  id: number
-  title: string
-  category: ProjectCategory
-  description: string
-  image: string
-  features: string[]
-  technologies: string[]
-  link?: string
-  // Tagett extras stored in JSON but not rendered by the website
-  year?: number
-  client?: string
-  featured?: boolean
-  status?: 'completed' | 'in-progress'
-  updatedAt?: string
-}
-
-interface Agent {
-  id: AgentId
-  icon: string
-  label: string
-  short: string
-  description: string
-  systemPrompt: string
-  dailyPrompt: string
-  briefingLabel: string
-}
-
-type AllChats = Record<AgentId, Message[]>
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
@@ -745,7 +710,6 @@ const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'v
 const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'outsider', 'executor']
 
 // ─── Mobile tab groupings ─────────────────────────────────────────────────────
-type MobileTab = 'home' | 'work' | 'agents' | 'more'
 const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices', 'prospect-map']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
 const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality', 'analytics']
@@ -1396,55 +1360,6 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
 
 // ─── Deal pipeline model & storage ───────────────────────────────────────────
 
-type DealStage = 'found' | 'contacted' | 'interested' | 'proposal' | 'negotiating' | 'closed' | 'lost'
-const STAGES: DealStage[] = ['found', 'contacted', 'interested', 'proposal', 'negotiating', 'closed', 'lost']
-const STAGE_LABELS: Record<DealStage, string> = {
-  found: 'Found', contacted: 'Contacted', interested: 'Interested',
-  proposal: 'Proposal Sent', negotiating: 'Negotiating', closed: 'Closed', lost: 'Lost',
-}
-const STAGE_WEIGHT: Record<DealStage, number> = {
-  found: 0.10, contacted: 0.20, interested: 0.40,
-  proposal: 0.60, negotiating: 0.75, closed: 1.00, lost: 0,
-}
-const STAGE_COLOR: Record<DealStage, string> = {
-  found: '#8B5CF6', contacted: '#3B82F6', interested: '#10B981',
-  proposal: '#F59E0B', negotiating: '#EF4444', closed: '#E84040', lost: '#9CA3AF',
-}
-const STAGE_STALE_MS: Record<DealStage, number> = {
-  found: 3 * 86400000, contacted: 5 * 86400000, interested: 7 * 86400000,
-  proposal: 10 * 86400000, negotiating: 14 * 86400000, closed: 0, lost: 0,
-}
-
-interface Deal {
-  id: string
-  name: string
-  industry: string
-  valueGHS: number
-  stage: DealStage
-  phone?: string
-  createdAt: number
-  stageChangedAt?: number
-  followUpAt?: number
-  followUpReason?: 'referral'
-  lastContactedAt?: number
-  whatsappHistory?: Array<{ text: string; sentAt: number }>
-  repliedAt?: number
-  callLog?: Array<{ calledAt: number }>
-  websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'
-  websiteCheckUrl?: string
-}
-
-interface ParsedProspect {
-  name: string
-  industry: string
-  address?: string
-  phone?: string
-  whyNeedsWebsite?: string
-  servicePitch?: string
-  valueGHS: number
-  phonePitch?: string
-}
-
 const DEALS_KEY = 'tagett-deals-v1'
 const STAGE_MIGRATE: Record<string, DealStage> = { called: 'contacted', scoped: 'interested' }
 function loadDeals(): Deal[] {
@@ -1464,29 +1379,6 @@ function saveDeals(d: Deal[]): void {
 
 // ─── Invoice types & storage ──────────────────────────────────────────────────
 
-interface InvoiceMilestone {
-  id: string
-  label: string
-  amountGHS: number
-  paidAt?: number
-  paymentMethod?: string
-  notes?: string
-}
-
-interface Invoice {
-  id: string
-  clientName: string
-  description: string
-  dealId?: string
-  totalGHS: number
-  milestones: InvoiceMilestone[]
-  status: 'draft' | 'sent' | 'partial' | 'paid'
-  createdAt: number
-  dueAt?: number
-  sentAt?: number
-  notes?: string
-}
-
 const INVOICES_KEY = 'tagett-invoices-v1'
 function loadInvoices(): Invoice[] {
   if (typeof window === 'undefined') return []
@@ -1496,41 +1388,7 @@ function saveInvoices(d: Invoice[]): void {
   try { localStorage.setItem(INVOICES_KEY, JSON.stringify(d)) } catch {}
 }
 
-// ─── Maintenance retainers (recurring revenue) ───────────────────────────────
-
-interface Retainer {
-  id: string
-  clientName: string
-  dealId?: string
-  phone?: string
-  monthlyGHS: number
-  status: 'active' | 'paused' | 'cancelled'
-  startedAt: number
-  lastBilledAt?: number
-  notes?: string
-}
-
 // ─── Social post types & storage ─────────────────────────────────────────────
-
-type SocialPlatform = 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok' | 'status'
-const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  twitter: 'X', linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', status: 'WA Status',
-}
-const PLATFORM_COLORS: Record<SocialPlatform, string> = {
-  twitter: '#000000', linkedin: '#0A66C2', facebook: '#1877F2', instagram: '#E1306C', tiktok: '#010101', status: '#25D366',
-}
-
-interface SocialPost {
-  id: string
-  content: string
-  platforms: SocialPlatform[]
-  status: 'draft' | 'scheduled' | 'posted'
-  scheduledFor?: number
-  postedAt?: number
-  createdAt: number
-  category?: string
-  resultDealId?: string
-}
 
 const SOCIAL_POSTS_KEY = 'tagett-social-posts-v1'
 function loadSocialPosts(): SocialPost[] {
@@ -4092,10 +3950,6 @@ const SOCIAL_CATEGORIES = [
   { id: 'portfolio', label: 'Portfolio', prompt: 'Write 2 social media posts — one for X and one for LinkedIn — showcasing Ecstasy Technologies portfolio of websites for Ghanaian businesses: clinics, real estate, hotels, schools. Label each "X:" or "LinkedIn:".' },
 ]
 
-const PLATFORM_ICONS: Record<SocialPlatform, string> = {
-  twitter: '𝕏', linkedin: 'in', facebook: 'f', instagram: '◎', tiktok: '♪', status: '💬',
-}
-
 // Shared by the manual "Generate" flow and the publish-to-post auto-draft — parses
 // a "X: ...\nLinkedIn: ..." labelled response into separate draft posts per platform.
 // Every generated X/LinkedIn post ends with "visit ecstasytechnologies.com" or
@@ -5672,18 +5526,6 @@ INVOICES:
 }
 
 // ─── ClientsView ─────────────────────────────────────────────────────────────
-
-interface Client {
-  id: string
-  name: string
-  phone?: string
-  whatsapp?: string
-  email?: string
-  website?: string
-  industry?: string
-  notes?: string
-  created_at?: string
-}
 
 const BLANK_CLIENT: Omit<Client, 'id' | 'created_at'> = { name: '', phone: '', whatsapp: '', email: '', website: '', industry: '', notes: '' }
 
