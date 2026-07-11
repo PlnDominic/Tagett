@@ -1007,6 +1007,20 @@ function downloadCSV(filename: string, rows: string[][]) {
 
 // ─── Supabase conversation persistence ────────────────────────────────────────
 
+// If the session expires, middleware redirects Supabase-backed GETs to /login's
+// HTML page. fetch() follows that transparently and res.ok stays true, so
+// naively calling .json() on it throws and vanishes into a swallowing .catch —
+// the app just silently stops loading data with no sign anything is wrong.
+// Detect the redirect and bounce to a real re-login instead.
+async function fetchAuthed(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init)
+  if (res.redirected && res.url.includes('/login')) {
+    window.location.href = '/login'
+    throw new Error('Session expired')
+  }
+  return res
+}
+
 function saveMessage(agentId: string, role: 'user' | 'assistant', content: string) {
   fetch('/api/conversations', {
     method: 'POST',
@@ -1846,7 +1860,11 @@ function SignOutButton() {
   const [loading, setLoading] = useState(false)
   const handleSignOut = async () => {
     setLoading(true)
-    await fetch('/api/auth/signout', { method: 'POST' })
+    try {
+      await fetch('/api/auth/signout', { method: 'POST' })
+    } catch {
+      // Ignore — navigate to /login below regardless so the button never gets stuck.
+    }
     window.location.href = '/login'
   }
   return (
@@ -1859,9 +1877,15 @@ function SignOutButton() {
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 
 function useOnboarding() {
-  const [done, setDone] = useState<boolean | null>(() =>
-    typeof window !== 'undefined' ? !!localStorage.getItem('tagett-onboarded') : null
-  )
+  // Always start at null (matching the server-rendered pass) and read localStorage
+  // only after mount. Reading it in the useState initializer runs synchronously
+  // during hydration and diverges from the null the server rendered, which React
+  // flags as a hydration mismatch and forces a client-only re-render — visible as
+  // a blank flash on every load.
+  const [done, setDone] = useState<boolean | null>(null)
+  useEffect(() => {
+    setDone(!!localStorage.getItem('tagett-onboarded'))
+  }, [])
   const complete = useCallback(() => {
     localStorage.setItem('tagett-onboarded', '1')
     setDone(true)
@@ -3240,7 +3264,7 @@ function InvoicesView({ deals }: { deals: Deal[] }) {
 
   // Hydrate from Supabase on mount
   useEffect(() => {
-    fetch('/api/invoices', { cache: 'no-store' })
+    fetchAuthed('/api/invoices', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (Array.isArray(d) && d.length > 0) { setInvoices(d); saveInvoices(d) } })
       .catch(() => {})
@@ -3858,7 +3882,7 @@ function DataQualityView({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
   const [confirmMerge, setConfirmMerge] = useState<Deal[] | null>(null)
 
   useEffect(() => {
-    fetch('/api/clients').then(r => r.ok ? r.json() : []).then(setClients).catch(() => {})
+    fetchAuthed('/api/clients').then(r => r.ok ? r.json() : []).then(setClients).catch(() => {})
   }, [])
 
   // ── Health metrics ──
@@ -4849,9 +4873,9 @@ function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; work
     let liveSnapshot = ''
     try {
       const [rawDeals, rawClients, rawInvoices] = await Promise.all([
-        fetch('/api/deals').then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/clients').then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch('/api/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetchAuthed('/api/deals').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetchAuthed('/api/clients').then(r => r.ok ? r.json() : []).catch(() => []),
+        fetchAuthed('/api/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
       ])
 
       const deals: Deal[] = Array.isArray(rawDeals) ? rawDeals.map((d: Record<string, unknown>) => ({
@@ -5033,7 +5057,7 @@ function ClientsView({ onOpenAgent }: { onOpenAgent: (agentId: AgentId, prompt: 
   const load = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/clients')
+      const res = await fetchAuthed('/api/clients')
       const data = await res.json()
       if (Array.isArray(data)) setClients(data)
     } catch { /* non-fatal */ }
@@ -5638,7 +5662,7 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
   const [invoices, setInvoices] = useState<Invoice[]>(loadInvoices)
 
   useEffect(() => {
-    fetch('/api/invoices', { cache: 'no-store' })
+    fetchAuthed('/api/invoices', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (Array.isArray(d) && d.length > 0) setInvoices(d) })
       .catch(() => {})
@@ -6099,7 +6123,7 @@ export default function Page() {
   useEffect(() => {
     // Show localStorage immediately, then hydrate from Supabase
     setAllChats(loadAllChats())
-    fetch('/api/conversations', { cache: 'no-store' })
+    fetchAuthed('/api/conversations', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
         // Only overwrite localStorage when Supabase actually has conversations.
@@ -6115,7 +6139,7 @@ export default function Page() {
 
   // Load pinned notes from Supabase on mount (localStorage shows immediately)
   useEffect(() => {
-    fetch('/api/notes', { cache: 'no-store' })
+    fetchAuthed('/api/notes', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d?.value) { setPinnedNotes(d.value); localStorage.setItem('tagett-pinned-notes-v1', d.value) } })
       .catch(() => {})
@@ -6123,7 +6147,7 @@ export default function Page() {
 
   // Keep page-level invoices in sync for global search
   useEffect(() => {
-    fetch('/api/invoices', { cache: 'no-store' })
+    fetchAuthed('/api/invoices', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (Array.isArray(d) && d.length > 0) setPageInvoices(d) })
       .catch(() => {})
@@ -6131,7 +6155,7 @@ export default function Page() {
 
   // Load workspace (team intel) from Supabase on mount
   useEffect(() => {
-    fetch('/api/workspace', { cache: 'no-store' })
+    fetchAuthed('/api/workspace', { cache: 'no-store' })
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d && typeof d === 'object' && Object.keys(d).some(k => d[k]?.trim())) {
@@ -6146,7 +6170,7 @@ export default function Page() {
     // Show local data immediately, then hydrate from Supabase
     const local = loadDeals()
     if (local.length > 0) setDeals(local)
-    fetch('/api/deals', { cache: 'no-store' })
+    fetchAuthed('/api/deals', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => { if (Array.isArray(d) && d.length > 0) { setDeals(d); saveDeals(d) } })
       .catch(() => {})
