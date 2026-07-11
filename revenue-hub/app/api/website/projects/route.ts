@@ -45,15 +45,28 @@ async function readFile(): Promise<{ projects: WebsiteProject[]; sha: string | n
   return { projects: JSON.parse(raw), sha: data.sha }
 }
 
-async function writeFile(projects: WebsiteProject[], sha: string | null, commitMsg: string) {
-  const content = Buffer.from(JSON.stringify(projects, null, 2) + '\n').toString('base64')
-  const body: Record<string, unknown> = { message: commitMsg, content, branch: BRANCH }
-  if (sha) body.sha = sha
-  const res = await fetch(API_BASE, { method: 'PUT', headers: githubHeaders(), body: JSON.stringify(body) })
-  if (!res.ok) {
+// Read-modify-write against a single GitHub file races: two requests landing close
+// together (double-tap publish, sync-all overlapping a manual edit) both read the
+// same sha, and the second PUT gets rejected with 409. Retry with a fresh read/sha
+// on conflict instead of surfacing that as an opaque 500.
+async function writeFile(
+  mutate: (current: WebsiteProject[]) => WebsiteProject[],
+  commitMsg: string,
+  maxRetries = 2
+): Promise<WebsiteProject[]> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const { projects, sha } = await readFile()
+    const next = mutate(projects)
+    const content = Buffer.from(JSON.stringify(next, null, 2) + '\n').toString('base64')
+    const body: Record<string, unknown> = { message: commitMsg, content, branch: BRANCH }
+    if (sha) body.sha = sha
+    const res = await fetch(API_BASE, { method: 'PUT', headers: githubHeaders(), body: JSON.stringify(body) })
+    if (res.ok) return next
+    if (res.status === 409 && attempt < maxRetries) continue
     const err = await res.json().catch(() => ({}))
     throw new Error(err.message ?? `GitHub ${res.status}`)
   }
+  throw new Error('Failed to write projects.json after retries')
 }
 
 // Mirror an external image (e.g. Supabase storage) into public/project-images/ on the
@@ -115,20 +128,25 @@ export async function POST(req: Request) {
       body.image = await mirrorImageToWebsite(body.image)
     }
 
-    const { projects, sha } = await readFile()
-    const existingIdx = body.id ? projects.findIndex((p: WebsiteProject) => p.id === body.id) : -1
-    let project: WebsiteProject
-    if (existingIdx >= 0) {
-      project = { ...projects[existingIdx], ...body }
-      projects[existingIdx] = project
-    } else {
+    let saved: WebsiteProject
+    let wasUpdate = false
+    await writeFile((projects) => {
+      const existingIdx = body.id ? projects.findIndex((p: WebsiteProject) => p.id === body.id) : -1
+      wasUpdate = existingIdx >= 0
+      if (existingIdx >= 0) {
+        saved = { ...projects[existingIdx], ...body }
+        const next = [...projects]
+        next[existingIdx] = saved
+        return next
+      }
       const maxId = projects.reduce((m: number, p: WebsiteProject) => Math.max(m, p.id), 0)
-      project = { image: '', features: [], technologies: [], ...body, id: maxId + 1, updatedAt: new Date().toISOString() }
-      projects.unshift(project)
-    }
-    await writeFile(projects, sha, `[Tagett] ${existingIdx >= 0 ? 'Update' : 'Add'} project: ${project.title}`)
-    return NextResponse.json({ ok: true, id: project.id, image: project.image })
+      saved = { image: '', features: [], technologies: [], ...body, id: maxId + 1, updatedAt: new Date().toISOString() }
+      return [saved, ...projects]
+    }, `[Tagett] ${wasUpdate ? 'Update' : 'Add'} project: ${body.title}`)
+
+    return NextResponse.json({ ok: true, id: saved!.id, image: saved!.image })
   } catch (err) {
+    console.error('[website/projects] POST failed:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
   }
 }
@@ -137,12 +155,15 @@ export async function DELETE(req: Request) {
   if (!TOKEN) return NextResponse.json({ error: 'GITHUB_WEBSITE_TOKEN not set' }, { status: 500 })
   try {
     const { id } = await req.json()
-    const { projects, sha } = await readFile()
-    const filtered = projects.filter((p: WebsiteProject) => p.id !== id)
-    if (filtered.length === projects.length) return NextResponse.json({ ok: true })
-    await writeFile(filtered, sha, `[Tagett] Remove project: ${id}`)
-    return NextResponse.json({ ok: true })
+    let found = true
+    await writeFile((projects) => {
+      const filtered = projects.filter((p: WebsiteProject) => p.id !== id)
+      found = filtered.length !== projects.length
+      return filtered
+    }, `[Tagett] Remove project: ${id}`)
+    return NextResponse.json({ ok: true, found })
   } catch (err) {
+    console.error('[website/projects] DELETE failed:', err)
     return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
   }
 }

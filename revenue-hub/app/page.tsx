@@ -1632,6 +1632,8 @@ type NotifStatus = 'unknown' | 'unsupported' | 'denied' | 'subscribed' | 'idle'
 
 function useNotifications() {
   const [status, setStatus] = useState<NotifStatus>('unknown')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1647,48 +1649,71 @@ function useNotifications() {
   }, [])
 
   const subscribe = useCallback(async () => {
-    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-    if (!vapidKey) { alert('NEXT_PUBLIC_VAPID_PUBLIC_KEY not set.'); return }
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') { setStatus('denied'); return }
-    const reg = await navigator.serviceWorker.ready
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidKey),
-    })
-    const res = await fetch('/api/notify/subscribe', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(sub),
-    })
-    if (res.ok) setStatus('subscribed')
-    else {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error ?? 'Failed to save subscription.')
+    setError(null)
+    setLoading(true)
+    try {
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if (!vapidKey) { setError('Push not configured yet.'); return }
+      const permission = await Notification.requestPermission()
+      if (permission === 'denied') { setStatus('denied'); setError('Notifications blocked. Enable them in iPhone Settings → Tagett.'); return }
+      if (permission !== 'granted') { setError('Permission not granted.'); return }
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      })
+      const res = await fetch('/api/notify/subscribe', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(sub),
+      })
+      if (res.ok) {
+        setStatus('subscribed')
+      } else {
+        const err = await res.json().catch(() => ({}))
+        setError(err.error ?? 'Failed to save subscription.')
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Subscribe failed.')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
   const unsubscribe = useCallback(async () => {
-    const reg = await navigator.serviceWorker.ready
-    const sub = await reg.pushManager.getSubscription()
-    if (sub) await sub.unsubscribe()
-    await fetch('/api/notify/subscribe', { method: 'DELETE' })
-    setStatus('idle')
-  }, [])
-
-  const sendTest = useCallback(async () => {
-    const res = await fetch('/api/notify/send', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ title: 'Tagett', body: 'Push notifications are working!' }),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      alert(err.error ?? 'Failed to send.')
+    setError(null)
+    setLoading(true)
+    try {
+      const reg = await navigator.serviceWorker.ready
+      const sub = await reg.pushManager.getSubscription()
+      if (sub) await sub.unsubscribe()
+      await fetch('/api/notify/subscribe', { method: 'DELETE' })
+      setStatus('idle')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unsubscribe failed.')
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  return { status, subscribe, unsubscribe, sendTest }
+  const sendTest = useCallback(async () => {
+    setError(null)
+    try {
+      const res = await fetch('/api/notify/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ title: 'Tagett', body: 'Push notifications are working!' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setError(err.error ?? 'Test send failed.')
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Test send failed.')
+    }
+  }, [])
+
+  return { status, loading, error, subscribe, unsubscribe, sendTest }
 }
 
 // ─── IconButton ───────────────────────────────────────────────────────────────
@@ -1727,30 +1752,59 @@ function IconButton({ active = false, activeColor = GOLD, onClick, onPointerDown
   )
 }
 
-function NotifToggle({ status, onSubscribe, onUnsubscribe, onTest }: {
+function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTest }: {
   status: NotifStatus
+  loading: boolean
+  error: string | null
   onSubscribe: () => void
   onUnsubscribe: () => void
   onTest: () => void
 }) {
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  if (status === 'unknown' || status === 'unsupported') return null
+  if (status === 'unknown') return null
+
   const isOn = status === 'subscribed'
+  const isUnsupported = status === 'unsupported'
+  const isDenied = status === 'denied'
+
+  const tooltip = isUnsupported
+    ? 'Open in Safari and tap Share → Add to Home Screen to enable push notifications'
+    : isDenied
+    ? 'Notifications blocked — go to Settings → Tagett → Notifications to enable'
+    : isOn
+    ? 'Notifications on · hold to send a test'
+    : 'Tap to enable push notifications'
+
   return (
-    <IconButton
-      active={isOn}
-      onClick={isOn ? onUnsubscribe : onSubscribe}
-      disabled={status === 'denied'}
-      title={
-        status === 'denied' ? 'Notifications blocked — enable in browser settings'
-          : isOn ? 'Disable notifications · hold to test' : 'Enable daily briefing notifications'
-      }
-      onPointerDown={() => { if (isOn) longPressRef.current = setTimeout(onTest, 700) }}
-      onPointerUp={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
-      onPointerLeave={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
-    >
-      {isOn ? <IconBell color={GOLD} /> : <IconBellOff />}
-    </IconButton>
+    <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+      <IconButton
+        active={isOn && !loading}
+        onClick={isOn ? onUnsubscribe : onSubscribe}
+        disabled={isUnsupported || isDenied || loading}
+        title={tooltip}
+        onPointerDown={() => { if (isOn && !loading) longPressRef.current = setTimeout(onTest, 700) }}
+        onPointerUp={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
+        onPointerLeave={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
+      >
+        {loading
+          ? <span style={{ fontSize: 11, fontFamily: FONT_BODY, color: MUTED }}>...</span>
+          : isOn
+          ? <IconBell color={GOLD} />
+          : <IconBellOff />
+        }
+      </IconButton>
+      {error && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, zIndex: 100, marginTop: 6,
+          background: '#1a0a0a', border: `1px solid ${GOLD}40`, borderRadius: 8,
+          padding: '6px 10px', fontSize: 11, color: GOLD, fontFamily: FONT_BODY,
+          maxWidth: 260, whiteSpace: 'normal', lineHeight: 1.4,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
+        }}>
+          {error}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -5949,7 +6003,7 @@ export default function Page() {
   const isMobile = useIsMobile()
   const { theme, toggleTheme } = useTheme()
   const { done: onboarded, complete: completeOnboarding } = useOnboarding()
-  const { status: notifStatus, subscribe, unsubscribe, sendTest } = useNotifications()
+  const { status: notifStatus, loading: notifLoading, error: notifError, subscribe, unsubscribe, sendTest } = useNotifications()
   const [activeView, setActiveView] = useState<ViewId>('home')
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [deals, setDeals] = useState<Deal[]>([])
@@ -6249,7 +6303,7 @@ export default function Page() {
     [deals]
   )
 
-  const notifToggle = <NotifToggle status={notifStatus} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
+  const notifToggle = <NotifToggle status={notifStatus} loading={notifLoading} error={notifError} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
 
   if (onboarded === null) return null
   if (!onboarded) return <OnboardingScreen onComplete={completeOnboarding} />
