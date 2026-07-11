@@ -1810,6 +1810,7 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
     <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
       <IconButton
         active={isOn && !loading}
+        activeColor={WA_GREEN}
         onClick={isOn ? onUnsubscribe : onSubscribe}
         disabled={isUnsupported || isDenied || loading}
         title={tooltip}
@@ -1820,7 +1821,7 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
         {loading
           ? <span style={{ fontSize: 11, fontFamily: FONT_BODY, color: MUTED }}>...</span>
           : isOn
-          ? <IconBell color={GOLD} />
+          ? <IconBell color={WA_GREEN} />
           : <IconBellOff />
         }
       </IconButton>
