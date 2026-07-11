@@ -4096,6 +4096,33 @@ function SocialCalendarView({ deals }: { deals: Deal[] }) {
     } finally { setGeneratingStatus(false) }
   }
 
+  const [teachTopic, setTeachTopic] = useState('')
+  const [generatingTeach, setGeneratingTeach] = useState(false)
+  const generateTeachPost = async () => {
+    if (!teachTopic.trim()) return
+    setGeneratingTeach(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: `You are ContentBot, writing on behalf of Dominic Kudom, a software engineer and CEO of Ecstasy Technologies (Bibiani, Ghana). Write posts that TEACH a software engineering concept — this is how a following gets built, not by announcing features:
+- Never just announce something ("I built authentication"). Explain the WHY: the tradeoffs, the reasoning behind the decision, what breaks if you get it wrong.
+- People don't remember features. They remember insights.
+- Talk about problems solved, not tools used. Nobody follows someone because they know a library — they follow because that person knows when to use it and when not to.
+- Teach ONE real, concrete thing clearly. No vague listicles ("3 tips for better code").
+- Confident and direct. No hedging, no AI filler phrases, no "in conclusion".
+Only state technical facts that are actually true — never invent a specific claim about what Dominic personally built unless it's a well-known, generic pattern. Tagett (his own product) is genuinely built with Next.js, Supabase, and Vercel, so it's fine to reference that stack honestly.
+Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight — a WhatsApp link gets appended after your text, so leave room) and one labelled "LinkedIn:" (300-500 chars, walks through the reasoning with more depth). Each label on its own line.`,
+          messages: [{ role: 'user', content: `Teach this concept the way a senior engineer explains it to someone learning: ${teachTopic.trim()}` }],
+        }),
+      })
+      const d = await res.json()
+      setPosts(prev => [...parseXLinkedInPosts(d.text ?? '', 'teach'), ...prev])
+      setTeachTopic('')
+    } finally { setGeneratingTeach(false) }
+  }
+
   const addManual = () => {
     if (!newContent.trim()) return
     setPosts(prev => [{ id: Date.now().toString(), content: newContent.trim(), platforms: selectedPlatforms, status: 'draft', createdAt: Date.now() }, ...prev])
@@ -4215,6 +4242,24 @@ function SocialCalendarView({ deals }: { deals: Deal[] }) {
         <button onClick={generateStatusPack} disabled={generatingStatus} title="3 short WhatsApp Status captions — more Ghanaian business owners see your Status than any feed" style={{ marginTop: 8, width: '100%', padding: '7px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, cursor: generatingStatus ? 'wait' : 'pointer', opacity: generatingStatus ? 0.7 : 1 }}>
           {generatingStatus ? 'Generating…' : '💬 Generate WhatsApp Status Pack'}
         </button>
+
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+            🎓 Teach a concept — builds a following on X better than announcing features
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={teachTopic}
+              onChange={e => setTeachTopic(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generateTeachPost()}
+              placeholder="e.g. why JWT over sessions, database indexing, rate limiting…"
+              style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }}
+            />
+            <button onClick={generateTeachPost} disabled={generatingTeach || !teachTopic.trim()} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: generatingTeach || !teachTopic.trim() ? 'default' : 'pointer', opacity: generatingTeach || !teachTopic.trim() ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+              {generatingTeach ? 'Writing…' : 'Teach'}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -4249,7 +4294,7 @@ function SocialCalendarView({ deals }: { deals: Deal[] }) {
                       {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                     </span>
                   ))}
-                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label ?? (post.category === 'status' ? 'Status Pack' : post.category)}</span>}
+                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label ?? (post.category === 'status' ? 'Status Pack' : post.category === 'teach' ? '🎓 Teach' : post.category)}</span>}
                 </div>
               )}
 
