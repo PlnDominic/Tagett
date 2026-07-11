@@ -1407,6 +1407,8 @@ interface Deal {
   followUpAt?: number
   lastContactedAt?: number
   whatsappHistory?: Array<{ text: string; sentAt: number }>
+  repliedAt?: number
+  callLog?: Array<{ calledAt: number }>
 }
 
 interface ParsedProspect {
@@ -3004,6 +3006,25 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
         <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${deal.name}${deal.industry ? ' ' + deal.industry : ''} Ghana`)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', textDecoration: 'none' }}>
           📍 Maps
         </a>
+        <button
+          onClick={() => onUpdate(deal.id, { repliedAt: deal.repliedAt ? undefined : Date.now() })}
+          title={deal.repliedAt ? `Replied ${new Date(deal.repliedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} · tap to undo` : 'Mark that this business replied'}
+          style={{
+            fontSize: 10, padding: '3px 7px', borderRadius: 10, cursor: 'pointer', fontFamily: FONT_BODY,
+            border: `1px solid ${deal.repliedAt ? WA_GREEN + '60' : BORDER}`,
+            background: deal.repliedAt ? `${WA_GREEN}18` : 'transparent',
+            color: deal.repliedAt ? WA_GREEN : MUTED,
+          }}
+        >
+          {deal.repliedAt ? '✓ Replied' : '↩ Replied'}
+        </button>
+        <button
+          onClick={() => onUpdate(deal.id, { callLog: [...(deal.callLog ?? []), { calledAt: Date.now() }] })}
+          title="Log that you called this business"
+          style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}
+        >
+          📞 Called{(deal.callLog?.length ?? 0) > 0 ? ` ×${deal.callLog!.length}` : ''}
+        </button>
         <label style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           {followUpLabel ? '+ Change' : '+ Follow-up'}
           <input type="date" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
@@ -5666,6 +5687,38 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
   const totalDeals = deals.filter(d => d.stage !== 'lost').length
   const conversionRate = totalDeals > 0 ? Math.round((closedDeals / totalDeals) * 100) : 0
 
+  // Activity this week (rolling 7 days) — answers "was the bottleneck volume or follow-up?"
+  const activity = useMemo(() => {
+    const weekAgo = Date.now() - 7 * 86400000
+    let pitchesSent = 0
+    let callsMade = 0
+    deals.forEach(d => {
+      pitchesSent += (d.whatsappHistory ?? []).filter(h => h.sentAt >= weekAgo).length
+      callsMade += (d.callLog ?? []).filter(c => c.calledAt >= weekAgo).length
+    })
+    const leadsFound = deals.filter(d => d.createdAt >= weekAgo).length
+    const repliesReceived = deals.filter(d => d.repliedAt && d.repliedAt >= weekAgo).length
+    const closedThisWeek = deals.filter(d => d.stage === 'closed' && (d.stageChangedAt ?? d.createdAt) >= weekAgo)
+    return { pitchesSent, callsMade, leadsFound, repliesReceived, closedCount: closedThisWeek.length, closedGHS: closedThisWeek.reduce((s, d) => s + d.valueGHS, 0) }
+  }, [deals])
+
+  // Stage-to-stage conversion — % of deals that reached the previous stage that also reached this one.
+  // Uses "reached or past" (current stage index >= this stage's index) since we only track current stage,
+  // not full history, so it reads as a snapshot funnel rather than a true per-cohort conversion.
+  const stageConversion = useMemo(() => {
+    const nonLost = deals.filter(d => d.stage !== 'lost')
+    const funnelStages: DealStage[] = STAGES.filter(s => s !== 'lost')
+    const reachedOrPast = (stage: DealStage) => {
+      const idx = funnelStages.indexOf(stage)
+      return nonLost.filter(d => funnelStages.indexOf(d.stage) >= idx).length
+    }
+    const counts = funnelStages.map(reachedOrPast)
+    return funnelStages.map((s, i) => ({
+      stage: s,
+      pct: i === 0 || counts[i - 1] === 0 ? null : Math.round((counts[i] / counts[i - 1]) * 100),
+    }))
+  }, [deals])
+
   const card = (label: string, value: string, sub?: string) => (
     <div style={{ flex: 1, minWidth: 120, padding: '12px 14px', borderRadius: 12, background: SURFACE2, border: `1px solid ${BORDER}` }}>
       <div style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.1em' }}>{label}</div>
@@ -5684,6 +5737,18 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
         {card('Outstanding', `GHS ${(totalInvoiced - totalCollected).toLocaleString()}`, `${invoices.filter(i => i.status !== 'paid' && i.status !== 'draft').length} open invoices`)}
         {card('Conversion', `${conversionRate}%`, `${closedDeals} of ${totalDeals} deals closed`)}
         {card('Pipeline', `GHS ${Math.round(deals.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0)).toLocaleString()}`, 'weighted forecast')}
+      </div>
+
+      {/* Activity this week */}
+      <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Activity This Week</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          {card('Leads found', String(activity.leadsFound))}
+          {card('Pitches sent', String(activity.pitchesSent))}
+          {card('Replies', String(activity.repliesReceived), activity.pitchesSent > 0 ? `${Math.round((activity.repliesReceived / activity.pitchesSent) * 100)}% of pitches` : undefined)}
+          {card('Calls made', String(activity.callsMade))}
+          {card('Closed', String(activity.closedCount), activity.closedCount > 0 ? `GHS ${activity.closedGHS.toLocaleString()}` : undefined)}
+        </div>
       </div>
 
       {/* Monthly revenue chart */}
@@ -5708,17 +5773,22 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
 
       {/* Deal funnel */}
       <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
-        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Deal Funnel</div>
-        {stageCounts.filter(s => s.stage !== 'lost').map(s => (
-          <div key={s.stage} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 70, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 500, color: STAGE_COLOR[s.stage], flexShrink: 0 }}>{STAGE_LABELS[s.stage]}</div>
-            <div style={{ flex: 1, height: 14, background: SURFACE2, borderRadius: 3, overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${deals.length > 0 ? Math.round((s.count / deals.length) * 100) : 0}%`, background: STAGE_COLOR[s.stage], borderRadius: 3, opacity: 0.8 }} />
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>Deal Funnel</div>
+        <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>% = of deals that reached the stage before it</div>
+        {stageCounts.filter(s => s.stage !== 'lost').map(s => {
+          const conv = stageConversion.find(c => c.stage === s.stage)?.pct ?? null
+          return (
+            <div key={s.stage} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              <div style={{ width: 70, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 500, color: STAGE_COLOR[s.stage], flexShrink: 0 }}>{STAGE_LABELS[s.stage]}</div>
+              <div style={{ flex: 1, height: 14, background: SURFACE2, borderRadius: 3, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${deals.length > 0 ? Math.round((s.count / deals.length) * 100) : 0}%`, background: STAGE_COLOR[s.stage], borderRadius: 3, opacity: 0.8 }} />
+              </div>
+              <div style={{ width: 24, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT, textAlign: 'right', flexShrink: 0 }}>{s.count}</div>
+              <div style={{ width: 34, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, textAlign: 'right', flexShrink: 0 }}>{conv === null ? '—' : `${conv}%`}</div>
+              <div style={{ width: 80, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, textAlign: 'right', flexShrink: 0 }}>GHS {s.value.toLocaleString()}</div>
             </div>
-            <div style={{ width: 24, fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT, textAlign: 'right', flexShrink: 0 }}>{s.count}</div>
-            <div style={{ width: 80, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, textAlign: 'right', flexShrink: 0 }}>GHS {s.value.toLocaleString()}</div>
-          </div>
-        ))}
+          )
+        })}
         {stageCounts.find(s => s.stage === 'lost') && (
           <div style={{ marginTop: 8, fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
             {stageCounts.find(s => s.stage === 'lost')!.count} lost deal{stageCounts.find(s => s.stage === 'lost')!.count !== 1 ? 's' : ''}
