@@ -13,6 +13,7 @@ interface SocialPost {
   postedAt?: number
   createdAt: number
   category?: string
+  resultDealId?: string
 }
 
 type Row = Record<string, unknown>
@@ -27,6 +28,7 @@ function toRow(p: SocialPost) {
     posted_at: p.postedAt ?? null,
     created_at: p.createdAt,
     category: p.category ?? null,
+    result_deal_id: p.resultDealId ?? null,
   }
 }
 
@@ -40,6 +42,7 @@ function fromRow(r: Row): SocialPost {
     postedAt: (r.posted_at as number | null) ?? undefined,
     createdAt: r.created_at as number,
     category: (r.category as string | null) ?? undefined,
+    resultDealId: (r.result_deal_id as string | null) ?? undefined,
   }
 }
 
@@ -54,6 +57,22 @@ export async function GET() {
     return NextResponse.json((data ?? []).map(fromRow))
   } catch {
     return NextResponse.json([])
+  }
+}
+
+// Insert a single post without touching existing ones — PUT below is a full-array
+// replace (deletes anything not included), so callers that only have one new post
+// to add (e.g. the auto-draft on website publish) must use this instead.
+export async function POST(req: NextRequest) {
+  try {
+    const post: SocialPost = await req.json()
+    if (!post.content) return NextResponse.json({ error: 'content required' }, { status: 400 })
+    const sb = getSupabase()
+    const { error } = await sb.from('social_posts').insert(toRow(post))
+    if (error) throw error
+    return NextResponse.json({ ok: true, id: post.id })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
   }
 }
 

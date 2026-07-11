@@ -111,6 +111,22 @@ create table if not exists retainers (
   updated_at  timestamptz default now()
 );
 
+-- 10. Social calendar posts
+create table if not exists social_posts (
+  id            text primary key,
+  content       text not null,
+  platforms     jsonb not null default '[]'::jsonb,
+  status        text not null default 'draft',
+  scheduled_for bigint,
+  posted_at     bigint,
+  created_at    bigint not null,
+  category      text,
+  result_deal_id text
+);
+
+-- Add result_deal_id to existing social_posts table if upgrading
+alter table social_posts add column if not exists result_deal_id text;
+
 -- 7. Storage bucket for project images
 --    Create via: Supabase Dashboard → Storage → New bucket
 --    Name: project-images

@@ -2,6 +2,15 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import type {
+  Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
+  DealStage, Deal, ParsedProspect, InvoiceMilestone, Invoice, Retainer,
+  SocialPlatform, SocialPost, Client,
+} from '@/lib/types'
+import {
+  PROJECT_CATEGORIES, STAGES, STAGE_LABELS, STAGE_WEIGHT, STAGE_COLOR, STAGE_STALE_MS,
+  PLATFORM_LABELS, PLATFORM_COLORS, PLATFORM_ICONS,
+} from '@/lib/types'
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 
@@ -219,50 +228,6 @@ const GHANA_LOCATIONS: Record<string, string[]> = {
 }
 
 const CITIES = Object.keys(GHANA_LOCATIONS)
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Message {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | 'prospect-map' | AgentId
-
-// ─── Website project types (mirrors API route & ecstasytechnologies.com schema)
-type ProjectCategory = 'Website' | 'Web Application' | 'Mobile App' | 'Business Software' | 'GIS'
-const PROJECT_CATEGORIES: ProjectCategory[] = ['Website', 'Web Application', 'Mobile App', 'Business Software', 'GIS']
-
-interface WebsiteProject {
-  id: number
-  title: string
-  category: ProjectCategory
-  description: string
-  image: string
-  features: string[]
-  technologies: string[]
-  link?: string
-  // Tagett extras stored in JSON but not rendered by the website
-  year?: number
-  client?: string
-  featured?: boolean
-  status?: 'completed' | 'in-progress'
-  updatedAt?: string
-}
-
-interface Agent {
-  id: AgentId
-  icon: string
-  label: string
-  short: string
-  description: string
-  systemPrompt: string
-  dailyPrompt: string
-  briefingLabel: string
-}
-
-type AllChats = Record<AgentId, Message[]>
 
 // ─── Agents ───────────────────────────────────────────────────────────────────
 
@@ -745,7 +710,6 @@ const MAIN_AGENT_IDS: AgentId[] = ['prospect', 'content', 'scope', 'revenue', 'v
 const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'outsider', 'executor']
 
 // ─── Mobile tab groupings ─────────────────────────────────────────────────────
-type MobileTab = 'home' | 'work' | 'agents' | 'more'
 const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices', 'prospect-map']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
 const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality', 'analytics']
@@ -1396,55 +1360,6 @@ const HANDOFFS: Record<AgentId, Array<{ label: string; targetAgent: AgentId; bui
 
 // ─── Deal pipeline model & storage ───────────────────────────────────────────
 
-type DealStage = 'found' | 'contacted' | 'interested' | 'proposal' | 'negotiating' | 'closed' | 'lost'
-const STAGES: DealStage[] = ['found', 'contacted', 'interested', 'proposal', 'negotiating', 'closed', 'lost']
-const STAGE_LABELS: Record<DealStage, string> = {
-  found: 'Found', contacted: 'Contacted', interested: 'Interested',
-  proposal: 'Proposal Sent', negotiating: 'Negotiating', closed: 'Closed', lost: 'Lost',
-}
-const STAGE_WEIGHT: Record<DealStage, number> = {
-  found: 0.10, contacted: 0.20, interested: 0.40,
-  proposal: 0.60, negotiating: 0.75, closed: 1.00, lost: 0,
-}
-const STAGE_COLOR: Record<DealStage, string> = {
-  found: '#8B5CF6', contacted: '#3B82F6', interested: '#10B981',
-  proposal: '#F59E0B', negotiating: '#EF4444', closed: '#E84040', lost: '#9CA3AF',
-}
-const STAGE_STALE_MS: Record<DealStage, number> = {
-  found: 3 * 86400000, contacted: 5 * 86400000, interested: 7 * 86400000,
-  proposal: 10 * 86400000, negotiating: 14 * 86400000, closed: 0, lost: 0,
-}
-
-interface Deal {
-  id: string
-  name: string
-  industry: string
-  valueGHS: number
-  stage: DealStage
-  phone?: string
-  createdAt: number
-  stageChangedAt?: number
-  followUpAt?: number
-  followUpReason?: 'referral'
-  lastContactedAt?: number
-  whatsappHistory?: Array<{ text: string; sentAt: number }>
-  repliedAt?: number
-  callLog?: Array<{ calledAt: number }>
-  websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'
-  websiteCheckUrl?: string
-}
-
-interface ParsedProspect {
-  name: string
-  industry: string
-  address?: string
-  phone?: string
-  whyNeedsWebsite?: string
-  servicePitch?: string
-  valueGHS: number
-  phonePitch?: string
-}
-
 const DEALS_KEY = 'tagett-deals-v1'
 const STAGE_MIGRATE: Record<string, DealStage> = { called: 'contacted', scoped: 'interested' }
 function loadDeals(): Deal[] {
@@ -1464,29 +1379,6 @@ function saveDeals(d: Deal[]): void {
 
 // ─── Invoice types & storage ──────────────────────────────────────────────────
 
-interface InvoiceMilestone {
-  id: string
-  label: string
-  amountGHS: number
-  paidAt?: number
-  paymentMethod?: string
-  notes?: string
-}
-
-interface Invoice {
-  id: string
-  clientName: string
-  description: string
-  dealId?: string
-  totalGHS: number
-  milestones: InvoiceMilestone[]
-  status: 'draft' | 'sent' | 'partial' | 'paid'
-  createdAt: number
-  dueAt?: number
-  sentAt?: number
-  notes?: string
-}
-
 const INVOICES_KEY = 'tagett-invoices-v1'
 function loadInvoices(): Invoice[] {
   if (typeof window === 'undefined') return []
@@ -1496,40 +1388,7 @@ function saveInvoices(d: Invoice[]): void {
   try { localStorage.setItem(INVOICES_KEY, JSON.stringify(d)) } catch {}
 }
 
-// ─── Maintenance retainers (recurring revenue) ───────────────────────────────
-
-interface Retainer {
-  id: string
-  clientName: string
-  dealId?: string
-  phone?: string
-  monthlyGHS: number
-  status: 'active' | 'paused' | 'cancelled'
-  startedAt: number
-  lastBilledAt?: number
-  notes?: string
-}
-
 // ─── Social post types & storage ─────────────────────────────────────────────
-
-type SocialPlatform = 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok'
-const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  twitter: 'X', linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok',
-}
-const PLATFORM_COLORS: Record<SocialPlatform, string> = {
-  twitter: '#000000', linkedin: '#0A66C2', facebook: '#1877F2', instagram: '#E1306C', tiktok: '#010101',
-}
-
-interface SocialPost {
-  id: string
-  content: string
-  platforms: SocialPlatform[]
-  status: 'draft' | 'scheduled' | 'posted'
-  scheduledFor?: number
-  postedAt?: number
-  createdAt: number
-  category?: string
-}
 
 const SOCIAL_POSTS_KEY = 'tagett-social-posts-v1'
 function loadSocialPosts(): SocialPost[] {
@@ -1547,6 +1406,7 @@ const X_BLUE = '#000000'
 const LI_BLUE = '#0A66C2'
 const FB_BLUE = '#1877F2'
 const ECSTASY_URL = 'https://ecstasytechnologies.com'
+const DOMINIC_WA_NUMBER = '233542855399'
 
 // Ghana local numbers are typically written with a leading 0 (e.g. 0244123456);
 // wa.me and tel: both need the 233 country code instead.
@@ -3287,9 +3147,113 @@ function RetainerModal({ deal, onClose, onCreated }: { deal: Deal; onClose: () =
   )
 }
 
+// ─── TestimonialModal ─────────────────────────────────────────────────────────
+// Tagett has no WhatsApp Business API access, so it can't read what a client
+// actually replied — this is a fast paste-and-polish flow: Dominic pastes what
+// they said, ContentBot turns it into a postable testimonial, saved as a draft.
+
+function TestimonialModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
+  const [quote, setQuote] = useState('')
+  const [drafted, setDrafted] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState('')
+
+  const generate = async () => {
+    if (!quote.trim()) return
+    setGenerating(true)
+    setError('')
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Bibiani, Ghana. Turn a client\'s own words into a short testimonial social post. Keep their meaning and voice — do not invent praise they did not give. Under 200 characters, ends naturally, no hashtags. Output only the post text, nothing else.',
+          messages: [{ role: 'user', content: `Client: ${deal.name} (${deal.industry || 'business'})\nWhat they said: "${quote.trim()}"\n\nTurn this into a testimonial post crediting them by name.` }],
+        }),
+      })
+      const d = await res.json()
+      setDrafted((d.text ?? '').trim())
+    } catch {
+      setError('Could not generate. Try again.')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const save = async () => {
+    if (!drafted.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      const content = appendTrackedCTA(drafted.trim(), `${Date.now()}`)
+      const res = await fetch('/api/social-posts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: `${Date.now()}-testimonial`, content, platforms: ['twitter', 'linkedin'], status: 'draft', createdAt: Date.now(), category: 'deal-win',
+        }),
+      })
+      if (!res.ok) throw new Error('Save failed')
+      setSaved(true)
+      setTimeout(onClose, 1200)
+    } catch {
+      setError('Could not save. Try again.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Turn Into Testimonial Post</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+        </div>
+
+        <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+          Paste what they said on WhatsApp
+        </label>
+        <textarea
+          value={quote}
+          onChange={e => setQuote(e.target.value)}
+          placeholder="e.g. the site looks amazing, we've had way more bookings since it launched…"
+          rows={4}
+          style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 12 }}
+        />
+
+        <button onClick={generate} disabled={generating || !quote.trim()} style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: generating ? 'wait' : 'pointer', opacity: generating || !quote.trim() ? 0.5 : 1, marginBottom: 12 }}>
+          {generating ? 'Drafting…' : '✦ Draft Post'}
+        </button>
+
+        {drafted && (
+          <>
+            <textarea
+              value={drafted}
+              onChange={e => setDrafted(e.target.value)}
+              rows={5}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 12 }}
+            />
+            <button onClick={save} disabled={saving || saved} style={{ width: '100%', padding: '10px', borderRadius: 8, border: 'none', background: saved ? WA_GREEN : GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}>
+              {saved ? '✓ Saved to Drafts' : saving ? 'Saving…' : 'Save to Social Calendar'}
+            </button>
+          </>
+        )}
+
+        {error && <div style={{ marginTop: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+      </div>
+    </div>
+  )
+}
+
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, isDragging, onDragStart, onDragEnd }: {
+function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, onTurnIntoTestimonial, isDragging, onDragStart, onDragEnd }: {
   deal: Deal
   onDelete: (id: string) => void
   onUpdate: (id: string, updates: Partial<Deal>) => void
@@ -3299,6 +3263,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   onWhatsApp: (deal: Deal) => void
   onCreateProposal: (deal: Deal) => void
   onAddRetainer: (deal: Deal) => void
+  onTurnIntoTestimonial: (deal: Deal) => void
   isDragging: boolean
   onDragStart: () => void
   onDragEnd: () => void
@@ -3460,6 +3425,11 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             </button>
           </>
         )}
+        {deal.followUpReason === 'referral' && deal.repliedAt && (
+          <button onClick={() => onTurnIntoTestimonial(deal)} title="Paste what they said and turn it into a testimonial post" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+            📢 Testimonial
+          </button>
+        )}
       </div>
     </div>
   )
@@ -3484,6 +3454,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   const [dropStage, setDropStage] = useState<DealStage | null>(null)
   const [waModal, setWaModal] = useState<Deal | null>(null)
   const [retainerModal, setRetainerModal] = useState<Deal | null>(null)
+  const [testimonialModal, setTestimonialModal] = useState<Deal | null>(null)
   const [proposalModal, setProposalModal] = useState<Deal | null>(null)
 
   const handleSubmit = () => {
@@ -3629,6 +3600,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
                     onWhatsApp={d => setWaModal(d)}
                     onCreateProposal={d => setProposalModal(d)}
                     onAddRetainer={d => setRetainerModal(d)}
+                    onTurnIntoTestimonial={d => setTestimonialModal(d)}
                     isDragging={dragId === deal.id}
                     onDragStart={() => setDragId(deal.id)}
                     onDragEnd={() => { setDragId(null); setDropStage(null) }}
@@ -3648,6 +3620,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
       )}
       {retainerModal && (
         <RetainerModal deal={retainerModal} onClose={() => setRetainerModal(null)} onCreated={onRetainerAdded} />
+      )}
+      {testimonialModal && (
+        <TestimonialModal deal={testimonialModal} onClose={() => setTestimonialModal(null)} />
       )}
     </div>
   )
@@ -3975,11 +3950,71 @@ const SOCIAL_CATEGORIES = [
   { id: 'portfolio', label: 'Portfolio', prompt: 'Write 2 social media posts — one for X and one for LinkedIn — showcasing Ecstasy Technologies portfolio of websites for Ghanaian businesses: clinics, real estate, hotels, schools. Label each "X:" or "LinkedIn:".' },
 ]
 
-const PLATFORM_ICONS: Record<SocialPlatform, string> = {
-  twitter: '𝕏', linkedin: 'in', facebook: 'f', instagram: '◎', tiktok: '♪',
+// Shared by the manual "Generate" flow and the publish-to-post auto-draft — parses
+// a "X: ...\nLinkedIn: ..." labelled response into separate draft posts per platform.
+// Every generated X/LinkedIn post ends with "visit ecstasytechnologies.com" or
+// similar — nobody in Ghana fills a contact form, they WhatsApp. Swap that for a
+// wa.me deep-link carrying pre-filled text with a short reference code, so a
+// reply is traceable back to the exact post that produced it, and tapping the
+// link on mobile (most social traffic) opens WhatsApp with the message ready.
+// Kept deliberately short (just "Ref XXXX", not a full sentence) so it survives
+// X's 280-char limit alongside the post body.
+function appendTrackedCTA(content: string, id: string): string {
+  const refCode = id.slice(-4).toUpperCase()
+  const link = `https://wa.me/${DOMINIC_WA_NUMBER}?text=${encodeURIComponent(`Ref ${refCode}`)}`
+  return `${content}\n\nWhatsApp: ${link}`
 }
 
-function SocialCalendarView() {
+function parseXLinkedInPosts(text: string, category?: string): SocialPost[] {
+  const platformMap: Record<string, SocialPlatform> = { 'x': 'twitter', 'twitter': 'twitter', 'linkedin': 'linkedin', 'instagram': 'instagram', 'facebook': 'facebook', 'tiktok': 'tiktok' }
+  const parsed: SocialPost[] = []
+  const lines = text.split('\n')
+  let current: { platform: SocialPlatform; lines: string[] } | null = null
+  for (const line of lines) {
+    const m = line.match(/^(X|Twitter|LinkedIn|Instagram|Facebook|TikTok):\s*/i)
+    if (m) {
+      if (current && current.lines.join('\n').trim()) {
+        parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
+      }
+      current = { platform: platformMap[m[1].toLowerCase()] ?? 'twitter', lines: [line.replace(m[0], '').trim()] }
+    } else if (current) {
+      current.lines.push(line)
+    }
+  }
+  if (current && current.lines.join('\n').trim()) {
+    parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
+  }
+  if (parsed.length === 0 && text.trim()) {
+    parsed.push({ id: Date.now().toString(), content: text.trim(), platforms: ['twitter'], status: 'draft', createdAt: Date.now(), category })
+  }
+  return parsed.map(p => ({ ...p, content: appendTrackedCTA(p.content, p.id) }))
+}
+
+// Fires when a project is first published to the website — drafts a reveal post
+// into the Social Calendar so the portfolio and the feed stay in sync without
+// re-typing anything. Uses POST (insert-one), not the Social Calendar's own PUT
+// sync, since PUT replaces the whole list and would delete unrelated drafts.
+async function draftPublishPost(project: WebsiteProject) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Bibiani, Ghana. Generate engaging social media content. Output exactly 2 posts: one labelled "X:" (under 200 chars, punchy — a WhatsApp link gets appended after your text, so leave room) and one labelled "LinkedIn:" (professional, 3-5 sentences). Each label must be on its own line followed by the post text.',
+      messages: [{ role: 'user', content: `We just published a completed project. Write a project reveal:\n\nClient: ${project.client || project.title}\nProject: ${project.title}\nCategory: ${project.category}\nWhat it does: ${project.description}\n\nFrame as: what we built, who it's for, what changed for them. End with ecstasytechnologies.com. Specify what screenshot to attach.` }],
+    }),
+  })
+  const d = await res.json()
+  const drafts = parseXLinkedInPosts(d.text ?? '', 'deal-win')
+  await Promise.all(drafts.map(post =>
+    fetch('/api/social-posts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(post),
+    })
+  ))
+}
+
+function SocialCalendarView({ deals }: { deals: Deal[] }) {
   const [posts, setPosts] = useState<SocialPost[]>(loadSocialPosts)
   const [tab, setTab] = useState<'drafts' | 'scheduled' | 'posted'>('drafts')
   const [generating, setGenerating] = useState(false)
@@ -4030,35 +4065,62 @@ function SocialCalendarView() {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Ghana. Generate engaging social media content. Output exactly 2 posts: one labelled "X:" (under 280 chars, punchy) and one labelled "LinkedIn:" (professional, 3-5 sentences). Each label must be on its own line followed by the post text.',
+          systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Ghana. Generate engaging social media content. Output exactly 2 posts: one labelled "X:" (under 200 chars, punchy — a WhatsApp link gets appended after your text, so leave room) and one labelled "LinkedIn:" (professional, 3-5 sentences). Each label must be on its own line followed by the post text.',
           messages: [{ role: 'user', content: cat.prompt }],
         }),
       })
       const d = await res.json()
-      const text: string = d.text ?? ''
-      const platformMap: Record<string, SocialPlatform> = { 'x': 'twitter', 'twitter': 'twitter', 'linkedin': 'linkedin', 'instagram': 'instagram', 'facebook': 'facebook', 'tiktok': 'tiktok' }
-      const parsed: SocialPost[] = []
-      const lines = text.split('\n')
-      let current: { platform: SocialPlatform; lines: string[] } | null = null
-      for (const line of lines) {
-        const m = line.match(/^(X|Twitter|LinkedIn|Instagram|Facebook|TikTok):\s*/i)
-        if (m) {
-          if (current && current.lines.join('\n').trim()) {
-            parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
-          }
-          current = { platform: platformMap[m[1].toLowerCase()] ?? 'twitter', lines: [line.replace(m[0], '').trim()] }
-        } else if (current) {
-          current.lines.push(line)
-        }
-      }
-      if (current && current.lines.join('\n').trim()) {
-        parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
-      }
-      if (parsed.length === 0) {
-        parsed.push({ id: Date.now().toString(), content: text.trim(), platforms: ['twitter'], status: 'draft', createdAt: Date.now(), category })
-      }
-      setPosts(prev => [...parsed, ...prev])
+      setPosts(prev => [...parseXLinkedInPosts(d.text ?? '', category), ...prev])
     } finally { setGenerating(false) }
+  }
+
+  const [generatingStatus, setGeneratingStatus] = useState(false)
+  const generateStatusPack = async () => {
+    setGeneratingStatus(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are ContentBot for Ecstasy Technologies, a web design studio in Bibiani, Ghana run by Dominic Kudom (+233542855399). Write WhatsApp Status captions — the short text that sits under a photo on WhatsApp Status. One punchy line each, under 100 characters, confident and local in tone. Reference REAL completed Ecstasy Technologies projects only — examples: Lavimac Royal Hotel, Nhyiraba Hotel Management System, Solani Construction & Engineering, Dynamic Shipping & Logistics, Royal Ecclesia Church Management System, MoldGold School Management System, Bubbly Kids Academy. Never invent a client or project. Output exactly 3 captions, each on its own line prefixed "1. ", "2. ", "3. " — nothing else, no extra text before or after.',
+          messages: [{ role: 'user', content: 'Write 3 WhatsApp Status captions for this week, each pairing with a different project screenshot Dominic will attach himself. Each should end with a short nudge to message him.' }],
+        }),
+      })
+      const d = await res.json()
+      const text: string = d.text ?? ''
+      const captions = text.split('\n').map(l => l.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean)
+      const drafts: SocialPost[] = captions.map((content, i) => ({
+        id: `${Date.now()}-status-${i}`, content, platforms: ['status'], status: 'draft', createdAt: Date.now(), category: 'status',
+      }))
+      setPosts(prev => [...drafts, ...prev])
+    } finally { setGeneratingStatus(false) }
+  }
+
+  const [teachTopic, setTeachTopic] = useState('')
+  const [generatingTeach, setGeneratingTeach] = useState(false)
+  const generateTeachPost = async () => {
+    if (!teachTopic.trim()) return
+    setGeneratingTeach(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: `You are ContentBot, writing on behalf of Dominic Kudom, a software engineer and CEO of Ecstasy Technologies (Bibiani, Ghana). Write posts that TEACH a software engineering concept — this is how a following gets built, not by announcing features:
+- Never just announce something ("I built authentication"). Explain the WHY: the tradeoffs, the reasoning behind the decision, what breaks if you get it wrong.
+- People don't remember features. They remember insights.
+- Talk about problems solved, not tools used. Nobody follows someone because they know a library — they follow because that person knows when to use it and when not to.
+- Teach ONE real, concrete thing clearly. No vague listicles ("3 tips for better code").
+- Confident and direct. No hedging, no AI filler phrases, no "in conclusion".
+Only state technical facts that are actually true — never invent a specific claim about what Dominic personally built unless it's a well-known, generic pattern. Tagett (his own product) is genuinely built with Next.js, Supabase, and Vercel, so it's fine to reference that stack honestly.
+Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight — a WhatsApp link gets appended after your text, so leave room) and one labelled "LinkedIn:" (300-500 chars, walks through the reasoning with more depth). Each label on its own line.`,
+          messages: [{ role: 'user', content: `Teach this concept the way a senior engineer explains it to someone learning: ${teachTopic.trim()}` }],
+        }),
+      })
+      const d = await res.json()
+      setPosts(prev => [...parseXLinkedInPosts(d.text ?? '', 'teach'), ...prev])
+      setTeachTopic('')
+    } finally { setGeneratingTeach(false) }
   }
 
   const addManual = () => {
@@ -4111,6 +4173,12 @@ function SocialCalendarView() {
     setEditingId(null)
   }
 
+  const [markingId, setMarkingId] = useState<string | null>(null)
+  const markAsWorked = (postId: string, dealId: string) => {
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, resultDealId: dealId } : p))
+    setMarkingId(null)
+  }
+
   const filtered = posts.filter(p =>
     tab === 'drafts' ? p.status === 'draft' :
     tab === 'scheduled' ? p.status === 'scheduled' :
@@ -4149,7 +4217,7 @@ function SocialCalendarView() {
           <div style={{ marginBottom: 10, padding: 12, borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
             <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Write a post…" rows={4} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 8 }} />
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-              {(['twitter', 'linkedin'] as SocialPlatform[]).map(p => (
+              {(['twitter', 'linkedin', 'status'] as SocialPlatform[]).map(p => (
                 <button key={p} onClick={() => setSelectedPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, border: `1px solid ${selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : BORDER}`, background: selectedPlatforms.includes(p) ? `${PLATFORM_COLORS[p]}18` : 'transparent', color: selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : MUTED, fontFamily: FONT_HEADING, fontWeight: 500, cursor: 'pointer' }}>
                   {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                 </button>
@@ -4170,6 +4238,27 @@ function SocialCalendarView() {
           <button onClick={generate} disabled={generating} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: generating ? 'wait' : 'pointer', opacity: generating ? 0.7 : 1, whiteSpace: 'nowrap' }}>
             {generating ? 'Generating…' : '✦ Generate 3'}
           </button>
+        </div>
+        <button onClick={generateStatusPack} disabled={generatingStatus} title="3 short WhatsApp Status captions — more Ghanaian business owners see your Status than any feed" style={{ marginTop: 8, width: '100%', padding: '7px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, cursor: generatingStatus ? 'wait' : 'pointer', opacity: generatingStatus ? 0.7 : 1 }}>
+          {generatingStatus ? 'Generating…' : '💬 Generate WhatsApp Status Pack'}
+        </button>
+
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
+            🎓 Teach a concept — builds a following on X better than announcing features
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              value={teachTopic}
+              onChange={e => setTeachTopic(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && generateTeachPost()}
+              placeholder="e.g. why JWT over sessions, database indexing, rate limiting…"
+              style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }}
+            />
+            <button onClick={generateTeachPost} disabled={generatingTeach || !teachTopic.trim()} style={{ padding: '7px 14px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: generatingTeach || !teachTopic.trim() ? 'default' : 'pointer', opacity: generatingTeach || !teachTopic.trim() ? 0.6 : 1, whiteSpace: 'nowrap' }}>
+              {generatingTeach ? 'Writing…' : 'Teach'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -4205,7 +4294,13 @@ function SocialCalendarView() {
                       {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                     </span>
                   ))}
-                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label}</span>}
+                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label ?? (post.category === 'status' ? 'Status Pack' : post.category === 'teach' ? '🎓 Teach' : post.category)}</span>}
+                </div>
+              )}
+
+              {post.platforms.includes('status') && (
+                <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 8 }}>
+                  Attach a project screenshot and post to WhatsApp Status yourself — no auto-posting for Status.
                 </div>
               )}
 
@@ -4231,10 +4326,35 @@ function SocialCalendarView() {
                 </div>
               )}
 
+              {/* Result attribution — did this post actually lead to a deal? */}
+              {post.status === 'posted' && (
+                post.resultDealId ? (
+                  <div style={{ fontSize: 11, color: GOLD, fontFamily: FONT_BODY, marginBottom: 8 }}>
+                    🎯 Led to: {deals.find(d => d.id === post.resultDealId)?.name ?? 'a deal'}
+                  </div>
+                ) : markingId === post.id ? (
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 8, alignItems: 'center' }}>
+                    <select
+                      onChange={e => e.target.value && markAsWorked(post.id, e.target.value)}
+                      defaultValue=""
+                      style={{ flex: 1, fontSize: 11, padding: '4px 8px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_BODY, outline: 'none' }}
+                    >
+                      <option value="" disabled>Which deal?</option>
+                      {deals.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                    <button onClick={() => setMarkingId(null)} style={{ fontSize: 11, padding: '4px 8px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setMarkingId(post.id)} disabled={deals.length === 0} title={deals.length === 0 ? 'No deals in the pipeline yet' : 'Attribute a deal this post led to'} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${GOLD}40`, background: `${GOLD}0c`, color: GOLD, cursor: deals.length === 0 ? 'default' : 'pointer', fontFamily: FONT_HEADING, fontWeight: 500, marginBottom: 8, opacity: deals.length === 0 ? 0.5 : 1 }}>
+                    🎯 Mark as worked
+                  </button>
+                )
+              )}
+
               {/* Actions */}
               {!isEditing && (
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                  {post.status === 'draft' && (
+                  {post.status === 'draft' && !post.platforms.includes('status') && (
                     <>
                       {(post.platforms.includes('twitter') || !post.platforms.includes('linkedin')) && (
                         <a href={tweetUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid #00000030`, background: '#00000008', color: '#000', fontFamily: FONT_HEADING, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
@@ -4253,7 +4373,11 @@ function SocialCalendarView() {
                       )}
                     </>
                   )}
-                  <button onClick={() => copyPost(post.content)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Copy</button>
+                  <button onClick={() => copyPost(post.content)} style={
+                    post.platforms.includes('status')
+                      ? { fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}12`, color: WA_GREEN, cursor: 'pointer', fontFamily: FONT_HEADING, fontWeight: 600 }
+                      : { fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }
+                  }>Copy</button>
                   {!isEditing && post.status !== 'posted' && <button onClick={() => { setEditingId(post.id); setEditContent(post.content) }} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Edit</button>}
                   <button onClick={() => deletePost(post.id)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid #e05c5c30`, background: 'transparent', color: '#e05c5c', cursor: 'pointer', fontFamily: FONT_BODY }}>✕</button>
                 </div>
@@ -4872,6 +4996,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
       status: form.status ?? 'completed',
       updatedAt: new Date().toISOString(),
     }
+    const isNewPublish = editing === 'new'
     try {
       const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
       const d = await res.json()
@@ -4881,6 +5006,10 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
       setProjects(prev => { const i = prev.findIndex(p => p.id === saved.id); return i >= 0 ? prev.map((p, j) => j === i ? saved : p) : [saved, ...prev] })
       setSaveMsg('✓ Published to website!')
       setEditing(null)
+      // First-time publish only — don't spam a new draft every time an existing
+      // project gets a typo fix. Fire-and-forget: a failed draft shouldn't block
+      // or taint the publish success message.
+      if (isNewPublish) draftPublishPost(saved).catch(() => {})
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : 'Failed')
     } finally { setSaving(false) }
@@ -5442,18 +5571,6 @@ INVOICES:
 }
 
 // ─── ClientsView ─────────────────────────────────────────────────────────────
-
-interface Client {
-  id: string
-  name: string
-  phone?: string
-  whatsapp?: string
-  email?: string
-  website?: string
-  industry?: string
-  notes?: string
-  created_at?: string
-}
 
 const BLANK_CLIENT: Omit<Client, 'id' | 'created_at'> = { name: '', phone: '', whatsapp: '', email: '', website: '', industry: '', notes: '' }
 
@@ -6944,7 +7061,7 @@ export default function Page() {
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'social'        && <SocialCalendarView />}
+        {activeView === 'social'        && <SocialCalendarView deals={deals} />}
         {activeView === 'website'       && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />}
         {activeView === 'analytics'     && <AnalyticsView deals={deals} />}
         {activeView === 'history'       && <AgentRunHistory />}
@@ -7062,7 +7179,7 @@ export default function Page() {
     if (activeView === 'history')      return <AgentRunHistory />
     if (activeView === 'clients')      return <ClientsView onOpenAgent={handleOpenAgent} />
     if (activeView === 'invoices')     return <InvoicesView deals={deals} />
-    if (activeView === 'social')       return <SocialCalendarView />
+    if (activeView === 'social')       return <SocialCalendarView deals={deals} />
     if (activeView === 'analytics')    return <AnalyticsView deals={deals} />
     if (activeView === 'prospect-map') return <ProspectMapView onAdd={handleAddDeal} />
     if (activeView === 'data-quality') return <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />
