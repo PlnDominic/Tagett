@@ -28,19 +28,21 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, notified: 0 })
     }
 
-    // Send push notifications
-    const { data: subs } = await sb.from('push_subscriptions').select('subscription')
-    const pushPromises = (subs ?? []).flatMap(({ subscription }) =>
-      deals.map(deal =>
-        fetch(`${req.nextUrl.origin}/api/notify/send`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            title: `Follow up: ${deal.name}`,
-            body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''} — time to reach out!`,
-          }),
-        }).catch(() => {})
-      )
+    // Send push notifications — /api/notify/send already fans out to every saved
+    // subscription itself, so one call per due deal is correct. Looping the
+    // subscriptions list here too (as this used to) sent each reminder once per
+    // subscription per subscription — harmless with exactly one device
+    // registered, but multiplying duplicate pushes the moment a second device
+    // (e.g. an iPad) is added.
+    const pushPromises = deals.map(deal =>
+      fetch(`${req.nextUrl.origin}/api/notify/send`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          title: `Follow up: ${deal.name}`,
+          body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''} — time to reach out!`,
+        }),
+      }).catch(() => {})
     )
     await Promise.all(pushPromises)
 
