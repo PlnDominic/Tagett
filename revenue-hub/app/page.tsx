@@ -673,6 +673,12 @@ Deliver:
 
 Your job is to find Ghanaian businesses and individuals who are actively signalling that they need a website or software developer through posts, comments, reviews, or complaints, so Dominic can reach them before any competitor does.
 
+YOU HAVE LIVE SEARCH TOOLS — USE THEM, do not just hand back a manual search plan:
+- search_google is your primary tool. It's a real Google search (via SerpAPI), not a plan for Dominic to run himself. Call it directly with queries like '"need a website" Ghana', 'site:facebook.com restaurant Kumasi looking for developer', or '[industry] [city] Ghana reviews "no website"'. Reddit and generic web forums barely have Ghanaian SME activity — Google is what actually surfaces Facebook posts, reviews, and local news mentioning a business.
+- search_reddit is a cheap secondary check, worth trying but rarely where the leads are for this market.
+- check_domain confirms whether a specific business's domain is registered/live once you have a name.
+When asked for leads, actually call these tools and report only what they return — never invent a result because a tool came back empty. If a search comes up dry, say so and try a different query rather than padding the answer.
+
 PLATFORMS TO MONITOR:
 - Facebook: Ghana business groups, local buy/sell pages, business owner communities, public pages with no website link
 - Twitter/X: searches for Ghanaian keywords, business owners' accounts with no website in bio
@@ -1423,6 +1429,8 @@ interface Deal {
   whatsappHistory?: Array<{ text: string; sentAt: number }>
   repliedAt?: number
   callLog?: Array<{ calledAt: number }>
+  websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'
+  websiteCheckUrl?: string
 }
 
 interface ParsedProspect {
@@ -1524,6 +1532,13 @@ const X_BLUE = '#000000'
 const LI_BLUE = '#0A66C2'
 const FB_BLUE = '#1877F2'
 const ECSTASY_URL = 'https://ecstasytechnologies.com'
+
+// Ghana local numbers are typically written with a leading 0 (e.g. 0244123456);
+// wa.me and tel: both need the 233 country code instead.
+function ghPhoneDigits(phone: string): string {
+  const digits = phone.replace(/\D/g, '')
+  return digits.startsWith('0') ? '233' + digits.slice(1) : digits
+}
 
 function extractProspects(text: string): Array<{ phone: string; pitch: string; name: string }> {
   const results: Array<{ phone: string; pitch: string; name: string }> = []
@@ -2880,8 +2895,7 @@ function WhatsAppModal({ deal, onClose, onSent }: {
 
   const send = () => {
     if (!deal.phone) return
-    const digits = deal.phone.replace(/\D/g, '')
-    const num = digits.startsWith('0') ? '233' + digits.slice(1) : digits
+    const num = ghPhoneDigits(deal.phone)
     const url = message ? `https://wa.me/${num}?text=${encodeURIComponent(message)}` : `https://wa.me/${num}`
     window.open(url, '_blank')
     if (message) onSent(deal.id, message)
@@ -2963,6 +2977,21 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
     ? new Date(deal.followUpAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
     : null
 
+  const [verifying, setVerifying] = useState(false)
+  const handleVerify = async () => {
+    setVerifying(true)
+    try {
+      const res = await fetch('/api/deals/verify-website', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: deal.name, hint: deal.industry }),
+      })
+      const data = await res.json()
+      if (res.ok) onUpdate(deal.id, { websiteCheck: data.verdict, websiteCheckUrl: data.url })
+    } catch { /* non-fatal */ }
+    finally { setVerifying(false) }
+  }
+
   return (
     <div
       draggable
@@ -3042,12 +3071,41 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
         >
           {deal.repliedAt ? '✓ Replied' : '↩ Replied'}
         </button>
+        {deal.phone ? (
+          <a
+            href={`tel:+${ghPhoneDigits(deal.phone)}`}
+            onClick={() => onUpdate(deal.id, { callLog: [...(deal.callLog ?? []), { calledAt: Date.now() }] })}
+            title="Call this business"
+            style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', textDecoration: 'none', display: 'inline-block' }}
+          >
+            📞 Call{(deal.callLog?.length ?? 0) > 0 ? ` ×${deal.callLog!.length}` : ''}
+          </a>
+        ) : (
+          <button disabled title="Add a phone number first" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, opacity: 0.5, cursor: 'default' }}>
+            📞 Call
+          </button>
+        )}
         <button
-          onClick={() => onUpdate(deal.id, { callLog: [...(deal.callLog ?? []), { calledAt: Date.now() }] })}
-          title="Log that you called this business"
-          style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}
+          onClick={handleVerify}
+          disabled={verifying}
+          title={
+            deal.websiteCheck === 'found_site' ? `May already have a site: ${deal.websiteCheckUrl ?? ''} · tap to re-check`
+              : deal.websiteCheck ? 'Tap to re-check'
+              : 'Search Google to confirm they really have no website'
+          }
+          style={{
+            fontSize: 10, padding: '3px 7px', borderRadius: 10, cursor: verifying ? 'default' : 'pointer', fontFamily: FONT_BODY,
+            border: `1px solid ${deal.websiteCheck === 'found_site' ? '#F59E0B60' : deal.websiteCheck === 'confirmed_no_site' ? WA_GREEN + '60' : BORDER}`,
+            background: deal.websiteCheck === 'found_site' ? '#F59E0B18' : deal.websiteCheck === 'confirmed_no_site' ? `${WA_GREEN}18` : 'transparent',
+            color: deal.websiteCheck === 'found_site' ? '#F59E0B' : deal.websiteCheck === 'confirmed_no_site' ? WA_GREEN : MUTED,
+            opacity: verifying ? 0.6 : 1,
+          }}
         >
-          📞 Called{(deal.callLog?.length ?? 0) > 0 ? ` ×${deal.callLog!.length}` : ''}
+          {verifying ? 'Checking…'
+            : deal.websiteCheck === 'found_site' ? '⚠ May have a site'
+            : deal.websiteCheck === 'confirmed_no_site' ? '✓ No website confirmed'
+            : deal.websiteCheck === 'unclear' ? '? Inconclusive'
+            : '🔍 Verify no website'}
         </button>
         <label style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           {followUpLabel ? '+ Change' : '+ Follow-up'}

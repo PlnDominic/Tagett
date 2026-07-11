@@ -69,11 +69,26 @@ const SEARCH_GOOGLE_MAPS: ToolDefinition = {
   },
 }
 
-const ALL_TOOLS: ToolDefinition[] = [SEARCH_WEB, SEARCH_REDDIT, CHECK_DOMAIN, SEARCH_GOOGLE_MAPS]
+const SEARCH_GOOGLE: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'search_google',
+    description: 'Real Google web search via SerpAPI — much stronger than search_web (DuckDuckGo\'s API only returns Wikipedia-style infoboxes, not forum posts, Facebook pages, or reviews). Use this to find actual posts, complaints, and public signals: "need a website" posts, Facebook business pages, reviews mentioning no online presence, or to confirm whether a specific business really has no website.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The search query, e.g. \'"need a website" Ghana\' or \'site:facebook.com restaurant Kumasi\'' },
+      },
+      required: ['query'],
+    },
+  },
+}
+
+const ALL_TOOLS: ToolDefinition[] = [SEARCH_WEB, SEARCH_REDDIT, CHECK_DOMAIN, SEARCH_GOOGLE_MAPS, SEARCH_GOOGLE]
 
 // Tools available per agent
 const AGENT_TOOLS: Record<string, string[]> = {
-  scout: ['search_web', 'search_reddit', 'check_domain'],
+  scout: ['search_google', 'search_reddit', 'search_web', 'check_domain'],
   prospect: ['search_web', 'check_domain', 'search_google_maps'],
   scope: ['search_web', 'check_domain'],
   content: ['search_web'],
@@ -186,6 +201,20 @@ export async function executeTool(name: string, args: Record<string, string>): P
           `   Rating: ${p.rating ?? 'N/A'} (${p.reviews ?? 0} reviews)`,
         ].join('\n')
       })
+      return lines.join('\n\n')
+    }
+
+    if (name === 'search_google') {
+      const key = process.env.SERPAPI_KEY
+      if (!key) return 'Google search not available — SERPAPI_KEY not set. Fall back to search_web.'
+      const query = (args.query ?? '').trim()
+      const params = new URLSearchParams({ engine: 'google', q: query, hl: 'en', gl: 'gh', num: '10', api_key: key })
+      const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) return `SerpAPI error: HTTP ${res.status}`
+      const data = await res.json() as { organic_results?: Array<{ title?: string; link?: string; snippet?: string }> }
+      const items = (data.organic_results ?? []).slice(0, 8)
+      if (!items.length) return 'No Google results found for this query.'
+      const lines = items.map((r, i) => `${i + 1}. ${r.title ?? 'Untitled'}\n   ${r.snippet ?? ''}\n   ${r.link ?? ''}`)
       return lines.join('\n\n')
     }
 
