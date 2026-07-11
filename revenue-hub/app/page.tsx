@@ -6234,26 +6234,34 @@ export default function Page() {
       .catch(() => {})
   }, [])
 
-  // ── Stale proposal notifications ─────────────────────────────────────────
+  // ── Stale deal notifications ──────────────────────────────────────────────
+  // Safety net for deals with no explicit follow-up date set: once a deal sits
+  // in a stage past that stage's STAGE_STALE_MS threshold (the same threshold
+  // that draws the "Stale" warning on the card), push a reminder. Previously
+  // this only checked the "proposal" stage, and against a hardcoded 3-day
+  // window that didn't match the 10-day threshold the card itself used —
+  // now it covers every active stage with the one real threshold.
   useEffect(() => {
     if (deals.length === 0) return
-    const STALE_MS = 3 * 24 * 60 * 60 * 1000
-    const NOTIFIED_KEY = 'tagett-notified-proposals-v1'
+    const NOTIFIED_KEY = 'tagett-notified-stale-v1'
     const notified: Record<string, number> = JSON.parse(localStorage.getItem(NOTIFIED_KEY) ?? '{}')
     const now = Date.now()
-    const stale = deals.filter(d =>
-      d.stage === 'proposal' &&
-      (d.stageChangedAt ?? d.createdAt) < now - STALE_MS &&
-      (!notified[d.id] || now - notified[d.id] > STALE_MS)
-    )
+    const stale = deals.filter(d => {
+      const staleMs = STAGE_STALE_MS[d.stage]
+      if (staleMs === 0) return false // closed/lost — nothing to chase
+      const sinceChange = now - (d.stageChangedAt ?? d.createdAt)
+      if (sinceChange < staleMs) return false
+      return !notified[d.id] || now - notified[d.id] > staleMs
+    })
     if (stale.length === 0) return
     stale.forEach(deal => {
+      const days = Math.floor((now - (deal.stageChangedAt ?? deal.createdAt)) / 86400000)
       fetch('/api/notify/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title: `Follow up: ${deal.name}`,
-          body: 'Proposal has been waiting 3+ days. Send a WhatsApp now.',
+          body: `${STAGE_LABELS[deal.stage]} for ${days}+ days. Don't let this one go cold.`,
         }),
       }).catch(() => {})
       notified[deal.id] = now
