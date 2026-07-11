@@ -57,6 +57,22 @@ export async function GET() {
   }
 }
 
+// Insert a single post without touching existing ones — PUT below is a full-array
+// replace (deletes anything not included), so callers that only have one new post
+// to add (e.g. the auto-draft on website publish) must use this instead.
+export async function POST(req: NextRequest) {
+  try {
+    const post: SocialPost = await req.json()
+    if (!post.content) return NextResponse.json({ error: 'content required' }, { status: 400 })
+    const sb = getSupabase()
+    const { error } = await sb.from('social_posts').insert(toRow(post))
+    if (error) throw error
+    return NextResponse.json({ ok: true, id: post.id })
+  } catch (err) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+  }
+}
+
 export async function PUT(req: NextRequest) {
   try {
     const posts: SocialPost[] = await req.json()

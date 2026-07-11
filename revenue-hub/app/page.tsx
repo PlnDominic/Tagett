@@ -1512,12 +1512,12 @@ interface Retainer {
 
 // ─── Social post types & storage ─────────────────────────────────────────────
 
-type SocialPlatform = 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok'
+type SocialPlatform = 'twitter' | 'linkedin' | 'facebook' | 'instagram' | 'tiktok' | 'status'
 const PLATFORM_LABELS: Record<SocialPlatform, string> = {
-  twitter: 'X', linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok',
+  twitter: 'X', linkedin: 'LinkedIn', facebook: 'Facebook', instagram: 'Instagram', tiktok: 'TikTok', status: 'WA Status',
 }
 const PLATFORM_COLORS: Record<SocialPlatform, string> = {
-  twitter: '#000000', linkedin: '#0A66C2', facebook: '#1877F2', instagram: '#E1306C', tiktok: '#010101',
+  twitter: '#000000', linkedin: '#0A66C2', facebook: '#1877F2', instagram: '#E1306C', tiktok: '#010101', status: '#25D366',
 }
 
 interface SocialPost {
@@ -3976,7 +3976,58 @@ const SOCIAL_CATEGORIES = [
 ]
 
 const PLATFORM_ICONS: Record<SocialPlatform, string> = {
-  twitter: '𝕏', linkedin: 'in', facebook: 'f', instagram: '◎', tiktok: '♪',
+  twitter: '𝕏', linkedin: 'in', facebook: 'f', instagram: '◎', tiktok: '♪', status: '💬',
+}
+
+// Shared by the manual "Generate" flow and the publish-to-post auto-draft — parses
+// a "X: ...\nLinkedIn: ..." labelled response into separate draft posts per platform.
+function parseXLinkedInPosts(text: string, category?: string): SocialPost[] {
+  const platformMap: Record<string, SocialPlatform> = { 'x': 'twitter', 'twitter': 'twitter', 'linkedin': 'linkedin', 'instagram': 'instagram', 'facebook': 'facebook', 'tiktok': 'tiktok' }
+  const parsed: SocialPost[] = []
+  const lines = text.split('\n')
+  let current: { platform: SocialPlatform; lines: string[] } | null = null
+  for (const line of lines) {
+    const m = line.match(/^(X|Twitter|LinkedIn|Instagram|Facebook|TikTok):\s*/i)
+    if (m) {
+      if (current && current.lines.join('\n').trim()) {
+        parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
+      }
+      current = { platform: platformMap[m[1].toLowerCase()] ?? 'twitter', lines: [line.replace(m[0], '').trim()] }
+    } else if (current) {
+      current.lines.push(line)
+    }
+  }
+  if (current && current.lines.join('\n').trim()) {
+    parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
+  }
+  if (parsed.length === 0 && text.trim()) {
+    parsed.push({ id: Date.now().toString(), content: text.trim(), platforms: ['twitter'], status: 'draft', createdAt: Date.now(), category })
+  }
+  return parsed
+}
+
+// Fires when a project is first published to the website — drafts a reveal post
+// into the Social Calendar so the portfolio and the feed stay in sync without
+// re-typing anything. Uses POST (insert-one), not the Social Calendar's own PUT
+// sync, since PUT replaces the whole list and would delete unrelated drafts.
+async function draftPublishPost(project: WebsiteProject) {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      systemPrompt: 'You are ViralBot for Ecstasy Technologies, a web agency in Bibiani, Ghana. Generate engaging social media content. Output exactly 2 posts: one labelled "X:" (under 280 chars, punchy) and one labelled "LinkedIn:" (professional, 3-5 sentences). Each label must be on its own line followed by the post text.',
+      messages: [{ role: 'user', content: `We just published a completed project. Write a project reveal:\n\nClient: ${project.client || project.title}\nProject: ${project.title}\nCategory: ${project.category}\nWhat it does: ${project.description}\n\nFrame as: what we built, who it's for, what changed for them. End with ecstasytechnologies.com. Specify what screenshot to attach.` }],
+    }),
+  })
+  const d = await res.json()
+  const drafts = parseXLinkedInPosts(d.text ?? '', 'deal-win')
+  await Promise.all(drafts.map(post =>
+    fetch('/api/social-posts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(post),
+    })
+  ))
 }
 
 function SocialCalendarView() {
@@ -4035,30 +4086,30 @@ function SocialCalendarView() {
         }),
       })
       const d = await res.json()
-      const text: string = d.text ?? ''
-      const platformMap: Record<string, SocialPlatform> = { 'x': 'twitter', 'twitter': 'twitter', 'linkedin': 'linkedin', 'instagram': 'instagram', 'facebook': 'facebook', 'tiktok': 'tiktok' }
-      const parsed: SocialPost[] = []
-      const lines = text.split('\n')
-      let current: { platform: SocialPlatform; lines: string[] } | null = null
-      for (const line of lines) {
-        const m = line.match(/^(X|Twitter|LinkedIn|Instagram|Facebook|TikTok):\s*/i)
-        if (m) {
-          if (current && current.lines.join('\n').trim()) {
-            parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
-          }
-          current = { platform: platformMap[m[1].toLowerCase()] ?? 'twitter', lines: [line.replace(m[0], '').trim()] }
-        } else if (current) {
-          current.lines.push(line)
-        }
-      }
-      if (current && current.lines.join('\n').trim()) {
-        parsed.push({ id: `${Date.now()}-${parsed.length}`, content: current.lines.join('\n').trim(), platforms: [current.platform], status: 'draft', createdAt: Date.now(), category })
-      }
-      if (parsed.length === 0) {
-        parsed.push({ id: Date.now().toString(), content: text.trim(), platforms: ['twitter'], status: 'draft', createdAt: Date.now(), category })
-      }
-      setPosts(prev => [...parsed, ...prev])
+      setPosts(prev => [...parseXLinkedInPosts(d.text ?? '', category), ...prev])
     } finally { setGenerating(false) }
+  }
+
+  const [generatingStatus, setGeneratingStatus] = useState(false)
+  const generateStatusPack = async () => {
+    setGeneratingStatus(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are ContentBot for Ecstasy Technologies, a web design studio in Bibiani, Ghana run by Dominic Kudom (+233542855399). Write WhatsApp Status captions — the short text that sits under a photo on WhatsApp Status. One punchy line each, under 100 characters, confident and local in tone. Reference REAL completed Ecstasy Technologies projects only — examples: Lavimac Royal Hotel, Nhyiraba Hotel Management System, Solani Construction & Engineering, Dynamic Shipping & Logistics, Royal Ecclesia Church Management System, MoldGold School Management System, Bubbly Kids Academy. Never invent a client or project. Output exactly 3 captions, each on its own line prefixed "1. ", "2. ", "3. " — nothing else, no extra text before or after.',
+          messages: [{ role: 'user', content: 'Write 3 WhatsApp Status captions for this week, each pairing with a different project screenshot Dominic will attach himself. Each should end with a short nudge to message him.' }],
+        }),
+      })
+      const d = await res.json()
+      const text: string = d.text ?? ''
+      const captions = text.split('\n').map(l => l.replace(/^\s*\d+[.)]\s*/, '').trim()).filter(Boolean)
+      const drafts: SocialPost[] = captions.map((content, i) => ({
+        id: `${Date.now()}-status-${i}`, content, platforms: ['status'], status: 'draft', createdAt: Date.now(), category: 'status',
+      }))
+      setPosts(prev => [...drafts, ...prev])
+    } finally { setGeneratingStatus(false) }
   }
 
   const addManual = () => {
@@ -4149,7 +4200,7 @@ function SocialCalendarView() {
           <div style={{ marginBottom: 10, padding: 12, borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
             <textarea value={newContent} onChange={e => setNewContent(e.target.value)} placeholder="Write a post…" rows={4} style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 8 }} />
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 8 }}>
-              {(['twitter', 'linkedin'] as SocialPlatform[]).map(p => (
+              {(['twitter', 'linkedin', 'status'] as SocialPlatform[]).map(p => (
                 <button key={p} onClick={() => setSelectedPlatforms(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 10, border: `1px solid ${selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : BORDER}`, background: selectedPlatforms.includes(p) ? `${PLATFORM_COLORS[p]}18` : 'transparent', color: selectedPlatforms.includes(p) ? PLATFORM_COLORS[p] : MUTED, fontFamily: FONT_HEADING, fontWeight: 500, cursor: 'pointer' }}>
                   {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                 </button>
@@ -4171,6 +4222,9 @@ function SocialCalendarView() {
             {generating ? 'Generating…' : '✦ Generate 3'}
           </button>
         </div>
+        <button onClick={generateStatusPack} disabled={generatingStatus} title="3 short WhatsApp Status captions — more Ghanaian business owners see your Status than any feed" style={{ marginTop: 8, width: '100%', padding: '7px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, cursor: generatingStatus ? 'wait' : 'pointer', opacity: generatingStatus ? 0.7 : 1 }}>
+          {generatingStatus ? 'Generating…' : '💬 Generate WhatsApp Status Pack'}
+        </button>
       </div>
 
       {/* Tabs */}
@@ -4205,7 +4259,13 @@ function SocialCalendarView() {
                       {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                     </span>
                   ))}
-                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label}</span>}
+                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label ?? (post.category === 'status' ? 'Status Pack' : post.category)}</span>}
+                </div>
+              )}
+
+              {post.platforms.includes('status') && (
+                <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 8 }}>
+                  Attach a project screenshot and post to WhatsApp Status yourself — no auto-posting for Status.
                 </div>
               )}
 
@@ -4234,7 +4294,7 @@ function SocialCalendarView() {
               {/* Actions */}
               {!isEditing && (
                 <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                  {post.status === 'draft' && (
+                  {post.status === 'draft' && !post.platforms.includes('status') && (
                     <>
                       {(post.platforms.includes('twitter') || !post.platforms.includes('linkedin')) && (
                         <a href={tweetUrl(post.content)} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid #00000030`, background: '#00000008', color: '#000', fontFamily: FONT_HEADING, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
@@ -4253,7 +4313,11 @@ function SocialCalendarView() {
                       )}
                     </>
                   )}
-                  <button onClick={() => copyPost(post.content)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Copy</button>
+                  <button onClick={() => copyPost(post.content)} style={
+                    post.platforms.includes('status')
+                      ? { fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}12`, color: WA_GREEN, cursor: 'pointer', fontFamily: FONT_HEADING, fontWeight: 600 }
+                      : { fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }
+                  }>Copy</button>
                   {!isEditing && post.status !== 'posted' && <button onClick={() => { setEditingId(post.id); setEditContent(post.content) }} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Edit</button>}
                   <button onClick={() => deletePost(post.id)} style={{ fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid #e05c5c30`, background: 'transparent', color: '#e05c5c', cursor: 'pointer', fontFamily: FONT_BODY }}>✕</button>
                 </div>
@@ -4872,6 +4936,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
       status: form.status ?? 'completed',
       updatedAt: new Date().toISOString(),
     }
+    const isNewPublish = editing === 'new'
     try {
       const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
       const d = await res.json()
@@ -4881,6 +4946,10 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
       setProjects(prev => { const i = prev.findIndex(p => p.id === saved.id); return i >= 0 ? prev.map((p, j) => j === i ? saved : p) : [saved, ...prev] })
       setSaveMsg('✓ Published to website!')
       setEditing(null)
+      // First-time publish only — don't spam a new draft every time an existing
+      // project gets a typo fix. Fire-and-forget: a failed draft shouldn't block
+      // or taint the publish success message.
+      if (isNewPublish) draftPublishPost(saved).catch(() => {})
     } catch (err) {
       setSaveMsg(err instanceof Error ? err.message : 'Failed')
     } finally { setSaving(false) }
