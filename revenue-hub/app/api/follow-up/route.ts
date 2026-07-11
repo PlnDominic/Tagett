@@ -17,14 +17,19 @@ export async function GET(req: NextRequest) {
     const sb = getSupabase()
     const now = Date.now()
 
-    const { data: deals } = await sb
+    const { data: allDue } = await sb
       .from('deals')
-      .select('id, name, industry, stage, phone, follow_up_at')
+      .select('id, name, industry, stage, phone, follow_up_at, follow_up_reason')
       .not('follow_up_at', 'is', null)
       .lte('follow_up_at', now)
-      .neq('stage', 'closed')
 
-    if (!deals || deals.length === 0) {
+    // A closed deal only stays in this list for a referral ask (set automatically
+    // 14 days after closing) — a generic "time to reach out" reminder makes no
+    // sense once the sale is done. Any other closed-with-follow-up case is
+    // filtered out here rather than at the query, so referral asks aren't lost.
+    const deals = (allDue ?? []).filter(d => d.stage !== 'closed' || d.follow_up_reason === 'referral')
+
+    if (deals.length === 0) {
       return NextResponse.json({ ok: true, notified: 0 })
     }
 
@@ -38,16 +43,17 @@ export async function GET(req: NextRequest) {
       fetch(`${req.nextUrl.origin}/api/notify/send`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: `Follow up: ${deal.name}`,
-          body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''} — time to reach out!`,
-        }),
+        body: JSON.stringify(
+          deal.follow_up_reason === 'referral'
+            ? { title: `Ask for a referral: ${deal.name}`, body: `Closed 2 weeks ago${deal.phone ? ' · ' + deal.phone : ''} — good time to ask who else needs this.` }
+            : { title: `Follow up: ${deal.name}`, body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''} — time to reach out!` }
+        ),
       }).catch(() => {})
     )
     await Promise.all(pushPromises)
 
     // Send a single summary email
-    const dealList = deals.map(d => `• ${d.name} (${d.industry ?? 'unknown'}) — Stage: ${d.stage}${d.phone ? ', ' + d.phone : ''}`).join('\n')
+    const dealList = deals.map(d => `• ${d.name} (${d.industry ?? 'unknown'}) — ${d.follow_up_reason === 'referral' ? 'Ask for a referral' : `Stage: ${d.stage}`}${d.phone ? ', ' + d.phone : ''}`).join('\n')
     await sendRunEmail({
       runAt: new Date().toUTCString().replace(' GMT', ''),
       social: '',

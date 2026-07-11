@@ -1425,6 +1425,7 @@ interface Deal {
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
+  followUpReason?: 'referral'
   lastContactedAt?: number
   whatsappHistory?: Array<{ text: string; sentAt: number }>
   repliedAt?: number
@@ -1493,6 +1494,20 @@ function loadInvoices(): Invoice[] {
 }
 function saveInvoices(d: Invoice[]): void {
   try { localStorage.setItem(INVOICES_KEY, JSON.stringify(d)) } catch {}
+}
+
+// ─── Maintenance retainers (recurring revenue) ───────────────────────────────
+
+interface Retainer {
+  id: string
+  clientName: string
+  dealId?: string
+  phone?: string
+  monthlyGHS: number
+  status: 'active' | 'paused' | 'cancelled'
+  startedAt: number
+  lastBilledAt?: number
+  notes?: string
 }
 
 // ─── Social post types & storage ─────────────────────────────────────────────
@@ -2721,9 +2736,103 @@ function ForecastCard({ deals }: { deals: Deal[] }) {
   )
 }
 
-function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading }: {
+// ─── TodayQueue ───────────────────────────────────────────────────────────────
+// The list, not the dashboard: exactly what needs a WhatsApp or a call right now,
+// using the same overdue/stale rules that drive push notifications — so what you
+// see here is exactly what already buzzed your phone, with the action one tap away.
+
+interface QueueItem {
+  deal: Deal
+  reason: string
+  urgent: boolean
+}
+
+function buildTodayQueue(deals: Deal[]): QueueItem[] {
+  const now = Date.now()
+  const items: QueueItem[] = []
+
+  for (const d of deals) {
+    if (d.stage === 'closed' || d.stage === 'lost') continue
+
+    if (d.followUpAt && d.followUpAt < now) {
+      const days = Math.floor((now - d.followUpAt) / 86400000)
+      items.push({
+        deal: d,
+        reason: d.followUpReason === 'referral'
+          ? 'Ask for a referral'
+          : days <= 0 ? 'Follow-up due today' : `Follow-up overdue ${days}d`,
+        urgent: true,
+      })
+      continue
+    }
+
+    const staleMs = STAGE_STALE_MS[d.stage]
+    if (staleMs > 0 && (now - (d.stageChangedAt ?? d.createdAt)) > staleMs) {
+      const days = Math.floor((now - (d.stageChangedAt ?? d.createdAt)) / 86400000)
+      items.push({ deal: d, reason: `${STAGE_LABELS[d.stage]} for ${days}d — going cold`, urgent: false })
+    }
+  }
+
+  // Overdue follow-ups first, then longest-stale first
+  return items.sort((a, b) => {
+    if (a.urgent !== b.urgent) return a.urgent ? -1 : 1
+    return (now - (a.deal.stageChangedAt ?? a.deal.createdAt)) < (now - (b.deal.stageChangedAt ?? b.deal.createdAt)) ? 1 : -1
+  })
+}
+
+function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
+  const [waModal, setWaModal] = useState<Deal | null>(null)
+  const queue = useMemo(() => buildTodayQueue(deals), [deals])
+
+  const handleWaSent = (id: string, text: string) => {
+    const deal = deals.find(d => d.id === id)
+    if (!deal) return
+    onUpdate(id, {
+      lastContactedAt: Date.now(),
+      whatsappHistory: [...(deal.whatsappHistory ?? []), { text, sentAt: Date.now() }],
+    })
+  }
+
+  return (
+    <div style={{ margin: '16px 16px 0', padding: 16, borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE }}>
+      <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: TEXT, marginBottom: 2 }}>Today</div>
+      <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: queue.length ? 12 : 0 }}>
+        {queue.length === 0 ? 'Nothing needs you right now.' : `${queue.length} deal${queue.length === 1 ? '' : 's'} need${queue.length === 1 ? 's' : ''} a nudge`}
+      </div>
+
+      {queue.slice(0, 8).map(({ deal, reason, urgent }) => (
+        <div key={deal.id} style={{
+          display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0',
+          borderTop: `1px solid ${BORDER}`,
+        }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.name}</div>
+            <div style={{ fontSize: 11, color: urgent ? '#e05c5c' : MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{reason}</div>
+          </div>
+          <button onClick={() => setWaModal(deal)} title="WhatsApp" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${WA_GREEN}50`, background: `${WA_GREEN}12`, color: WA_GREEN, fontSize: 14, cursor: 'pointer' }}>
+            💬
+          </button>
+          {deal.phone ? (
+            <a href={`tel:+${ghPhoneDigits(deal.phone)}`} onClick={() => onUpdate(deal.id, { callLog: [...(deal.callLog ?? []), { calledAt: Date.now() }] })} title="Call" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+              📞
+            </a>
+          ) : (
+            <div style={{ width: 30, height: 30, flexShrink: 0 }} />
+          )}
+        </div>
+      ))}
+
+      {waModal && (
+        <WhatsAppModal deal={waModal} onClose={() => setWaModal(null)} onSent={handleWaSent} />
+      )}
+    </div>
+  )
+}
+
+function CommandCenter({ deals, earnedGHS, mrrGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading, onUpdateDeal }: {
   deals: Deal[]
   earnedGHS: number
+  mrrGHS: number
   theme: 'dark' | 'light'
   onToggleTheme: () => void
   notifToggle: React.ReactNode
@@ -2731,6 +2840,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
   onRunBrief: () => void
   briefResult: string
   briefLoading: boolean
+  onUpdateDeal: (id: string, updates: Partial<Deal>) => void
 }) {
   const stageCounts = useMemo(() => {
     const c: Record<DealStage, number> = { found: 0, contacted: 0, interested: 0, proposal: 0, negotiating: 0, closed: 0, lost: 0 }
@@ -2763,6 +2873,7 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
           </div>
           <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
             {deals.filter(d => d.stage !== 'closed').length} open deals
+            {mrrGHS > 0 && <> · <span style={{ color: WA_GREEN }}>GHS {mrrGHS.toLocaleString()}/mo retainers</span></>}
           </div>
         </div>
       </div>
@@ -2785,6 +2896,9 @@ function CommandCenter({ deals, earnedGHS, theme, onToggleTheme, notifToggle, on
           </button>
         ))}
       </div>
+
+      {/* Today's action queue */}
+      <TodayQueue deals={deals} onUpdate={onUpdateDeal} />
 
       {/* Forecast */}
       <ForecastCard deals={deals} />
@@ -2872,13 +2986,18 @@ function WhatsAppModal({ deal, onClose, onSent }: {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
 
+  const isReferralAsk = deal.followUpReason === 'referral'
+
   const generate = async () => {
     setLoading(true)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        body: JSON.stringify(isReferralAsk ? {
+          systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write a short, warm WhatsApp message to a past client asking for a referral. Output only the message body — no subject line, no labels.',
+          messages: [{ role: 'user', content: `Write a WhatsApp message to ${deal.name}, a client we finished a ${deal.industry || 'website'} project for a couple weeks ago. Ask how the project is working out for them, then ask if they know 1-2 other business owners who could use the same kind of work. 3-4 sentences, warm and genuine, not salesy. Sign off as Dominic.` }],
+        } : {
           systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write concise, friendly WhatsApp messages for prospect outreach. Output only the message body — no subject line, no labels.',
           messages: [{ role: 'user', content: `Write a WhatsApp cold-open message for this prospect:\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\nStage: ${STAGE_LABELS[deal.stage]}\n\nRequirements:\n- 3–4 sentences, friendly and direct\n- Open by introducing yourself by name exactly like "I am Dominic from Ecstasy Technologies" (a web design and development company based in Bibiani, Ghana)\n- Reference something specific to their industry\n- End with a soft CTA (not pushy)\n- No emojis unless natural` }],
         }),
@@ -2908,7 +3027,7 @@ function WhatsAppModal({ deal, onClose, onSent }: {
       <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
-            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>WhatsApp Message</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>{isReferralAsk ? 'Ask for a Referral' : 'WhatsApp Message'}</div>
             <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
           </div>
           <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
@@ -2956,9 +3075,221 @@ function WhatsAppModal({ deal, onClose, onSent }: {
   )
 }
 
+// ─── ProposalModal ────────────────────────────────────────────────────────────
+
+function ProposalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
+  const [scope, setScope] = useState('')
+  const [price, setPrice] = useState(String(deal.valueGHS || ''))
+  const [drafting, setDrafting] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [link, setLink] = useState<string | null>(null)
+  const [error, setError] = useState('')
+  const [copied, setCopied] = useState(false)
+
+  const draftScope = async () => {
+    setDrafting(true)
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are ProjectBot, scoping web projects for Ecstasy Technologies, a web design and development company in Bibiani, Ghana. Write a short scope of work for a client-facing proposal page. Plain text, no markdown, no headers — 3 to 5 short paragraphs a non-technical business owner can read in under a minute: what gets built, what it includes, and the timeline. Confident, warm, no filler.',
+          messages: [{ role: 'user', content: `Write the scope of work for:\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nBudget: GHS ${price || deal.valueGHS}` }],
+        }),
+      })
+      const d = await res.json()
+      setScope(d.text ?? '')
+    } catch { /* non-fatal */ }
+    finally { setDrafting(false) }
+  }
+
+  const create = async () => {
+    setError('')
+    setCreating(true)
+    try {
+      const res = await fetch('/api/proposals', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          dealId: deal.id,
+          businessName: deal.name,
+          industry: deal.industry || undefined,
+          scope,
+          priceGHS: parseInt(price, 10) || 0,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error ?? 'Could not create the link.'); return }
+      setLink(`${window.location.origin}${d.path}`)
+    } catch {
+      setError('Network error.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const copy = async () => {
+    if (!link) return
+    try { await navigator.clipboard.writeText(link) } catch { /* fallback: user copies manually */ }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const waMessage = link ? `Hi, here's my proposal for ${deal.name}: ${link}` : ''
+  const waUrl = deal.phone ? `https://wa.me/${ghPhoneDigits(deal.phone)}?text=${encodeURIComponent(waMessage)}` : undefined
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Proposal Link</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+        </div>
+
+        {!link ? (
+          <>
+            <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+              Price (GHS)
+            </label>
+            <input
+              type="number"
+              value={price}
+              onChange={e => setPrice(e.target.value)}
+              placeholder="3500"
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+            />
+
+            <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+              Scope of work
+            </label>
+            <textarea
+              value={scope}
+              onChange={e => setScope(e.target.value)}
+              placeholder="What you're building for them…"
+              rows={7}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 12 }}
+            />
+
+            {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={draftScope} disabled={drafting} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: drafting ? 'wait' : 'pointer', opacity: drafting ? 0.6 : 1 }}>
+                {drafting ? 'Drafting…' : '✦ Draft with AI'}
+              </button>
+              <button onClick={create} disabled={creating || !scope.trim()} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 700, cursor: creating || !scope.trim() ? 'default' : 'pointer', opacity: creating || !scope.trim() ? 0.5 : 1 }}>
+                {creating ? 'Creating…' : 'Create Link'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, fontSize: 13, color: TEXT, fontFamily: FONT_BODY, wordBreak: 'break-all', marginBottom: 12 }}>
+              {link}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={copy} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: copied ? `${GOLD}15` : SURFACE2, color: copied ? GOLD : TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
+                {copied ? 'Copied!' : 'Copy Link'}
+              </button>
+              {waUrl && (
+                <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: 'center', padding: '9px 10px', borderRadius: 8, border: 'none', background: WA_GREEN, color: '#fff', fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+                  Send on WhatsApp
+                </a>
+              )}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
+              You'll get a push notification the moment they open it.
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── RetainerModal ────────────────────────────────────────────────────────────
+
+function RetainerModal({ deal, onClose, onCreated }: { deal: Deal; onClose: () => void; onCreated: () => void }) {
+  const [monthlyGHS, setMonthlyGHS] = useState('250')
+  const [phone, setPhone] = useState(deal.phone ?? '')
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState('')
+
+  const create = async () => {
+    setError('')
+    setCreating(true)
+    try {
+      const res = await fetch('/api/retainers', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          clientName: deal.name,
+          dealId: deal.id,
+          phone: phone || undefined,
+          monthlyGHS: parseInt(monthlyGHS, 10) || 0,
+        }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error ?? 'Could not add retainer.'); return }
+      onCreated()
+      onClose()
+    } catch {
+      setError('Network error.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Add Maintenance Retainer</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+        </div>
+
+        <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+          Monthly GHS
+        </label>
+        <input
+          type="number"
+          value={monthlyGHS}
+          onChange={e => setMonthlyGHS(e.target.value)}
+          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+        />
+
+        <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+          Phone (for invoice reminders)
+        </label>
+        <input
+          value={phone}
+          onChange={e => setPhone(e.target.value)}
+          placeholder="+233…"
+          style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+        />
+
+        {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 12 }}>
+          An invoice for this amount is created automatically on the 1st of every month.
+        </div>
+
+        <button onClick={create} disabled={creating || !monthlyGHS} style={{ padding: '10px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, cursor: creating ? 'default' : 'pointer', opacity: creating || !monthlyGHS ? 0.5 : 1 }}>
+          {creating ? 'Adding…' : 'Add Retainer'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, isDragging, onDragStart, onDragEnd }: {
+function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, isDragging, onDragStart, onDragEnd }: {
   deal: Deal
   onDelete: (id: string) => void
   onUpdate: (id: string, updates: Partial<Deal>) => void
@@ -2966,6 +3297,8 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   onPublishToWebsite: (deal: Deal) => void
   onSetFollowUp: (id: string, ts: number | undefined) => void
   onWhatsApp: (deal: Deal) => void
+  onCreateProposal: (deal: Deal) => void
+  onAddRetainer: (deal: Deal) => void
   isDragging: boolean
   onDragStart: () => void
   onDragEnd: () => void
@@ -3057,6 +3390,9 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
         <button onClick={() => onOpenAgent('scope', `Scope this: ${deal.name} (${deal.industry || 'general'}, GHS ${deal.valueGHS})`)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           Scope
         </button>
+        <button onClick={() => onCreateProposal(deal)} title="Create a shareable proposal link with view tracking" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+          📄 Proposal
+        </button>
         <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${deal.name}${deal.industry ? ' ' + deal.industry : ''} Ghana`)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', textDecoration: 'none' }}>
           📍 Maps
         </a>
@@ -3115,9 +3451,14 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             onChange={e => onSetFollowUp(deal.id, e.target.value ? new Date(e.target.value).getTime() : undefined)} />
         </label>
         {deal.stage === 'closed' && (
-          <button onClick={() => onPublishToWebsite(deal)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
-            ↑ Portfolio
-          </button>
+          <>
+            <button onClick={() => onPublishToWebsite(deal)} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+              ↑ Portfolio
+            </button>
+            <button onClick={() => onAddRetainer(deal)} title="Add a monthly maintenance retainer for this client" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+              + Retainer
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -3126,7 +3467,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
 
 // ─── DealPipeline (Kanban) ────────────────────────────────────────────────────
 
-function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp }: {
+function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onRetainerAdded }: {
   deals: Deal[]
   onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void
   onMove: (id: string, stage: DealStage) => void
@@ -3135,12 +3476,15 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   onOpenAgent: (agentId: AgentId, prompt: string) => void
   onPublishToWebsite: (deal: Deal) => void
   onSetFollowUp: (id: string, ts: number | undefined) => void
+  onRetainerAdded: () => void
 }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '' })
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropStage, setDropStage] = useState<DealStage | null>(null)
   const [waModal, setWaModal] = useState<Deal | null>(null)
+  const [retainerModal, setRetainerModal] = useState<Deal | null>(null)
+  const [proposalModal, setProposalModal] = useState<Deal | null>(null)
 
   const handleSubmit = () => {
     if (!form.name) return
@@ -3283,6 +3627,8 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
                     onPublishToWebsite={onPublishToWebsite}
                     onSetFollowUp={onSetFollowUp}
                     onWhatsApp={d => setWaModal(d)}
+                    onCreateProposal={d => setProposalModal(d)}
+                    onAddRetainer={d => setRetainerModal(d)}
                     isDragging={dragId === deal.id}
                     onDragStart={() => setDragId(deal.id)}
                     onDragEnd={() => { setDragId(null); setDropStage(null) }}
@@ -3296,6 +3642,12 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
 
       {waModal && (
         <WhatsAppModal deal={waModal} onClose={() => setWaModal(null)} onSent={handleWaSent} />
+      )}
+      {proposalModal && (
+        <ProposalModal deal={proposalModal} onClose={() => setProposalModal(null)} />
+      )}
+      {retainerModal && (
+        <RetainerModal deal={retainerModal} onClose={() => setRetainerModal(null)} onCreated={onRetainerAdded} />
       )}
     </div>
   )
@@ -5719,6 +6071,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
 
 function AnalyticsView({ deals }: { deals: Deal[] }) {
   const [invoices, setInvoices] = useState<Invoice[]>(loadInvoices)
+  const [retainers, setRetainers] = useState<Retainer[]>([])
 
   useEffect(() => {
     fetchAuthed('/api/invoices', { cache: 'no-store' })
@@ -5726,6 +6079,16 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
       .then(d => { if (Array.isArray(d) && d.length > 0) setInvoices(d) })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    fetchAuthed('/api/retainers', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d)) setRetainers(d) })
+      .catch(() => {})
+  }, [])
+
+  const activeRetainers = useMemo(() => retainers.filter(r => r.status === 'active'), [retainers])
+  const mrrGHS = useMemo(() => activeRetainers.reduce((s, r) => s + r.monthlyGHS, 0), [activeRetainers])
 
   // Monthly revenue collected (last 6 months)
   const months = useMemo(() => {
@@ -5820,6 +6183,7 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
         {card('Outstanding', `GHS ${(totalInvoiced - totalCollected).toLocaleString()}`, `${invoices.filter(i => i.status !== 'paid' && i.status !== 'draft').length} open invoices`)}
         {card('Conversion', `${conversionRate}%`, `${closedDeals} of ${totalDeals} deals closed`)}
         {card('Pipeline', `GHS ${Math.round(deals.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0)).toLocaleString()}`, 'weighted forecast')}
+        {card('MRR', `GHS ${mrrGHS.toLocaleString()}`, `${activeRetainers.length} active retainer${activeRetainers.length === 1 ? '' : 's'}`)}
       </div>
 
       {/* Activity this week */}
@@ -5881,13 +6245,31 @@ function AnalyticsView({ deals }: { deals: Deal[] }) {
 
       {/* Top clients */}
       {topClients.length > 0 && (
-        <div style={{ padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
+        <div style={{ marginBottom: 20, padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
           <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Top Clients by Invoice Value</div>
           {topClients.map(([name, val], i) => (
             <div key={name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i < topClients.length - 1 ? 8 : 0 }}>
               <div style={{ width: 18, fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 700, color: GOLD }}>{i + 1}</div>
               <div style={{ flex: 1, fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 500, color: TEXT }}>{name}</div>
               <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 700, color: TEXT }}>GHS {val.toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Retainers */}
+      {retainers.length > 0 && (
+        <div style={{ padding: '14px 16px', borderRadius: 12, background: SURFACE, border: `1px solid ${BORDER}` }}>
+          <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>Maintenance Retainers</div>
+          {retainers.map((r, i) => (
+            <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: i < retainers.length - 1 ? 8 : 0 }}>
+              <div style={{
+                width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
+                background: r.status === 'active' ? WA_GREEN : r.status === 'paused' ? '#F59E0B' : MUTED,
+              }} />
+              <div style={{ flex: 1, fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 500, color: r.status === 'active' ? TEXT : MUTED }}>{r.clientName}</div>
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textTransform: 'capitalize' }}>{r.status}</div>
+              <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 700, color: r.status === 'active' ? TEXT : MUTED }}>GHS {r.monthlyGHS.toLocaleString()}/mo</div>
             </div>
           ))}
         </div>
@@ -6161,6 +6543,7 @@ export default function Page() {
   const [allChats, setAllChats] = useState<AllChats>(() => ({} as AllChats))
   const [deals, setDeals] = useState<Deal[]>([])
   const [pageInvoices, setPageInvoices] = useState<Invoice[]>(loadInvoices)
+  const [retainers, setRetainers] = useState<Retainer[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [briefResult, setBriefResult] = useState('')
@@ -6211,6 +6594,15 @@ export default function Page() {
       .then(d => { if (Array.isArray(d) && d.length > 0) setPageInvoices(d) })
       .catch(() => {})
   }, [])
+
+  const refreshRetainers = useCallback(() => {
+    fetchAuthed('/api/retainers', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (Array.isArray(d)) setRetainers(d) })
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => { refreshRetainers() }, [refreshRetainers])
 
   // Load workspace (team intel) from Supabase on mount
   useEffect(() => {
@@ -6402,7 +6794,18 @@ export default function Page() {
 
   const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
     const deal = deals.find(d => d.id === id)
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, stage, stageChangedAt: Date.now() } : d))
+    const justClosed = stage === 'closed' && deal?.stage !== 'closed'
+    setDeals(prev => prev.map(d => {
+      if (d.id !== id) return d
+      const updated: Deal = { ...d, stage, stageChangedAt: Date.now() }
+      // Auto-schedule a referral ask 14 days out — only if there's no follow-up
+      // already set, so it never overwrites a date Dominic picked on purpose.
+      if (justClosed && !d.followUpAt) {
+        updated.followUpAt = Date.now() + 14 * 86400000
+        updated.followUpReason = 'referral'
+      }
+      return updated
+    }))
     if (stage === 'closed' && deal) {
       const category = /mobile|app/i.test(deal.industry) ? 'Mobile App' :
         /software|system|erp/i.test(deal.industry) ? 'Business Software' :
@@ -6464,6 +6867,11 @@ export default function Page() {
     [deals]
   )
 
+  const mrrGHS = useMemo(
+    () => retainers.filter(r => r.status === 'active').reduce((s, r) => s + r.monthlyGHS, 0),
+    [retainers]
+  )
+
   const notifToggle = <NotifToggle status={notifStatus} loading={notifLoading} error={notifError} onSubscribe={subscribe} onUnsubscribe={unsubscribe} onTest={sendTest} />
 
   if (onboarded === null) return null
@@ -6508,7 +6916,7 @@ export default function Page() {
 
     // ── Home ──────────────────────────────────────────────────────────────────
     if (activeView === 'home') return shell(
-      <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
+      <CommandCenter deals={deals} earnedGHS={earnedGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
 
     // ── Work tab (Deals + Clients) ────────────────────────────────────────────
@@ -6520,7 +6928,7 @@ export default function Page() {
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'pipeline'      && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />}
+        {activeView === 'pipeline'      && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} onRetainerAdded={refreshRetainers} />}
         {activeView === 'clients'       && <ClientsView onOpenAgent={handleOpenAgent} />}
         {activeView === 'invoices'      && <InvoicesView deals={deals} />}
         {activeView === 'prospect-map'  && <ProspectMapView onAdd={handleAddDeal} />}
@@ -6642,10 +7050,10 @@ export default function Page() {
 
   const renderMainContent = () => {
     if (activeView === 'home') return (
-      <CommandCenter deals={deals} earnedGHS={earnedGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} />
+      <CommandCenter deals={deals} earnedGHS={earnedGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
     if (activeView === 'pipeline') return (
-      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} />
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} onRetainerAdded={refreshRetainers} />
     )
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />

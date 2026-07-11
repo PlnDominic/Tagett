@@ -16,6 +16,13 @@ create table if not exists deals (
 
 -- Add follow_up_at to existing deals table if upgrading
 alter table deals add column if not exists follow_up_at bigint;
+alter table deals add column if not exists last_contacted_at bigint;
+alter table deals add column if not exists whatsapp_history jsonb default '[]'::jsonb;
+alter table deals add column if not exists replied_at bigint;
+alter table deals add column if not exists call_log jsonb default '[]'::jsonb;
+alter table deals add column if not exists website_check text;
+alter table deals add column if not exists website_check_url text;
+alter table deals add column if not exists follow_up_reason text;
 
 -- 2. Push notification subscriptions (one row per browser/device)
 create table if not exists push_subscriptions (
@@ -68,6 +75,37 @@ create table if not exists clients (
   email       text,
   website     text,
   industry    text,
+  notes       text,
+  created_at  timestamptz default now(),
+  updated_at  timestamptz default now()
+);
+
+-- 8. Shareable proposal pages (public read via service role, no auth needed to view)
+create table if not exists proposals (
+  id           text primary key,
+  deal_id      text,
+  business_name text not null,
+  industry     text,
+  scope        text not null default '',
+  price_ghs    numeric not null default 0,
+  status       text not null default 'sent',
+  view_count   integer not null default 0,
+  first_viewed_at bigint,
+  last_viewed_at  bigint,
+  created_at   bigint not null,
+  updated_at   timestamptz default now()
+);
+
+-- 9. Maintenance retainers (recurring monthly revenue)
+create table if not exists retainers (
+  id          text primary key,
+  client_name text not null,
+  deal_id     text,
+  phone       text,
+  monthly_ghs numeric not null default 0,
+  status      text not null default 'active',
+  started_at  bigint not null,
+  last_billed_at bigint,
   notes       text,
   created_at  timestamptz default now(),
   updated_at  timestamptz default now()
