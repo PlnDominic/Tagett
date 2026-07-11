@@ -15,13 +15,18 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const sb = getSupabaseBrowser()
-    const { error: authError } = await sb.auth.signInWithPassword({ email, password })
-    if (authError) {
-      setError(authError.message)
+    try {
+      const sb = getSupabaseBrowser()
+      const { error: authError } = await sb.auth.signInWithPassword({ email, password })
+      if (authError) {
+        setError(authError.message)
+        setLoading(false)
+      } else {
+        window.location.href = '/'
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not sign in. Try again.')
       setLoading(false)
-    } else {
-      window.location.href = '/'
     }
   }
 
