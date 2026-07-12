@@ -145,6 +145,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, emailSent, pitchesNow, repliesNow, closed: closedThisWeek.length, stale: stale.length })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }

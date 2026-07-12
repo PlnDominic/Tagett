@@ -204,6 +204,6 @@ export async function POST() {
 
     return NextResponse.json({ ok: true, message: 'projects/page.tsx updated — website will redeploy' })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }
