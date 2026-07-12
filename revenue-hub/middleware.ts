@@ -5,12 +5,13 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABAS
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const CRON_SECRET = process.env.CRON_SECRET
 
-// Proposal links are shared with prospects over WhatsApp — they have no Tagett
-// session and never will. /p/[id] is the page they see; /api/proposals/[id] is
-// the (GET-only) route it reads from. Deliberately NOT bare /api/proposals —
-// that's POST-to-create, used only from the logged-in app, and must stay behind
-// the session check below.
-const PUBLIC_PREFIXES = ['/p/', '/api/proposals/']
+// Proposal and client-portal links are shared over WhatsApp — the recipients
+// have no Tagett session and never will. /p/[id] and /c/[id] are the pages they
+// see; /api/proposals/[id] and /api/portals/[id] are the (GET-only) routes those
+// pages read from. Deliberately NOT the bare /api/proposals or /api/portals —
+// those are the create/update routes, used only from the logged-in app, and the
+// trailing slash in the prefix is what keeps them behind the session check below.
+const PUBLIC_PREFIXES = ['/p/', '/api/proposals/', '/c/', '/api/portals/']
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()

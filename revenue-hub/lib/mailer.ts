@@ -62,3 +62,40 @@ export async function sendRunEmail(payload: {
     html,
   })
 }
+
+// General-purpose report email — sendRunEmail above is hardwired to the
+// auto-run's four agent sections, so anything else (weekly CEO report etc.)
+// uses this instead of overloading that shape.
+export async function sendReportEmail(payload: {
+  subject: string
+  headline: string
+  sections: Array<{ icon: string; title: string; content: string }>
+}) {
+  const to = process.env.EMAIL_TO ?? 'dominickudom1738@gmail.com'
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://tagett.vercel.app'
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#111111">
+  <div style="max-width:660px;margin:0 auto;padding:32px 24px;font-family:sans-serif">
+    <div style="margin-bottom:28px;display:flex;align-items:baseline;gap:12px">
+      <span style="color:#C8A96E;font-size:22px;font-weight:800;letter-spacing:0.06em">TAGETT</span>
+      <span style="color:#555;font-size:12px">${esc(payload.headline)}</span>
+    </div>
+    ${payload.sections.map(s => section(s.icon, s.title, s.content)).join('')}
+    <div style="margin-top:32px;padding-top:20px;border-top:1px solid #222;display:flex;justify-content:space-between;align-items:center">
+      <span style="color:#444;font-size:11px">Ecstasy Technologies · Tagett Revenue Hub</span>
+      <a href="${appUrl}" style="color:#C8A96E;font-size:12px;text-decoration:none;font-weight:600">Open Tagett →</a>
+    </div>
+  </div>
+</body>
+</html>`
+
+  await getTransport().sendMail({
+    from: `"Tagett" <${process.env.EMAIL_USER}>`,
+    to,
+    subject: payload.subject,
+    html,
+  })
+}

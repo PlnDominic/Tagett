@@ -85,6 +85,11 @@ export interface Deal {
   callLog?: Array<{ calledAt: number }>
   websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'
   websiteCheckUrl?: string
+  // Multi-touch follow-up sequence: number of touches sent so far (1 = the
+  // initial pitch). The follow-up cron advances this and schedules the next
+  // touch (day 3 → day 7 → day 14 break-up) until the client replies,
+  // the deal closes/loses, or the sequence completes.
+  sequenceStep?: number
 }
 
 export interface ParsedProspect {
