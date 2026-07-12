@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           title: `💳 ${billed.length} retainer invoice${billed.length === 1 ? '' : 's'} sent`,
-          body: `GHS ${totalGHS.toLocaleString()} total — ${billed.join(', ')}`,
+          body: `GHS ${totalGHS.toLocaleString()} total: ${billed.join(', ')}`,
         }),
       }).catch(() => {})
     }

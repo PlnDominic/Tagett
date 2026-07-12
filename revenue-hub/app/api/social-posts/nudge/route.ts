@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         title: '📅 No posts this week',
-        body: 'The Social Calendar has been quiet for 7 days — generate a Status pack or an X/LinkedIn pair.',
+        body: 'The Social Calendar has been quiet for 7 days. Generate a Status pack or an X/LinkedIn pair.',
       }),
     }).catch(() => {})
 

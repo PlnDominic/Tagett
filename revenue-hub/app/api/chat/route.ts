@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
+import { stripEmDashes } from '@/lib/text'
 
 const GROQ_MODEL    = 'llama-3.3-70b-versatile'
 const GEMINI_MODEL  = 'gemini-2.0-flash'
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
         const fallback = await callLLM(GROQ_URL, groqKey, GROQ_MODEL, chatMessages, [])
         if (fallback.ok) {
           const fd = await fallback.json()
-          return NextResponse.json({ text: (fd.choices?.[0]?.message?.content as string) ?? '' })
+          return NextResponse.json({ text: stripEmDashes((fd.choices?.[0]?.message?.content as string) ?? '') })
         }
       }
 
@@ -121,7 +122,7 @@ export async function POST(req: NextRequest) {
     const msg = choice?.message
 
     if (finishReason !== 'tool_calls' || !msg?.tool_calls?.length) {
-      return NextResponse.json({ text: (msg?.content as string) ?? '' })
+      return NextResponse.json({ text: stripEmDashes((msg?.content as string) ?? '') })
     }
 
     chatMessages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls as ToolCall[] })
