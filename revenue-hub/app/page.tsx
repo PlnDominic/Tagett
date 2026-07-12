@@ -3424,9 +3424,191 @@ function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   )
 }
 
+// ─── AuditModal ───────────────────────────────────────────────────────────────
+// Real PageSpeed Insights numbers only — the pitch is drafted strictly from
+// what /api/audit returns, never invented stats, so it holds up if the
+// prospect checks it themselves.
+
+interface AuditResult {
+  loadedOk: boolean
+  url: string
+  reason?: string
+  performanceScore?: number
+  seoScore?: number
+  accessibilityScore?: number
+  lcpSeconds?: number
+  isHttps?: boolean
+  mobileFriendly?: boolean
+}
+
+function scoreColor(score: number | undefined): string {
+  if (score === undefined) return MUTED
+  if (score >= 90) return WA_GREEN
+  if (score >= 50) return '#F59E0B'
+  return '#e05c5c'
+}
+
+function AuditModal({ initialUrl, contextName, contextPhone, onClose }: {
+  initialUrl: string
+  contextName?: string
+  contextPhone?: string
+  onClose: () => void
+}) {
+  const [url, setUrl] = useState(initialUrl)
+  const [auditing, setAuditing] = useState(false)
+  const [result, setResult] = useState<AuditResult | null>(null)
+  const [error, setError] = useState('')
+  const [pitch, setPitch] = useState('')
+  const [drafting, setDrafting] = useState(false)
+
+  const runAudit = async () => {
+    if (!url.trim()) return
+    setAuditing(true); setError(''); setResult(null); setPitch('')
+    try {
+      const res = await fetch('/api/audit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.error ?? 'Audit failed.'); return }
+      setResult(data)
+    } catch { setError('Network error.') }
+    finally { setAuditing(false) }
+  }
+
+  const draftPitch = async () => {
+    if (!result) return
+    setDrafting(true)
+    try {
+      const facts = result.loadedOk
+        ? [
+            `Mobile performance score: ${result.performanceScore ?? 'unknown'}/100`,
+            `SEO score: ${result.seoScore ?? 'unknown'}/100`,
+            `Accessibility score: ${result.accessibilityScore ?? 'unknown'}/100`,
+            result.lcpSeconds !== undefined ? `Largest content loads in ${result.lcpSeconds} seconds on mobile` : '',
+            `HTTPS (secure connection): ${result.isHttps ? 'yes' : 'no'}`,
+            `Mobile-friendly viewport: ${result.mobileFriendly ? 'yes' : 'no'}`,
+          ].filter(Boolean).join('\n')
+        : `The site at ${result.url} failed to load during the scan: ${result.reason}`
+
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: 'You are Dominic Kudom, CEO of Ecstasy Technologies, a web design and development company in Bibiani, Ghana. You ran a real technical scan of a prospect\'s website and are writing a short, warm WhatsApp message pitching a rebuild. Use ONLY the exact facts given below, never invent a stat, number, or claim that is not in this data. Pick the 1 or 2 worst issues, explain in plain non-technical language why they cost the business money or customers, then offer to fix it. End with a soft call to action, not a hard sell. 4 to 6 short sentences, plain text, no markdown, no headers, sounds human.',
+          messages: [{ role: 'user', content: `Business: ${contextName ?? 'this business'}\nWebsite: ${result.url}\nReal scan results:\n${facts}` }],
+        }),
+      })
+      const d = await res.json()
+      setPitch(d.text ?? '')
+    } catch { /* non-fatal */ }
+    finally { setDrafting(false) }
+  }
+
+  const waUrl = contextPhone && pitch
+    ? `https://wa.me/${ghPhoneDigits(contextPhone)}?text=${encodeURIComponent(pitch)}`
+    : undefined
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Website Audit</div>
+            {contextName && <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{contextName}</div>}
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            value={url}
+            onChange={e => setUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && runAudit()}
+            placeholder="example.com"
+            style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box' }}
+          />
+          <button onClick={runAudit} disabled={auditing || !url.trim()} style={{ padding: '9px 16px', borderRadius: 8, border: 'none', background: auditing || !url.trim() ? SURFACE2 : GOLD, color: auditing || !url.trim() ? MUTED : '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: auditing || !url.trim() ? 'default' : 'pointer' }}>
+            {auditing ? '…' : 'Scan'}
+          </button>
+        </div>
+
+        {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+
+        {auditing && (
+          <div style={{ textAlign: 'center', padding: '20px 0', color: MUTED, fontFamily: FONT_BODY }}>
+            <ThinkingDots />
+            <div style={{ fontSize: 12, marginTop: 10 }}>Running a real PageSpeed scan, this can take up to 30 seconds…</div>
+          </div>
+        )}
+
+        {result && !result.loadedOk && (
+          <div style={{ padding: '14px', borderRadius: 10, border: '1px solid #e05c5c50', background: '#e05c5c10', fontSize: 13, color: '#e05c5c', fontFamily: FONT_BODY, lineHeight: 1.6, marginBottom: 12 }}>
+            ⚠ This website failed to load during the scan.<br />
+            <span style={{ fontSize: 12, color: MUTED }}>{result.reason}</span>
+          </div>
+        )}
+
+        {result && result.loadedOk && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            {[
+              { label: 'Performance', value: result.performanceScore },
+              { label: 'SEO', value: result.seoScore },
+              { label: 'Accessibility', value: result.accessibilityScore },
+            ].map(m => (
+              <div key={m.label} style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+                <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{m.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_HEADING, color: scoreColor(m.value), marginTop: 2 }}>{m.value ?? '—'}</div>
+              </div>
+            ))}
+            <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+              <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Load Time</div>
+              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: FONT_HEADING, color: result.lcpSeconds === undefined ? MUTED : result.lcpSeconds > 4 ? '#e05c5c' : result.lcpSeconds > 2.5 ? '#F59E0B' : WA_GREEN, marginTop: 2 }}>
+                {result.lcpSeconds !== undefined ? `${result.lcpSeconds}s` : '—'}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {result && result.loadedOk && (
+          <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: result.isHttps ? WA_GREEN : '#e05c5c', fontFamily: FONT_BODY }}>{result.isHttps ? '✓ HTTPS secure' : '✕ Not on HTTPS'}</div>
+            <div style={{ fontSize: 11, color: result.mobileFriendly ? WA_GREEN : '#e05c5c', fontFamily: FONT_BODY }}>{result.mobileFriendly ? '✓ Mobile-friendly' : '✕ Not mobile-friendly'}</div>
+          </div>
+        )}
+
+        {result && (
+          <button onClick={draftPitch} disabled={drafting} style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: drafting ? 'wait' : 'pointer', opacity: drafting ? 0.6 : 1, marginBottom: 12 }}>
+            {drafting ? 'Drafting…' : '✦ Draft WhatsApp Pitch'}
+          </button>
+        )}
+
+        {pitch && (
+          <>
+            <textarea
+              value={pitch}
+              onChange={e => setPitch(e.target.value)}
+              rows={7}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, resize: 'none', outline: 'none', lineHeight: 1.6, boxSizing: 'border-box', marginBottom: 12 }}
+            />
+            {waUrl ? (
+              <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', padding: '9px 10px', borderRadius: 8, border: 'none', background: WA_GREEN, color: '#fff', fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+                Send on WhatsApp
+              </a>
+            ) : (
+              <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>Add a phone number to this deal to send directly.</div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, onTurnIntoTestimonial, onOpenPortal, isDragging, onDragStart, onDragEnd }: {
+function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, onTurnIntoTestimonial, onOpenPortal, onOpenAudit, isDragging, onDragStart, onDragEnd }: {
   deal: Deal
   onDelete: (id: string) => void
   onUpdate: (id: string, updates: Partial<Deal>) => void
@@ -3438,6 +3620,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   onAddRetainer: (deal: Deal) => void
   onTurnIntoTestimonial: (deal: Deal) => void
   onOpenPortal: (deal: Deal) => void
+  onOpenAudit: (deal: Deal) => void
   isDragging: boolean
   onDragStart: () => void
   onDragEnd: () => void
@@ -3583,6 +3766,11 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             : deal.websiteCheck === 'unclear' ? '? Inconclusive'
             : '🔍 Verify no website'}
         </button>
+        {deal.websiteCheck === 'found_site' && deal.websiteCheckUrl && (
+          <button onClick={() => onOpenAudit(deal)} title="Scan their site with PageSpeed Insights and draft a pitch from the real numbers" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+            🔎 Audit their site
+          </button>
+        )}
         <label style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           {followUpLabel ? '+ Change' : '+ Follow-up'}
           <input type="date" style={{ position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none' }}
@@ -3634,6 +3822,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   const [testimonialModal, setTestimonialModal] = useState<Deal | null>(null)
   const [portalModal, setPortalModal] = useState<Deal | null>(null)
   const [proposalModal, setProposalModal] = useState<Deal | null>(null)
+  const [auditModal, setAuditModal] = useState<Deal | null>(null)
 
   const handleSubmit = () => {
     if (!form.name) return
@@ -3777,6 +3966,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
                     onAddRetainer={d => setRetainerModal(d)}
                     onTurnIntoTestimonial={d => setTestimonialModal(d)}
                     onOpenPortal={d => setPortalModal(d)}
+                    onOpenAudit={d => setAuditModal(d)}
                     isDragging={dragId === deal.id}
                     onDragStart={() => setDragId(deal.id)}
                     onDragEnd={() => { setDragId(null); setDropStage(null) }}
@@ -3802,6 +3992,14 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
       )}
       {portalModal && (
         <PortalModal deal={portalModal} onClose={() => setPortalModal(null)} />
+      )}
+      {auditModal && (
+        <AuditModal
+          initialUrl={auditModal.websiteCheckUrl ?? ''}
+          contextName={auditModal.name}
+          contextPhone={auditModal.phone}
+          onClose={() => setAuditModal(null)}
+        />
       )}
     </div>
   )
@@ -6213,6 +6411,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
   const [error, setError] = useState('')
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(false)
   const [added, setAdded] = useState<Set<string>>(new Set())
+  const [auditTarget, setAuditTarget] = useState<{ url: string; name?: string; phone?: string } | null>(null)
 
   const search = async () => {
     if (!query.trim()) return
@@ -6250,8 +6449,17 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Search bar */}
       <div style={{ padding: '14px 16px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
-        <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT, marginBottom: 10 }}>
-          Find Prospects on Google Maps
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>
+            Find Prospects on Google Maps
+          </div>
+          <button
+            onClick={() => setAuditTarget({ url: '' })}
+            title="Scan any website's real PageSpeed numbers and draft a pitch"
+            style={{ fontSize: 11, padding: '5px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}
+          >
+            🔎 Audit any site
+          </button>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <input
@@ -6340,25 +6548,45 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
                     <a href={p.mapsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#4285F4', fontFamily: FONT_BODY, textDecoration: 'none' }}>📍 View on Maps</a>
                   </div>
                 </div>
-                <button
-                  onClick={() => handleAdd(p)}
-                  disabled={isAdded}
-                  style={{
-                    flexShrink: 0, padding: '5px 12px', borderRadius: 8,
-                    border: `1px solid ${isAdded ? BORDER : isPrime ? GOLD : BORDER}`,
-                    background: isAdded ? SURFACE2 : isPrime ? GOLD : 'transparent',
-                    color: isAdded ? MUTED : isPrime ? '#fff' : MUTED,
-                    fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 11,
-                    cursor: isAdded ? 'default' : 'pointer',
-                  }}
-                >
-                  {isAdded ? '✓ Added' : '+ Pipeline'}
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5, flexShrink: 0 }}>
+                  <button
+                    onClick={() => handleAdd(p)}
+                    disabled={isAdded}
+                    style={{
+                      padding: '5px 12px', borderRadius: 8,
+                      border: `1px solid ${isAdded ? BORDER : isPrime ? GOLD : BORDER}`,
+                      background: isAdded ? SURFACE2 : isPrime ? GOLD : 'transparent',
+                      color: isAdded ? MUTED : isPrime ? '#fff' : MUTED,
+                      fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 11,
+                      cursor: isAdded ? 'default' : 'pointer',
+                    }}
+                  >
+                    {isAdded ? '✓ Added' : '+ Pipeline'}
+                  </button>
+                  {p.website && (
+                    <button
+                      onClick={() => setAuditTarget({ url: p.website!, name: p.name, phone: p.phone ? p.phone.replace(/\s/g, '').replace(/^0/, '+233') : undefined })}
+                      title="Scan their site with PageSpeed Insights and draft a pitch"
+                      style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 11, cursor: 'pointer' }}
+                    >
+                      🔎 Audit
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           )
         })}
       </div>
+
+      {auditTarget && (
+        <AuditModal
+          initialUrl={auditTarget.url}
+          contextName={auditTarget.name}
+          contextPhone={auditTarget.phone}
+          onClose={() => setAuditTarget(null)}
+        />
+      )}
     </div>
   )
 }
