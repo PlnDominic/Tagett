@@ -2607,6 +2607,23 @@ interface QueueItem {
   urgent: boolean
 }
 
+// What sending a WhatsApp pitch does to the deal — shared by DealPipeline and
+// TodayQueue. Besides logging the message, it starts a multi-touch follow-up
+// sequence: deals don't close on one message, so touch 2 is scheduled for
+// 3 days out unless a follow-up date already exists (never overwrite one
+// Dominic set himself) or the deal is already won/lost.
+function waSentUpdates(deal: Deal, text: string): Partial<Deal> {
+  const updates: Partial<Deal> = {
+    lastContactedAt: Date.now(),
+    whatsappHistory: [...(deal.whatsappHistory ?? []), { text, sentAt: Date.now() }],
+  }
+  if (!deal.followUpAt && deal.stage !== 'closed' && deal.stage !== 'lost') {
+    updates.followUpAt = Date.now() + 3 * 86400000
+    updates.sequenceStep = 1
+  }
+  return updates
+}
+
 function buildTodayQueue(deals: Deal[]): QueueItem[] {
   const now = Date.now()
   const items: QueueItem[] = []
@@ -2647,10 +2664,7 @@ function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string,
   const handleWaSent = (id: string, text: string) => {
     const deal = deals.find(d => d.id === id)
     if (!deal) return
-    onUpdate(id, {
-      lastContactedAt: Date.now(),
-      whatsappHistory: [...(deal.whatsappHistory ?? []), { text, sentAt: Date.now() }],
-    })
+    onUpdate(id, waSentUpdates(deal, text))
   }
 
   return (
@@ -2847,6 +2861,12 @@ function WhatsAppModal({ deal, onClose, onSent }: {
   const [copied, setCopied] = useState(false)
 
   const isReferralAsk = deal.followUpReason === 'referral'
+  // Touches sent so far in the automated sequence: 1+ means a pitch already went
+  // out, so drafting another cold open would read as spam — the next message
+  // needs a different angle, and by the final touch a clean break-up.
+  const sequenceStep = !isReferralAsk ? (deal.sequenceStep ?? 0) : 0
+  const isBreakup = sequenceStep >= 3
+  const isFollowUpTouch = sequenceStep >= 1 && !isBreakup
 
   const generate = async () => {
     setLoading(true)
@@ -2857,6 +2877,12 @@ function WhatsAppModal({ deal, onClose, onSent }: {
         body: JSON.stringify(isReferralAsk ? {
           systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write a short, warm WhatsApp message to a past client asking for a referral. Output only the message body — no subject line, no labels.',
           messages: [{ role: 'user', content: `Write a WhatsApp message to ${deal.name}, a client we finished a ${deal.industry || 'website'} project for a couple weeks ago. Ask how the project is working out for them, then ask if they know 1-2 other business owners who could use the same kind of work. 3-4 sentences, warm and genuine, not salesy. Sign off as Dominic.` }],
+        } : isBreakup ? {
+          systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write a short, graceful final follow-up (break-up) WhatsApp message to a prospect who has not replied to previous messages. Output only the message body — no subject line, no labels.',
+          messages: [{ role: 'user', content: `Write the final follow-up to ${deal.name} (${deal.industry || 'business'}). Previous messages got no reply. 2-3 sentences: acknowledge they're busy, say this is the last message and the door stays open whenever they're ready, no guilt-tripping, no pressure. Warm and professional. Sign off as Dominic.` }],
+        } : isFollowUpTouch ? {
+          systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write a short WhatsApp follow-up to a prospect who has not replied to the first pitch. It must NOT repeat or rephrase the original pitch — bring something new: a relevant example of similar work, a specific benefit for their industry, or a useful observation about their business. Output only the message body — no subject line, no labels.',
+          messages: [{ role: 'user', content: `Write follow-up touch ${sequenceStep + 1} to this prospect (no reply so far):\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\n\n2-3 sentences, a genuinely different angle from a first pitch, one soft CTA. Sign off as Dominic.` }],
         } : {
           systemPrompt: 'You are ContentBot writing on behalf of Dominic, the CEO of Ecstasy Technologies, a web design and development company based in Bibiani, Ghana. Write concise, friendly WhatsApp messages for prospect outreach. Output only the message body — no subject line, no labels.',
           messages: [{ role: 'user', content: `Write a WhatsApp cold-open message for this prospect:\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\nStage: ${STAGE_LABELS[deal.stage]}\n\nRequirements:\n- 3–4 sentences, friendly and direct\n- Open by introducing yourself by name exactly like "I am Dominic from Ecstasy Technologies" (a web design and development company based in Bibiani, Ghana)\n- Reference something specific to their industry\n- End with a soft CTA (not pushy)\n- No emojis unless natural` }],
@@ -2887,7 +2913,7 @@ function WhatsAppModal({ deal, onClose, onSent }: {
       <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
-            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>{isReferralAsk ? 'Ask for a Referral' : 'WhatsApp Message'}</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>{isReferralAsk ? 'Ask for a Referral' : isBreakup ? 'Final Touch — Break-up Message' : isFollowUpTouch ? `Follow-up · Touch ${sequenceStep + 1}` : 'WhatsApp Message'}</div>
             <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
           </div>
           <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
@@ -3251,9 +3277,156 @@ function TestimonialModal({ deal, onClose }: { deal: Deal; onClose: () => void }
   )
 }
 
+// ─── PortalModal ──────────────────────────────────────────────────────────────
+// One portal per deal: opening the modal looks up whether one exists, and shows
+// either the create form or the live link + status controls.
+
+const PORTAL_STEPS = [
+  { id: 'kickoff', label: 'Kickoff' },
+  { id: 'in-progress', label: 'In Progress' },
+  { id: 'delivered', label: 'Delivered' },
+] as const
+
+function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
+  const [checking, setChecking] = useState(true)
+  const [portal, setPortal] = useState<{ id: string; status: string } | null>(null)
+  const [projectTitle, setProjectTitle] = useState(`${deal.name} — ${deal.industry || 'Website'} Project`)
+  const [creating, setCreating] = useState(false)
+  const [updating, setUpdating] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    fetchAuthed(`/api/portals?dealId=${encodeURIComponent(deal.id)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.id) setPortal({ id: d.id, status: d.status }) })
+      .catch(() => {})
+      .finally(() => setChecking(false))
+  }, [deal.id])
+
+  const create = async () => {
+    if (!projectTitle.trim()) return
+    setError('')
+    setCreating(true)
+    try {
+      const res = await fetch('/api/portals', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dealId: deal.id, clientName: deal.name, projectTitle: projectTitle.trim() }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error ?? 'Could not create the portal.'); return }
+      setPortal({ id: d.id, status: 'kickoff' })
+    } catch {
+      setError('Network error.')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const setStatus = async (status: string) => {
+    if (!portal) return
+    setUpdating(true)
+    try {
+      const res = await fetch('/api/portals', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id: portal.id, status }),
+      })
+      if (res.ok) setPortal({ ...portal, status })
+    } finally {
+      setUpdating(false)
+    }
+  }
+
+  const link = portal ? `${typeof window !== 'undefined' ? window.location.origin : ''}/c/${portal.id}` : ''
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link) } catch { /* fallback: user copies manually */ }
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+  const waUrl = deal.phone && link
+    ? `https://wa.me/${ghPhoneDigits(deal.phone)}?text=${encodeURIComponent(`Hi, you can follow your project's progress here: ${link}`)}`
+    : undefined
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 300, display: 'flex', alignItems: 'flex-end' }}>
+      <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Client Portal</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
+        </div>
+
+        {checking ? (
+          <div style={{ textAlign: 'center', padding: '24px 0', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Checking…</div>
+        ) : !portal ? (
+          <>
+            <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+              Project title (what the client sees)
+            </label>
+            <input
+              value={projectTitle}
+              onChange={e => setProjectTitle(e.target.value)}
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
+            />
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 12 }}>
+              A live page showing project status and payment milestones (pulled from this client's invoices). Share the link once — it stays current.
+            </div>
+            {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+            <button onClick={create} disabled={creating || !projectTitle.trim()} style={{ padding: '10px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, cursor: creating ? 'default' : 'pointer', opacity: creating || !projectTitle.trim() ? 0.5 : 1 }}>
+              {creating ? 'Creating…' : 'Create Portal'}
+            </button>
+          </>
+        ) : (
+          <>
+            <label style={{ display: 'block', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 8 }}>
+              Project status
+            </label>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+              {PORTAL_STEPS.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => setStatus(s.id)}
+                  disabled={updating}
+                  style={{
+                    flex: 1, padding: '8px 6px', borderRadius: 8, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600,
+                    border: `1px solid ${portal.status === s.id ? GOLD : BORDER}`,
+                    background: portal.status === s.id ? `${GOLD}15` : SURFACE2,
+                    color: portal.status === s.id ? GOLD : MUTED,
+                    cursor: updating ? 'wait' : 'pointer',
+                  }}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            <div style={{ padding: '10px 12px', borderRadius: 10, border: `1px solid ${BORDER}`, background: SURFACE2, fontSize: 13, color: TEXT, fontFamily: FONT_BODY, wordBreak: 'break-all', marginBottom: 12 }}>
+              {link}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={copy} style={{ flex: 1, padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: copied ? `${GOLD}15` : SURFACE2, color: copied ? GOLD : TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: 'pointer' }}>
+                {copied ? 'Copied!' : 'Copy Link'}
+              </button>
+              {waUrl && (
+                <a href={waUrl} target="_blank" rel="noopener noreferrer" style={{ flex: 1, textAlign: 'center', padding: '9px 10px', borderRadius: 8, border: 'none', background: WA_GREEN, color: '#fff', fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 700, cursor: 'pointer', textDecoration: 'none' }}>
+                  Send to Client
+                </a>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
-function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, onTurnIntoTestimonial, isDragging, onDragStart, onDragEnd }: {
+function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, onTurnIntoTestimonial, onOpenPortal, isDragging, onDragStart, onDragEnd }: {
   deal: Deal
   onDelete: (id: string) => void
   onUpdate: (id: string, updates: Partial<Deal>) => void
@@ -3264,6 +3437,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   onCreateProposal: (deal: Deal) => void
   onAddRetainer: (deal: Deal) => void
   onTurnIntoTestimonial: (deal: Deal) => void
+  onOpenPortal: (deal: Deal) => void
   isDragging: boolean
   onDragStart: () => void
   onDragEnd: () => void
@@ -3423,6 +3597,9 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             <button onClick={() => onAddRetainer(deal)} title="Add a monthly maintenance retainer for this client" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_BODY, cursor: 'pointer' }}>
               + Retainer
             </button>
+            <button onClick={() => onOpenPortal(deal)} title="Client portal — live project status and payment milestones page to share" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+              🔗 Portal
+            </button>
           </>
         )}
         {deal.followUpReason === 'referral' && deal.repliedAt && (
@@ -3455,6 +3632,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   const [waModal, setWaModal] = useState<Deal | null>(null)
   const [retainerModal, setRetainerModal] = useState<Deal | null>(null)
   const [testimonialModal, setTestimonialModal] = useState<Deal | null>(null)
+  const [portalModal, setPortalModal] = useState<Deal | null>(null)
   const [proposalModal, setProposalModal] = useState<Deal | null>(null)
 
   const handleSubmit = () => {
@@ -3467,10 +3645,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   const handleWaSent = (id: string, text: string) => {
     const deal = deals.find(d => d.id === id)
     if (!deal) return
-    onUpdate(id, {
-      lastContactedAt: Date.now(),
-      whatsappHistory: [...(deal.whatsappHistory ?? []), { text, sentAt: Date.now() }],
-    })
+    onUpdate(id, waSentUpdates(deal, text))
   }
 
   const closedValue = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.valueGHS, 0)
@@ -3601,6 +3776,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
                     onCreateProposal={d => setProposalModal(d)}
                     onAddRetainer={d => setRetainerModal(d)}
                     onTurnIntoTestimonial={d => setTestimonialModal(d)}
+                    onOpenPortal={d => setPortalModal(d)}
                     isDragging={dragId === deal.id}
                     onDragStart={() => setDragId(deal.id)}
                     onDragEnd={() => { setDragId(null); setDropStage(null) }}
@@ -3623,6 +3799,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
       )}
       {testimonialModal && (
         <TestimonialModal deal={testimonialModal} onClose={() => setTestimonialModal(null)} />
+      )}
+      {portalModal && (
+        <PortalModal deal={portalModal} onClose={() => setPortalModal(null)} />
       )}
     </div>
   )

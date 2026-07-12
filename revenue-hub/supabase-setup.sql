@@ -23,6 +23,7 @@ alter table deals add column if not exists call_log jsonb default '[]'::jsonb;
 alter table deals add column if not exists website_check text;
 alter table deals add column if not exists website_check_url text;
 alter table deals add column if not exists follow_up_reason text;
+alter table deals add column if not exists sequence_step integer;
 
 -- 2. Push notification subscriptions (one row per browser/device)
 create table if not exists push_subscriptions (
@@ -111,7 +112,19 @@ create table if not exists retainers (
   updated_at  timestamptz default now()
 );
 
--- 10. Social calendar posts
+-- 10. Client project portals (public read via token link, like proposals)
+create table if not exists portals (
+  id            text primary key,
+  deal_id       text,
+  client_name   text not null,
+  project_title text not null,
+  status        text not null default 'kickoff',
+  notes         text,
+  created_at    bigint not null,
+  updated_at    timestamptz default now()
+);
+
+-- 11. Social calendar posts
 create table if not exists social_posts (
   id            text primary key,
   content       text not null,

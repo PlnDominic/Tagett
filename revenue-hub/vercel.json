@@ -20,6 +20,10 @@
     {
       "path": "/api/social-posts/nudge",
       "schedule": "0 8 * * 1"
+    },
+    {
+      "path": "/api/report/weekly",
+      "schedule": "0 6 * * 1"
     }
   ]
 }
