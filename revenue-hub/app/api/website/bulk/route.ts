@@ -108,6 +108,6 @@ export async function POST(req: Request) {
     throw new Error('Failed to write projects.json after retries')
   } catch (err) {
     console.error('[website/bulk] POST failed:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }

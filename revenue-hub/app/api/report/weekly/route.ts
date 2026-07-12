@@ -106,17 +106,17 @@ export async function GET(req: NextRequest) {
       `Calls made: ${callsNow}${delta(callsNow, callsPrev)}`,
       `Replies received: ${repliesNow}`,
       `New leads: ${leadsNow}`,
-      `Deals closed: ${closedThisWeek.length}${closedThisWeek.length > 0 ? ` — GHS ${closedGHS.toLocaleString()}` : ''}`,
+      `Deals closed: ${closedThisWeek.length}${closedThisWeek.length > 0 ? ` (GHS ${closedGHS.toLocaleString()})` : ''}`,
     ].join('\n')
 
     const pipelineText = [
-      `Active pipeline: ${active.length} deals — GHS ${activeGHS.toLocaleString()}`,
+      `Active pipeline: ${active.length} deals, GHS ${activeGHS.toLocaleString()}`,
       `Going cold: ${stale.length}${stale.length > 0 ? ` (${stale.slice(0, 5).map(d => d.name).join(', ')}${stale.length > 5 ? '…' : ''})` : ''}`,
       `Follow-ups due this week: ${dueThisWeek.length}${dueThisWeek.length > 0 ? ` (${dueThisWeek.slice(0, 5).map(d => d.name).join(', ')}${dueThisWeek.length > 5 ? '…' : ''})` : ''}`,
     ].join('\n')
 
     const moneyText = [
-      `Outstanding invoices: GHS ${Math.max(0, outstanding).toLocaleString()}${overdueCount > 0 ? ` — ${overdueCount} overdue` : ''}`,
+      `Outstanding invoices: GHS ${Math.max(0, outstanding).toLocaleString()}${overdueCount > 0 ? ` (${overdueCount} overdue)` : ''}`,
       `Retainer MRR: GHS ${mrr.toLocaleString()}`,
     ].join('\n')
 
@@ -145,6 +145,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, emailSent, pitchesNow, repliesNow, closed: closedThisWeek.length, stale: stale.length })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }

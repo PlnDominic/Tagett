@@ -43,10 +43,10 @@ export async function sendRunEmail(payload: {
       <span style="color:#C8A96E;font-size:22px;font-weight:800;letter-spacing:0.06em">TAGETT</span>
       <span style="color:#555;font-size:12px">Auto-Run · ${payload.runAt} GMT</span>
     </div>
-    ${section('⌖', 'SocialScout — Social Leads Found', payload.social)}
-    ${section('◎', 'ProspectBot — Business Leads', payload.prospect)}
-    ${section('✦', 'ContentBot — Pitch Drafts Ready', payload.pitches)}
-    ${section('⊙', 'RevenueBot — Pipeline Status', payload.pipeline)}
+    ${section('⌖', 'SocialScout: Social Leads Found', payload.social)}
+    ${section('◎', 'ProspectBot: Business Leads', payload.prospect)}
+    ${section('✦', 'ContentBot: Pitch Drafts Ready', payload.pitches)}
+    ${section('⊙', 'RevenueBot: Pipeline Status', payload.pipeline)}
     <div style="margin-top:32px;padding-top:20px;border-top:1px solid #222;display:flex;justify-content:space-between;align-items:center">
       <span style="color:#444;font-size:11px">Ecstasy Technologies · Tagett Revenue Hub</span>
       <a href="${appUrl}" style="color:#C8A96E;font-size:12px;text-decoration:none;font-weight:600">Open Tagett →</a>

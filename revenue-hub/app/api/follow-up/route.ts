@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     // next touch — day 3 (this firing), then +4d (day 7), then +7d (day 14
     // break-up), then the sequence ends. A reply ends it immediately: the deal
     // is in live conversation and canned nudges would be worse than silence.
-    const touchLabel = (step: number) => step >= 3 ? 'Final touch — send the break-up message' : `Touch ${step + 1} — new angle, not a repeat`
+    const touchLabel = (step: number) => step >= 3 ? 'Final touch: send the break-up message' : `Touch ${step + 1}: new angle, not a repeat`
     const notifyDeals: typeof deals = []
     for (const deal of deals) {
       const step = (deal.sequence_step as number | null) ?? 0
@@ -67,10 +67,10 @@ export async function GET(req: NextRequest) {
       const step = (deal.sequence_step as number | null) ?? 0
       const payload =
         deal.follow_up_reason === 'referral'
-          ? { title: `Ask for a referral: ${deal.name}`, body: `Closed 2 weeks ago${deal.phone ? ' · ' + deal.phone : ''} — good time to ask who else needs this.` }
+          ? { title: `Ask for a referral: ${deal.name}`, body: `Closed 2 weeks ago${deal.phone ? ' · ' + deal.phone : ''}. Good time to ask who else needs this.` }
           : step > 0
           ? { title: `Follow up: ${deal.name}`, body: `${touchLabel(step)}${deal.phone ? ' · ' + deal.phone : ''}` }
-          : { title: `Follow up: ${deal.name}`, body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''} — time to reach out!` }
+          : { title: `Follow up: ${deal.name}`, body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''}. Time to reach out!` }
       return fetch(`${req.nextUrl.origin}/api/notify/send`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -81,7 +81,7 @@ export async function GET(req: NextRequest) {
 
     if (notifyDeals.length > 0) {
       // Send a single summary email
-      const dealList = notifyDeals.map(d => `• ${d.name} (${d.industry ?? 'unknown'}) — ${d.follow_up_reason === 'referral' ? 'Ask for a referral' : `Stage: ${d.stage}`}${d.phone ? ', ' + d.phone : ''}`).join('\n')
+      const dealList = notifyDeals.map(d => `• ${d.name} (${d.industry ?? 'unknown'}): ${d.follow_up_reason === 'referral' ? 'Ask for a referral' : `Stage: ${d.stage}`}${d.phone ? ', ' + d.phone : ''}`).join('\n')
       await sendRunEmail({
         runAt: new Date().toUTCString().replace(' GMT', ''),
         social: '',
@@ -93,6 +93,6 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({ ok: true, notified: notifyDeals.length })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }

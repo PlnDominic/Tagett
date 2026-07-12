@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 import { getSupabase } from '@/lib/supabase'
 import { sendRunEmail } from '@/lib/mailer'
+import { stripEmDashes } from '@/lib/text'
 
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
@@ -77,7 +78,7 @@ async function runAgent(opts: {
     const finish: string = choice?.finish_reason ?? 'stop'
 
     if (finish !== 'tool_calls' || !msg?.tool_calls?.length) {
-      return (msg?.content as string) ?? ''
+      return stripEmDashes((msg?.content as string) ?? '')
     }
 
     msgs.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls as GroqToolCall[] })

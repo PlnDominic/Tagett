@@ -759,7 +759,7 @@ const SEED_PROJECTS: Array<{
   {
     title: 'Obotan Co-operative Credit Union System',
     category: 'Business Software',
-    description: 'Comprehensive web application for managing the Obotan Co-operative Credit Union — covering user management, financial transactions, work submissions, and administrative reporting.',
+    description: 'Comprehensive web application for managing the Obotan Co-operative Credit Union, covering user management, financial transactions, work submissions, and administrative reporting.',
     image: '',
     features: ['User authentication', 'Financial transactions', 'Work submissions', 'Admin reporting dashboard', 'Role-based access control', 'Database migrations'],
     technologies: ['Python', 'Flask', 'PostgreSQL', 'HTML', 'CSS', 'JavaScript', 'Gunicorn'],
@@ -895,7 +895,7 @@ const SEED_PROJECTS: Array<{
   {
     title: 'Gusty Women Foundation',
     category: 'Website',
-    description: 'Next.js website for the Gusty Women Foundation — a platform to showcase the foundation\'s mission, programs, impact stories, and ways to get involved in empowering women.',
+    description: 'Next.js website for the Gusty Women Foundation, a platform to showcase the foundation\'s mission, programs, impact stories, and ways to get involved in empowering women.',
     image: '',
     features: ['Foundation mission & vision pages', 'Programs & initiatives showcase', 'Impact stories section', 'Donation & involvement CTA', 'Responsive design with icon library'],
     technologies: ['Next.js', 'TypeScript', 'React', 'Lucide React'],
@@ -905,7 +905,7 @@ const SEED_PROJECTS: Array<{
   {
     title: 'Local Drop Shipping',
     category: 'Web Application',
-    description: 'Full-featured Next.js marketplace for a local dropshipping platform — covering storefront, product listings, vendor dashboards, order management, and a system documentation simulator.',
+    description: 'Full-featured Next.js marketplace for a local dropshipping platform, covering storefront, product listings, vendor dashboards, order management, and a system documentation simulator.',
     image: '',
     features: ['Product storefront & catalogue', 'Vendor & buyer dashboards', 'Order management system', 'State management with Zustand', 'System documentation simulator'],
     technologies: ['Next.js', 'React', 'Tailwind CSS', 'Zustand', 'TypeScript'],
@@ -915,7 +915,7 @@ const SEED_PROJECTS: Array<{
   {
     title: 'Raynelle',
     category: 'Website',
-    description: 'Client website project built with JavaScript — a clean, responsive web presence with a modern layout and tailored brand design.',
+    description: 'Client website project built with JavaScript. A clean, responsive web presence with a modern layout and tailored brand design.',
     image: '',
     features: ['Custom brand design', 'Responsive layout', 'Modern UI', 'Contact & enquiry section'],
     technologies: ['JavaScript', 'HTML5', 'CSS3'],
@@ -925,7 +925,7 @@ const SEED_PROJECTS: Array<{
   {
     title: 'Aspee',
     category: 'Web Application',
-    description: 'TypeScript web application for Aspee — a modern, fast-loading platform built with performance-first architecture and clean component-based design.',
+    description: 'TypeScript web application for Aspee, a modern, fast-loading platform built with performance-first architecture and clean component-based design.',
     image: '',
     features: ['Performance-first architecture', 'TypeScript codebase', 'Component-based UI', 'Modern design system', 'Responsive across devices'],
     technologies: ['TypeScript', 'React', 'Next.js'],
@@ -935,7 +935,7 @@ const SEED_PROJECTS: Array<{
   {
     title: 'Glow Healthy',
     category: 'Website',
-    description: 'Health and wellness website for Glow Healthy — a vibrant, mobile-first platform covering wellness services, healthy lifestyle content, and client booking or enquiry flows.',
+    description: 'Health and wellness website for Glow Healthy, a vibrant, mobile-first platform covering wellness services, healthy lifestyle content, and client booking or enquiry flows.',
     image: '',
     features: ['Wellness services showcase', 'Health & lifestyle content', 'Booking or enquiry flow', 'Vibrant mobile-first design', 'TypeScript codebase'],
     technologies: ['TypeScript', 'Next.js', 'React', 'Tailwind CSS'],
@@ -1676,7 +1676,7 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
   const tooltip = isUnsupported
     ? 'Open in Safari and tap Share → Add to Home Screen to enable push notifications'
     : isDenied
-    ? 'Notifications blocked — go to Settings → Tagett → Notifications to enable'
+    ? 'Notifications blocked. Go to Settings → Tagett → Notifications to enable'
     : isOn
     ? 'Notifications on · hold to send a test'
     : 'Tap to enable push notifications'
@@ -2077,7 +2077,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
           𝕏 Post to X
         </a>
         <button onClick={handleLinkedIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${liCopied ? LI_BLUE : LI_BLUE + '60'}`, background: liCopied ? `${LI_BLUE}18` : `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
-          {liCopied ? '✓ Copied — paste in LinkedIn' : 'in Post to LinkedIn'}
+          {liCopied ? '✓ Copied. Paste in LinkedIn' : 'in Post to LinkedIn'}
         </button>
         <a href={`https://wa.me/?text=${encodeURIComponent(content.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           ✆ WhatsApp
@@ -2646,7 +2646,7 @@ function buildTodayQueue(deals: Deal[]): QueueItem[] {
     const staleMs = STAGE_STALE_MS[d.stage]
     if (staleMs > 0 && (now - (d.stageChangedAt ?? d.createdAt)) > staleMs) {
       const days = Math.floor((now - (d.stageChangedAt ?? d.createdAt)) / 86400000)
-      items.push({ deal: d, reason: `${STAGE_LABELS[d.stage]} for ${days}d — going cold`, urgent: false })
+      items.push({ deal: d, reason: `${STAGE_LABELS[d.stage]} for ${days}d, going cold`, urgent: false })
     }
   }
 
@@ -2913,7 +2913,7 @@ function WhatsAppModal({ deal, onClose, onSent }: {
       <div style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxHeight: '85vh', display: 'flex', flexDirection: 'column', padding: '20px 20px 28px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <div>
-            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>{isReferralAsk ? 'Ask for a Referral' : isBreakup ? 'Final Touch — Break-up Message' : isFollowUpTouch ? `Follow-up · Touch ${sequenceStep + 1}` : 'WhatsApp Message'}</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>{isReferralAsk ? 'Ask for a Referral' : isBreakup ? 'Final Touch: Break-up Message' : isFollowUpTouch ? `Follow-up · Touch ${sequenceStep + 1}` : 'WhatsApp Message'}</div>
             <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{deal.name}</div>
           </div>
           <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: '0 2px' }}>✕</button>
@@ -3290,7 +3290,7 @@ const PORTAL_STEPS = [
 function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
   const [checking, setChecking] = useState(true)
   const [portal, setPortal] = useState<{ id: string; status: string } | null>(null)
-  const [projectTitle, setProjectTitle] = useState(`${deal.name} — ${deal.industry || 'Website'} Project`)
+  const [projectTitle, setProjectTitle] = useState(`${deal.name} ${deal.industry || 'Website'} Project`)
   const [creating, setCreating] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -3373,7 +3373,7 @@ function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
             />
             <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 12 }}>
-              A live page showing project status and payment milestones (pulled from this client's invoices). Share the link once — it stays current.
+              A live page showing project status and payment milestones (pulled from this client's invoices). Share the link once. It stays current.
             </div>
             {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
             <button onClick={create} disabled={creating || !projectTitle.trim()} style={{ padding: '10px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, cursor: creating ? 'default' : 'pointer', opacity: creating || !projectTitle.trim() ? 0.5 : 1 }}>
@@ -3496,7 +3496,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
 
       {isStale && (
         <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#e05c5c', fontFamily: FONT_BODY }}>
-          <IconWarning size={10} color="#e05c5c" /> Stale — no movement
+          <IconWarning size={10} color="#e05c5c" /> Stale, no movement
         </div>
       )}
 
@@ -3597,7 +3597,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             <button onClick={() => onAddRetainer(deal)} title="Add a monthly maintenance retainer for this client" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_BODY, cursor: 'pointer' }}>
               + Retainer
             </button>
-            <button onClick={() => onOpenPortal(deal)} title="Client portal — live project status and payment milestones page to share" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
+            <button onClick={() => onOpenPortal(deal)} title="Client portal: live project status and payment milestones page to share" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
               🔗 Portal
             </button>
           </>
@@ -3906,7 +3906,7 @@ function InvoicesView({ deals }: { deals: Deal[] }) {
   const deleteInvoice = (id: string) => setInvoices(prev => prev.filter(inv => inv.id !== id))
 
   const printInvoice = (inv: Invoice) => {
-    const html = `<!DOCTYPE html><html><head><title>Invoice — ${inv.clientName}</title>
+    const html = `<!DOCTYPE html><html><head><title>Invoice: ${inv.clientName}</title>
 <style>body{font-family:Arial,sans-serif;padding:48px;max-width:700px;margin:0 auto;color:#111}
 h1{color:#E84040;font-size:28px;margin-bottom:4px}
 .company{color:#666;font-size:13px;margin-bottom:28px}
@@ -4075,7 +4075,7 @@ ${inv.notes?`<p style="font-size:13px;color:#555">${inv.notes}</p>`:''}
                   {inv.dueAt && (
                     <div style={{ fontSize: 12, color: inv.dueAt < Date.now() && inv.status !== 'paid' ? '#e05c5c' : MUTED, fontFamily: FONT_BODY, marginBottom: 8 }}>
                       Due: {new Date(inv.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      {inv.dueAt < Date.now() && inv.status !== 'paid' ? ' — Overdue' : ''}
+                      {inv.dueAt < Date.now() && inv.status !== 'paid' ? '. Overdue' : ''}
                     </div>
                   )}
 
@@ -4418,13 +4418,13 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
             {generating ? 'Generating…' : '✦ Generate 3'}
           </button>
         </div>
-        <button onClick={generateStatusPack} disabled={generatingStatus} title="3 short WhatsApp Status captions — more Ghanaian business owners see your Status than any feed" style={{ marginTop: 8, width: '100%', padding: '7px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, cursor: generatingStatus ? 'wait' : 'pointer', opacity: generatingStatus ? 0.7 : 1 }}>
+        <button onClick={generateStatusPack} disabled={generatingStatus} title="3 short WhatsApp Status captions. More Ghanaian business owners see your Status than any feed" style={{ marginTop: 8, width: '100%', padding: '7px 10px', borderRadius: 8, border: `1px solid ${WA_GREEN}40`, background: `${WA_GREEN}10`, color: WA_GREEN, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, cursor: generatingStatus ? 'wait' : 'pointer', opacity: generatingStatus ? 0.7 : 1 }}>
           {generatingStatus ? 'Generating…' : '💬 Generate WhatsApp Status Pack'}
         </button>
 
         <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
           <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.06em', textTransform: 'uppercase', marginBottom: 6 }}>
-            🎓 Teach a concept — builds a following on X better than announcing features
+            🎓 Teach a concept. Builds a following on X better than announcing features
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input
@@ -4542,7 +4542,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
                       )}
                       {post.platforms.includes('linkedin') && (
                         <button onClick={() => handleLinkedInPost(post)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: liCopiedId === post.id ? `${LI_BLUE}18` : `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
-                          {liCopiedId === post.id ? '✓ Copied — paste in LinkedIn' : 'in Post to LinkedIn'}
+                          {liCopiedId === post.id ? '✓ Copied. Paste in LinkedIn' : 'in Post to LinkedIn'}
                         </button>
                       )}
                       {profiles.length > 0 && (

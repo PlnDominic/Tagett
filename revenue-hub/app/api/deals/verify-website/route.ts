@@ -49,6 +49,6 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ verdict: 'confirmed_no_site', checkedAt: Date.now() })
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }

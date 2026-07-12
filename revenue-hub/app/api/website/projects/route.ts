@@ -113,7 +113,7 @@ export async function GET() {
     const { projects } = await readFile()
     return NextResponse.json(projects)
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }
 
@@ -147,7 +147,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, id: saved!.id, image: saved!.image })
   } catch (err) {
     console.error('[website/projects] POST failed:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }
 
@@ -164,6 +164,6 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ ok: true, found })
   } catch (err) {
     console.error('[website/projects] DELETE failed:', err)
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Unknown' }, { status: 500 })
+    return NextResponse.json({ error: err instanceof Error ? err.message : ((err as { message?: string })?.message ?? 'Unknown') }, { status: 500 })
   }
 }

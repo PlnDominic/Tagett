@@ -31,7 +31,7 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
 
   const acceptUrl = proposal
     ? `https://wa.me/${DOMINIC_PHONE}?text=${encodeURIComponent(
-        `Hi Dominic, I'd like to go ahead with the ${proposal.businessName} project — GHS ${proposal.priceGHS.toLocaleString()}.`
+        `Hi Dominic, I'd like to go ahead with the ${proposal.businessName} project at GHS ${proposal.priceGHS.toLocaleString()}.`
       )}`
     : '#'
 
@@ -126,7 +126,7 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
             </div>
 
             <a href={acceptUrl} target="_blank" rel="noopener noreferrer" className="prop-cta">
-              Accept — Message Dominic
+              Accept and Message Dominic
             </a>
           </div>
         )}
