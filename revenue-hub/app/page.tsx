@@ -1592,8 +1592,13 @@ function useNotifications() {
     try {
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.getSubscription()
+      const endpoint = sub?.endpoint
       if (sub) await sub.unsubscribe()
-      await fetch('/api/notify/subscribe', { method: 'DELETE' })
+      await fetch('/api/notify/subscribe', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ endpoint }),
+      })
       setStatus('idle')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unsubscribe failed.')

@@ -42,10 +42,11 @@ async function sendPush(payload: { title: string; body: string }) {
     )
   }
 
-  let subscriptions: { subscription: unknown }[]
+  const sb = getSupabase()
+
+  let subscriptions: { endpoint: string; subscription: unknown }[]
   try {
-    const sb = getSupabase()
-    const { data, error } = await sb.from('push_subscriptions').select('subscription')
+    const { data, error } = await sb.from('push_subscriptions').select('endpoint, subscription')
     if (error) throw error
     subscriptions = data ?? []
   } catch {
@@ -71,7 +72,19 @@ async function sendPush(payload: { title: string; body: string }) {
     )
   )
 
+  // Apple (and other push services) return 404/410 when a subscription has
+  // expired — iOS rotates and expires these aggressively. Delete the dead rows
+  // so they stop counting as failures and don't pile up forever.
+  const expired = results
+    .map((r, i) => ({ r, endpoint: subscriptions[i].endpoint }))
+    .filter(({ r }) => r.status === 'rejected' && [404, 410].includes((r.reason as { statusCode?: number })?.statusCode ?? 0))
+    .map(({ endpoint }) => endpoint)
+
+  if (expired.length > 0) {
+    await sb.from('push_subscriptions').delete().in('endpoint', expired).then(() => {}, () => {})
+  }
+
   const sent = results.filter(r => r.status === 'fulfilled').length
   const failed = results.length - sent
-  return NextResponse.json({ success: true, sent, failed })
+  return NextResponse.json({ success: true, sent, failed, pruned: expired.length })
 }
