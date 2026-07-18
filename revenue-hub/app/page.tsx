@@ -1550,6 +1550,16 @@ function useNotifications() {
     if (Notification.permission === 'denied') { setStatus('denied'); return }
     navigator.serviceWorker.ready.then(async (reg) => {
       const sub = await reg.pushManager.getSubscription()
+      if (sub) {
+        // Re-save on every launch: if the Supabase row was lost or iOS rotated
+        // the subscription, the server would otherwise keep pushing to a dead
+        // endpoint (or none at all) while the bell still shows "on".
+        fetch('/api/notify/subscribe', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(sub),
+        }).catch(() => {})
+      }
       setStatus(sub ? 'subscribed' : 'idle')
     }).catch(() => setStatus('idle'))
   }, [])
@@ -1592,8 +1602,13 @@ function useNotifications() {
     try {
       const reg = await navigator.serviceWorker.ready
       const sub = await reg.pushManager.getSubscription()
+      const endpoint = sub?.endpoint
       if (sub) await sub.unsubscribe()
-      await fetch('/api/notify/subscribe', { method: 'DELETE' })
+      await fetch('/api/notify/subscribe', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ endpoint }),
+      })
       setStatus('idle')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Unsubscribe failed.')
@@ -1667,6 +1682,7 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
   onTest: () => void
 }) {
   const longPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
   if (status === 'unknown') return null
 
   const isOn = status === 'subscribed'
@@ -1674,9 +1690,9 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
   const isDenied = status === 'denied'
 
   const tooltip = isUnsupported
-    ? 'Open in Safari and tap Share → Add to Home Screen to enable push notifications'
+    ? 'iPhone can only push from an installed app: open this site in Safari, tap Share → Add to Home Screen, then open Tagett from your Home Screen and tap the bell.'
     : isDenied
-    ? 'Notifications blocked. Go to Settings → Tagett → Notifications to enable'
+    ? 'Notifications are blocked. On iPhone go to Settings → Notifications → Tagett and allow them, then reopen the app.'
     : isOn
     ? 'Notifications on · hold to send a test'
     : 'Tap to enable push notifications'
@@ -1686,8 +1702,14 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
       <IconButton
         active={isOn && !loading}
         activeColor={WA_GREEN}
-        onClick={isOn ? onUnsubscribe : onSubscribe}
-        disabled={isUnsupported || isDenied || loading}
+        onClick={
+          // Phones never show hover tooltips, so a disabled bell would leave
+          // the user with no clue — tapping shows the instructions instead.
+          isUnsupported || isDenied
+            ? () => setHint(h => h ? null : tooltip)
+            : isOn ? onUnsubscribe : onSubscribe
+        }
+        disabled={loading}
         title={tooltip}
         onPointerDown={() => { if (isOn && !loading) longPressRef.current = setTimeout(onTest, 700) }}
         onPointerUp={() => { if (longPressRef.current) clearTimeout(longPressRef.current) }}
@@ -1700,7 +1722,7 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
           : <IconBellOff />
         }
       </IconButton>
-      {error && (
+      {(error ?? hint) && (
         <div style={{
           position: 'absolute', top: '100%', right: 0, zIndex: 100, marginTop: 6,
           background: '#1a0a0a', border: `1px solid ${GOLD}40`, borderRadius: 8,
@@ -1708,7 +1730,7 @@ function NotifToggle({ status, loading, error, onSubscribe, onUnsubscribe, onTes
           maxWidth: 260, whiteSpace: 'normal', lineHeight: 1.4,
           boxShadow: '0 4px 16px rgba(0,0,0,0.6)',
         }}>
-          {error}
+          {error ?? hint}
         </div>
       )}
     </div>
