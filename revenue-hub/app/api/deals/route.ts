@@ -86,6 +86,44 @@ export async function GET() {
   }
 }
 
+// POST — persist a single newly-added deal immediately. Adds from the Find
+// Prospects page previously only reached Supabase via the 1500ms-debounced
+// PUT below, which sends the client's *entire* in-memory deals array. If the
+// page's initial GET (on mount) resolved in that 1500ms window, it would
+// unconditionally overwrite local state with the older server snapshot,
+// silently wiping out the deal that was just added. Saving the new row the
+// instant it's created closes that race.
+export async function POST(req: NextRequest) {
+  try {
+    const deal: Deal = await req.json()
+    if (!deal?.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const sb = getSupabase()
+    const { error } = await sb.from('deals').upsert(toRow(deal), { onConflict: 'id' })
+    if (error) throw error
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[deals POST]', err)
+    return NextResponse.json({ error: 'Save failed' }, { status: 500 })
+  }
+}
+
+// DELETE — remove a single deal immediately, for the same reason as POST above:
+// don't leave a just-deleted row waiting on the debounced full-array PUT,
+// where it could reappear if a slower in-flight GET lands afterward.
+export async function DELETE(req: NextRequest) {
+  try {
+    const { id } = await req.json().catch(() => ({} as { id?: string }))
+    if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+    const sb = getSupabase()
+    const { error } = await sb.from('deals').delete().eq('id', id)
+    if (error) throw error
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[deals DELETE]', err)
+    return NextResponse.json({ error: 'Delete failed' }, { status: 500 })
+  }
+}
+
 export async function PUT(req: NextRequest) {
   try {
     const deals: Deal[] = await req.json()
