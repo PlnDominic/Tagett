@@ -6941,7 +6941,22 @@ export default function Page() {
     if (local.length > 0) setDeals(local)
     fetchAuthed('/api/deals', { cache: 'no-store' })
       .then(r => r.json())
-      .then(d => { if (Array.isArray(d) && d.length > 0) { setDeals(d); saveDeals(d) } })
+      .then(d => {
+        if (!Array.isArray(d)) return
+        // Merge rather than replace: a deal added on this device (e.g. from
+        // Find Prospects) right after mount is only in local state until its
+        // own immediate save round-trips — if that hasn't landed on the
+        // server yet, this response won't contain it. Overwriting outright
+        // would silently delete it. Keep any locally-known deal the server
+        // hasn't caught up to yet; server data wins for ids both sides know.
+        setDeals(prev => {
+          const byId = new Map<string, Deal>(d.map((x: Deal) => [x.id, x]))
+          for (const p of prev) if (!byId.has(p.id)) byId.set(p.id, p)
+          const merged = [...byId.values()]
+          saveDeals(merged)
+          return merged
+        })
+      })
       .catch(() => {})
   }, [])
 
@@ -7087,26 +7102,41 @@ export default function Page() {
   }, [handleHandoff])
 
   const handleAddDeal = useCallback((d: Omit<Deal, 'id' | 'createdAt'>) => {
-    setDeals(prev => [...prev, { ...d, id: Date.now().toString(), createdAt: Date.now() }])
+    const deal: Deal = { ...d, id: Date.now().toString(), createdAt: Date.now() }
+    setDeals(prev => [...prev, deal])
+    // Save immediately instead of waiting on the 1500ms debounced full-array
+    // PUT — that delay was the window where a concurrent GET (e.g. the
+    // hydrate-on-mount fetch) could overwrite local state and drop this deal
+    // before it ever reached Supabase.
+    fetch('/api/deals', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(deal),
+    }).catch(() => {})
   }, [])
 
   const handleImportProspects = useCallback((selected: ParsedProspect[], followUpDays: number) => {
     const base = Date.now()
     const followUpAt = base + followUpDays * 24 * 60 * 60 * 1000
-    setDeals(prev => [
-      ...prev,
-      ...selected.map((p, i) => ({
-        id: (base + i).toString(),
-        name: p.name,
-        industry: p.industry,
-        valueGHS: p.valueGHS,
-        stage: 'found' as DealStage,
-        phone: p.phone,
-        followUpAt,
-        createdAt: base + i,
-        stageChangedAt: base + i,
-      })),
-    ])
+    const newDeals: Deal[] = selected.map((p, i) => ({
+      id: (base + i).toString(),
+      name: p.name,
+      industry: p.industry,
+      valueGHS: p.valueGHS,
+      stage: 'found' as DealStage,
+      phone: p.phone,
+      followUpAt,
+      createdAt: base + i,
+      stageChangedAt: base + i,
+    }))
+    setDeals(prev => [...prev, ...newDeals])
+    newDeals.forEach(deal => {
+      fetch('/api/deals', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(deal),
+      }).catch(() => {})
+    })
     setImportModal(null)
   }, [])
 
@@ -7137,6 +7167,11 @@ export default function Page() {
 
   const handleDeleteDeal = useCallback((id: string) => {
     setDeals(prev => prev.filter(d => d.id !== id))
+    fetch('/api/deals', {
+      method: 'DELETE',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ id }),
+    }).catch(() => {})
   }, [])
 
   const handleUpdateDeal = useCallback((id: string, updates: Partial<Deal>) => {
