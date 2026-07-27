@@ -9,15 +9,21 @@ const CRON_SECRET = process.env.CRON_SECRET
 // was never meant to be multi-tenant. Every /api/* data route reads and
 // writes with the Supabase service-role key, which bypasses Row Level
 // Security entirely, and no table actually has an RLS policy defined anyway.
-// That means "is there a valid Supabase session" was previously the ONLY
-// check standing between the whole business's deals, clients, invoices, and
-// phone numbers and anyone who could authenticate — including a stranger who
-// simply signs up, if signups are enabled on the Supabase project. This
-// allowlist is defense in depth: even a successfully authenticated session is
-// rejected unless the email matches. Defaults to the operator's own email so
-// this is protective out of the box; ALLOWED_EMAILS (comma-separated) can
-// override it if a teammate ever needs access too.
-const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS ?? 'dominickudom1738@gmail.com')
+// That means "is there a valid Supabase session" is otherwise the ONLY check
+// standing between the whole business's deals, clients, invoices, and phone
+// numbers and anyone who could authenticate — including a stranger who
+// simply signs up, if signups are enabled on the Supabase project.
+//
+// This allowlist is opt-in, via ALLOWED_EMAILS (comma-separated) — empty
+// means no extra restriction beyond "has a valid Supabase session" (the
+// original behavior). It used to default to a guessed operator email when
+// unset; guessing wrong locked the real operator out of their own production
+// app entirely (login would succeed against Supabase, then this check would
+// silently sign the session back out and bounce to /login with no error —
+// indistinguishable from "wrong password"), which is a worse outcome than the
+// risk this guards against. Set your real sign-in email(s) here once you can
+// get back in to actually enable the extra protection.
+const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS ?? '')
   .split(',')
   .map(e => e.trim().toLowerCase())
   .filter(Boolean)
@@ -87,11 +93,11 @@ export async function middleware(req: NextRequest) {
   // Let auth routes through always
   if (isAuthCallback) return res
 
-  // A real Supabase session that isn't the operator's own email is treated as
-  // not logged in at all — sign it out so the stray cookie doesn't linger,
-  // and fall through to the normal "not logged in" handling below rather than
-  // ever letting it reach a data route.
-  const authorized = !!user && ALLOWED_EMAILS.includes((user.email ?? '').toLowerCase())
+  // A real Supabase session whose email isn't on ALLOWED_EMAILS (when that's
+  // actually configured) is treated as not logged in at all — sign it out so
+  // the stray cookie doesn't linger, and fall through to the normal "not
+  // logged in" handling below rather than ever letting it reach a data route.
+  const authorized = !!user && (ALLOWED_EMAILS.length === 0 || ALLOWED_EMAILS.includes((user.email ?? '').toLowerCase()))
   if (user && !authorized) {
     await supabase.auth.signOut()
   }
