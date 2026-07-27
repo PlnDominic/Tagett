@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { sendPush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -63,13 +64,13 @@ export async function GET(req: NextRequest) {
 
     if (billed.length > 0) {
       const totalGHS = due.reduce((s, r) => s + ((r.monthly_ghs as number) ?? 0), 0)
-      await fetch(`${req.nextUrl.origin}/api/notify/send`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: `💳 ${billed.length} retainer invoice${billed.length === 1 ? '' : 's'} sent`,
-          body: `GHS ${totalGHS.toLocaleString()} total: ${billed.join(', ')}`,
-        }),
+      // Called directly rather than fetching /api/notify/send: that route sits
+      // behind session middleware, and this Vercel Cron request carries no
+      // session cookie, so the fetch was silently redirected to /login and
+      // swallowed by .catch(() => {}) — this notification never actually sent.
+      await sendPush({
+        title: `💳 ${billed.length} retainer invoice${billed.length === 1 ? '' : 's'} sent`,
+        body: `GHS ${totalGHS.toLocaleString()} total: ${billed.join(', ')}`,
       }).catch(() => {})
     }
 

@@ -12,7 +12,10 @@ export async function POST(req: Request) {
     const { dealId, businessName, industry, scope, priceGHS } = body
     if (!businessName) return NextResponse.json({ error: 'businessName required' }, { status: 400 })
 
-    const id = randomBytes(6).toString('base64url')
+    // 16 bytes (128 bits): this id is a permanent, unauthenticated capability
+    // URL exposing a client's name and price — 6 bytes (48 bits) was guessable
+    // at scale by anyone enumerating /p/<id>.
+    const id = randomBytes(16).toString('base64url')
     const sb = getSupabase()
     const { error } = await sb.from('proposals').insert({
       id,

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { sendPush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
 // Public — no auth. Prospects open this link from WhatsApp, they have no Tagett
 // session. Records a view and pushes a notification to Dominic (throttled to once
 // per hour per proposal so repeated glances don't spam him).
-export async function GET(req: Request, { params }: { params: { id: string } }) {
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
   try {
     const sb = getSupabase()
     const { data, error } = await sb.from('proposals').select('*').eq('id', params.id).maybeSingle()
@@ -25,14 +26,14 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
     }).eq('id', params.id)
 
     if (shouldNotify) {
-      const origin = new URL(req.url).origin
-      await fetch(`${origin}/api/notify/send`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          title: isFirstView ? `👀 ${data.business_name} opened your proposal` : `👀 ${data.business_name} viewed your proposal again`,
-          body: `GHS ${Number(data.price_ghs).toLocaleString()} · ${nextViewCount} view${nextViewCount === 1 ? '' : 's'} total`,
-        }),
+      // Called directly rather than fetching /api/notify/send: that route sits
+      // behind session middleware, and this public, unauthenticated route has
+      // no session cookie to forward — the fetch was silently redirected to
+      // /login and swallowed by .catch(() => {}), so proposal-view alerts
+      // never actually arrived.
+      await sendPush({
+        title: isFirstView ? `👀 ${data.business_name} opened your proposal` : `👀 ${data.business_name} viewed your proposal again`,
+        body: `GHS ${Number(data.price_ghs).toLocaleString()} · ${nextViewCount} view${nextViewCount === 1 ? '' : 's'} total`,
       }).catch(() => {})
     }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
 import { sendRunEmail } from '@/lib/mailer'
+import { sendPush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -57,12 +58,18 @@ export async function GET(req: NextRequest) {
       notifyDeals.push(deal)
     }
 
-    // Send push notifications — /api/notify/send already fans out to every saved
-    // subscription itself, so one call per due deal is correct. Looping the
-    // subscriptions list here too (as this used to) sent each reminder once per
-    // subscription per subscription — harmless with exactly one device
-    // registered, but multiplying duplicate pushes the moment a second device
-    // (e.g. an iPad) is added.
+    // Send push notifications directly via sendPush() — it already fans out to
+    // every saved subscription itself, so one call per due deal is correct.
+    // Looping the subscriptions list here too (as this used to) sent each
+    // reminder once per subscription per subscription — harmless with exactly
+    // one device registered, but multiplying duplicate pushes the moment a
+    // second device (e.g. an iPad) is added.
+    //
+    // This calls sendPush() directly rather than fetching /api/notify/send:
+    // that route sits behind session middleware, and this server-to-server
+    // call carries no session cookie, so middleware silently redirected it to
+    // /login and the .catch(() => {}) swallowed the failure — no push ever
+    // actually went out.
     const pushPromises = notifyDeals.map(deal => {
       const step = (deal.sequence_step as number | null) ?? 0
       const payload =
@@ -71,11 +78,7 @@ export async function GET(req: NextRequest) {
           : step > 0
           ? { title: `Follow up: ${deal.name}`, body: `${touchLabel(step)}${deal.phone ? ' · ' + deal.phone : ''}` }
           : { title: `Follow up: ${deal.name}`, body: `Stage: ${deal.stage}${deal.phone ? ' · ' + deal.phone : ''}. Time to reach out!` }
-      return fetch(`${req.nextUrl.origin}/api/notify/send`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(payload),
-      }).catch(() => {})
+      return sendPush(payload).catch(() => {})
     })
     await Promise.all(pushPromises)
 

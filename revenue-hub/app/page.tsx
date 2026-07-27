@@ -35,6 +35,19 @@ function startOfMonth(d: Date = new Date()): number {
 function currentMonthLabel(): string {
   return new Date().toLocaleDateString('en-GB', { month: 'long' })
 }
+// Bounds for a month `monthsAgo` months before the current one (0 = this
+// month, 1 = last month, ...) — lets the Command Center's headline stats
+// slide back through history instead of only ever showing the current month.
+function monthBounds(monthsAgo: number, now: Date = new Date()): { start: number; end: number; label: string; year: number } {
+  const start = new Date(now.getFullYear(), now.getMonth() - monthsAgo, 1)
+  const end = new Date(now.getFullYear(), now.getMonth() - monthsAgo + 1, 1)
+  return {
+    start: start.getTime(),
+    end: end.getTime(),
+    label: start.toLocaleDateString('en-GB', { month: 'long' }),
+    year: start.getFullYear(),
+  }
+}
 
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
 
@@ -1876,7 +1889,7 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             Meet The Council.
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 36, fontFamily: FONT_BODY }}>
-            Five advisors that pressure-test every decision. No operator acts without The Council's check.
+            Five advisors that pressure-test every decision. No operator acts without The Council&apos;s check.
           </div>
         </>
       )}
@@ -2032,7 +2045,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
     } catch {
       setStatuses(prev => ({ ...prev, [idx]: 'error' }))
     }
-  }, [profiles])
+  }, [profiles, schedule])
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content)
@@ -2533,7 +2546,8 @@ function BriefingButton({ label, onClick, loading, size = 'large' }: {
 
 // ─── GoalRing ─────────────────────────────────────────────────────────────────
 
-function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) {
+function GoalRing({ earned, monthLabel, mini = false }: { earned: number; monthLabel?: string; mini?: boolean }) {
+  const label = monthLabel ?? currentMonthLabel()
   const pct = Math.min((earned / MONTHLY_GOAL_GHS) * 100, 100)
   const r = mini ? 13 : 36
   const sz = mini ? 40 : 88
@@ -2572,7 +2586,7 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 0' }}>
       {arc}
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{currentMonthLabel()} Goal</div>
+        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label} Goal</div>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
           GHS {earned.toLocaleString()} / {MONTHLY_GOAL_GHS.toLocaleString()}
         </div>
@@ -2586,10 +2600,10 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
 // months, so month-over-month activity is actually visible on screen instead
 // of only ever showing the current month's two numbers in isolation.
 
-function MonthlyBreakdown({ deals }: { deals: Deal[] }) {
+function MonthlyBreakdown({ deals, selectedMonthsAgo, onSelect }: { deals: Deal[]; selectedMonthsAgo: number; onSelect: (monthsAgo: number) => void }) {
   const months = useMemo(() => {
     const now = new Date()
-    const result: { label: string; closedGHS: number; pipelineGHS: number; isCurrent: boolean }[] = []
+    const result: { label: string; closedGHS: number; pipelineGHS: number; monthsAgo: number }[] = []
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
       const y = d.getFullYear(); const m = d.getMonth()
@@ -2605,7 +2619,7 @@ function MonthlyBreakdown({ deals }: { deals: Deal[] }) {
           if (dd.getFullYear() === y && dd.getMonth() === m) pipelineGHS += deal.valueGHS
         }
       })
-      result.push({ label, closedGHS, pipelineGHS, isCurrent: i === 0 })
+      result.push({ label, closedGHS, pipelineGHS, monthsAgo: i })
     }
     return result
   }, [deals])
@@ -2615,30 +2629,37 @@ function MonthlyBreakdown({ deals }: { deals: Deal[] }) {
   return (
     <div style={{ margin: '16px 16px 0', padding: '14px 16px', borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Month by Month</div>
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Month by Month · tap to view</div>
         <div style={{ display: 'flex', gap: 10, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, flexShrink: 0 }}>
           <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: GOLD, marginRight: 4 }} />Closed</span>
           <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: BORDER, marginRight: 4 }} />Pipeline</span>
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 84 }}>
-        {months.map(m => (
-          <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-            <div style={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-end', height: 64 }}>
-              <div
-                style={{ flex: 1, background: GOLD, borderRadius: '2px 2px 0 0', height: `${Math.round((m.closedGHS / maxVal) * 100)}%`, minHeight: m.closedGHS > 0 ? 2 : 0 }}
-                title={`Closed: GHS ${m.closedGHS.toLocaleString()}`}
-              />
-              <div
-                style={{ flex: 1, background: BORDER, borderRadius: '2px 2px 0 0', height: `${Math.round((m.pipelineGHS / maxVal) * 100)}%`, minHeight: m.pipelineGHS > 0 ? 2 : 0 }}
-                title={`New pipeline: GHS ${m.pipelineGHS.toLocaleString()}`}
-              />
-            </div>
-            <span style={{ fontSize: 9, color: m.isCurrent ? TEXT : MUTED, fontFamily: FONT_HEADING, fontWeight: m.isCurrent ? 700 : 500 }}>
-              {m.label}
-            </span>
-          </div>
-        ))}
+        {months.map(m => {
+          const isSelected = m.monthsAgo === selectedMonthsAgo
+          return (
+            <button
+              key={m.label}
+              onClick={() => onSelect(m.monthsAgo)}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, background: 'none', border: 'none', padding: isSelected ? '4px 2px 0' : '4px 2px 0', cursor: 'pointer', borderRadius: 6, WebkitTapHighlightColor: 'transparent' }}
+            >
+              <div style={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-end', height: 64, opacity: isSelected ? 1 : 0.55, transition: 'opacity 0.15s' }}>
+                <div
+                  style={{ flex: 1, background: GOLD, borderRadius: '2px 2px 0 0', height: `${Math.round((m.closedGHS / maxVal) * 100)}%`, minHeight: m.closedGHS > 0 ? 2 : 0 }}
+                  title={`Closed: GHS ${m.closedGHS.toLocaleString()}`}
+                />
+                <div
+                  style={{ flex: 1, background: BORDER, borderRadius: '2px 2px 0 0', height: `${Math.round((m.pipelineGHS / maxVal) * 100)}%`, minHeight: m.pipelineGHS > 0 ? 2 : 0 }}
+                  title={`New pipeline: GHS ${m.pipelineGHS.toLocaleString()}`}
+                />
+              </div>
+              <span style={{ fontSize: 9, color: isSelected ? GOLD : MUTED, fontFamily: FONT_HEADING, fontWeight: isSelected ? 700 : 500 }}>
+                {m.label}
+              </span>
+            </button>
+          )
+        })}
       </div>
     </div>
   )
@@ -2798,10 +2819,8 @@ function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string,
   )
 }
 
-function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading, onUpdateDeal }: {
+function CommandCenter({ deals, mrrGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading, onUpdateDeal }: {
   deals: Deal[]
-  earnedGHS: number
-  pipelineGHS: number
   mrrGHS: number
   theme: 'dark' | 'light'
   onToggleTheme: () => void
@@ -2818,8 +2837,27 @@ function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleT
     return c
   }, [deals])
 
-  const monthStart = useMemo(() => startOfMonth(), [])
-  const newLeadsThisMonth = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost' && d.createdAt >= monthStart).length
+  // How many months back the headline Goal/Pipeline stats are showing — 0 is
+  // the current month. Lets the two numbers slide through history instead of
+  // only ever showing the current month, either via the ‹ › arrows or by
+  // tapping a bar in the Month by Month chart below.
+  const [monthsAgo, setMonthsAgo] = useState(0)
+  const viewedMonth = useMemo(() => monthBounds(monthsAgo), [monthsAgo])
+  const viewedStats = useMemo(() => {
+    let closedGHS = 0
+    let pipelineGHS = 0
+    let newLeads = 0
+    deals.forEach(d => {
+      if (d.stage === 'closed') {
+        const ts = d.stageChangedAt ?? d.createdAt
+        if (ts >= viewedMonth.start && ts < viewedMonth.end) closedGHS += d.valueGHS
+      } else if (d.stage !== 'lost' && d.createdAt >= viewedMonth.start && d.createdAt < viewedMonth.end) {
+        pipelineGHS += d.valueGHS
+        newLeads++
+      }
+    })
+    return { closedGHS, pipelineGHS, newLeads }
+  }, [deals, viewedMonth])
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 'max(48px, env(safe-area-inset-top))' } as React.CSSProperties}>
@@ -2834,23 +2872,42 @@ function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleT
         </div>
       </div>
 
+      {/* Month slider — moves the Goal + pipeline summary below back and
+          forth through history instead of it only ever showing this month */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '10px 16px 0' }}>
+        <button
+          onClick={() => setMonthsAgo(m => m + 1)}
+          title="Previous month"
+          style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 15, fontFamily: FONT_HEADING, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >‹</button>
+        <span style={{ fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 600, color: MUTED, minWidth: 90, textAlign: 'center' }}>
+          {viewedMonth.label}{viewedMonth.year !== new Date().getFullYear() ? ` ${viewedMonth.year}` : ''}
+        </span>
+        <button
+          onClick={() => setMonthsAgo(m => Math.max(0, m - 1))}
+          disabled={monthsAgo === 0}
+          title="Next month"
+          style={{ width: 26, height: 26, borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: monthsAgo === 0 ? MUTED : TEXT, opacity: monthsAgo === 0 ? 0.4 : 1, fontSize: 15, fontFamily: FONT_HEADING, cursor: monthsAgo === 0 ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >›</button>
+      </div>
+
       {/* Goal + pipeline summary */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 16px 0' }}>
-        <GoalRing earned={earnedGHS} />
+        <GoalRing earned={viewedStats.closedGHS} monthLabel={viewedMonth.label} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Pipeline · {currentMonthLabel()}</div>
+          <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Pipeline · {viewedMonth.label}</div>
           <div style={{ fontFamily: FONT_HEADING, fontSize: 24, fontWeight: 700, color: TEXT, marginTop: 2 }}>
-            GHS {pipelineGHS.toLocaleString()}
+            GHS {viewedStats.pipelineGHS.toLocaleString()}
           </div>
           <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
-            {newLeadsThisMonth} new lead{newLeadsThisMonth === 1 ? '' : 's'} this month
-            {mrrGHS > 0 && <> · <span style={{ color: WA_GREEN }}>GHS {mrrGHS.toLocaleString()}/mo retainers</span></>}
+            {viewedStats.newLeads} new lead{viewedStats.newLeads === 1 ? '' : 's'} {monthsAgo === 0 ? 'this month' : `in ${viewedMonth.label}`}
+            {monthsAgo === 0 && mrrGHS > 0 && <> · <span style={{ color: WA_GREEN }}>GHS {mrrGHS.toLocaleString()}/mo retainers</span></>}
           </div>
         </div>
       </div>
 
       {/* Month-by-month segregation */}
-      <MonthlyBreakdown deals={deals} />
+      <MonthlyBreakdown deals={deals} selectedMonthsAgo={monthsAgo} onSelect={setMonthsAgo} />
 
       {/* Stage chips */}
       <div style={{ display: 'flex', gap: 6, padding: '12px 16px 0', overflowX: 'auto' } as React.CSSProperties}>
@@ -2882,7 +2939,7 @@ function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleT
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: briefResult ? 12 : 0 }}>
           <div>
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: TEXT }}>Morning Brief</div>
-            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Executor: today's 3 highest-leverage actions</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Executor: today&apos;s 3 highest-leverage actions</div>
           </div>
           <button onClick={onRunBrief} disabled={briefLoading} style={{
             padding: '8px 16px', borderRadius: 8,
@@ -3186,7 +3243,7 @@ function ProposalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               )}
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
-              You'll get a push notification the moment they open it.
+              You&apos;ll get a push notification the moment they open it.
             </div>
           </>
         )}
@@ -3473,7 +3530,7 @@ function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
             />
             <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 12 }}>
-              A live page showing project status and payment milestones (pulled from this client's invoices). Share the link once. It stays current.
+              A live page showing project status and payment milestones (pulled from this client&apos;s invoices). Share the link once. It stays current.
             </div>
             {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
             <button onClick={create} disabled={creating || !projectTitle.trim()} style={{ padding: '10px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, cursor: creating ? 'default' : 'pointer', opacity: creating || !projectTitle.trim() ? 0.5 : 1 }}>
@@ -5655,7 +5712,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
 
       {!loading && projects.length === 0 && !fetchError && (
         <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY, padding: '8px 0', opacity: 0.6 }}>
-          No projects published yet. Click "+ Add Project" to publish your first project to ecstasytechnologies.com.
+          No projects published yet. Click &quot;+ Add Project&quot; to publish your first project to ecstasytechnologies.com.
         </div>
       )}
 
@@ -5752,7 +5809,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
                         {parsed.proof && (
                           <div style={{ marginTop: 4, padding: '10px 12px', borderRadius: 8, border: `1px solid ${GOLD}40`, background: `${GOLD}08` }}>
                             <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 700, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>Pitch Proof</div>
-                            <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, fontStyle: 'italic', marginBottom: 8 }}>"{parsed.proof}"</div>
+                            <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, fontStyle: 'italic', marginBottom: 8 }}>&quot;{parsed.proof}&quot;</div>
                             <button onClick={() => handleCopyProof(parsed.proof)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 14, border: `1px solid ${GOLD}50`, background: copiedProof ? `${GOLD}20` : 'none', color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>
                               {copiedProof ? '✓ Copied' : 'Copy'}
                             </button>
@@ -7512,23 +7569,19 @@ export default function Page() {
     // Scoped to deals closed THIS calendar month — an all-time cumulative
     // total never resets, so the "Monthly Goal" ring looked the same (or
     // just kept climbing) no matter which month it actually was.
+    //
+    // This used to fall back to regex-scraping the largest "GHS ####" mention
+    // out of the RevenueBot chat history whenever no deals existed yet, and
+    // display that as earned revenue. That chat is an AI conversation, not a
+    // ledger — a speculative or hypothetical figure the AI mentioned (e.g.
+    // "you could earn GHS 8,000 if...") would get shown on the Monthly Goal
+    // ring indistinguishably from real closed revenue. Zero deals closed this
+    // month is genuinely GHS 0; no heuristic should override that.
     const monthStart = startOfMonth()
-    const fromDeals = deals
+    return deals
       .filter(d => d.stage === 'closed' && (d.stageChangedAt ?? d.createdAt) >= monthStart)
       .reduce((s, d) => s + d.valueGHS, 0)
-    if (fromDeals > 0) return fromDeals
-    // Deals are already being tracked but none closed yet this month — that's
-    // a real GHS 0, not a cue to fall back to the chat-scan heuristic below.
-    if (deals.length > 0) return 0
-    let max = 0
-    for (const m of allChats.revenue ?? []) {
-      for (const match of m.content.match(/GHS\s*([\d,]+)/gi) ?? []) {
-        const val = parseInt(match.replace(/[^0-9]/g, ''), 10)
-        if (val < MONTHLY_GOAL_GHS && val > max) max = val
-      }
-    }
-    return max
-  }, [deals, allChats.revenue])
+  }, [deals])
 
   const pipelineGHS = useMemo(() => {
     // Scoped to deals opened THIS calendar month (and genuinely still active —
@@ -7590,7 +7643,7 @@ export default function Page() {
 
     // ── Home ──────────────────────────────────────────────────────────────────
     if (activeView === 'home') return shell(
-      <CommandCenter deals={deals} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
+      <CommandCenter deals={deals} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
 
     // ── Work tab (Deals + Clients) ────────────────────────────────────────────
@@ -7724,7 +7777,7 @@ export default function Page() {
 
   const renderMainContent = () => {
     if (activeView === 'home') return (
-      <CommandCenter deals={deals} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
+      <CommandCenter deals={deals} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
     if (activeView === 'pipeline') return (
       <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} onRetainerAdded={refreshRetainers} />
