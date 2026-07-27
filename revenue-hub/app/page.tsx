@@ -2581,6 +2581,69 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
   )
 }
 
+// ─── MonthlyBreakdown ─────────────────────────────────────────────────────────
+// Shows closed vs. new-pipeline GHS side by side for each of the last 6
+// months, so month-over-month activity is actually visible on screen instead
+// of only ever showing the current month's two numbers in isolation.
+
+function MonthlyBreakdown({ deals }: { deals: Deal[] }) {
+  const months = useMemo(() => {
+    const now = new Date()
+    const result: { label: string; closedGHS: number; pipelineGHS: number; isCurrent: boolean }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const y = d.getFullYear(); const m = d.getMonth()
+      const label = d.toLocaleDateString('en-GB', { month: 'short' })
+      let closedGHS = 0
+      let pipelineGHS = 0
+      deals.forEach(deal => {
+        if (deal.stage === 'closed') {
+          const dd = new Date(deal.stageChangedAt ?? deal.createdAt)
+          if (dd.getFullYear() === y && dd.getMonth() === m) closedGHS += deal.valueGHS
+        } else if (deal.stage !== 'lost') {
+          const dd = new Date(deal.createdAt)
+          if (dd.getFullYear() === y && dd.getMonth() === m) pipelineGHS += deal.valueGHS
+        }
+      })
+      result.push({ label, closedGHS, pipelineGHS, isCurrent: i === 0 })
+    }
+    return result
+  }, [deals])
+
+  const maxVal = Math.max(...months.map(m => Math.max(m.closedGHS, m.pipelineGHS)), 1)
+
+  return (
+    <div style={{ margin: '16px 16px 0', padding: '14px 16px', borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Month by Month</div>
+        <div style={{ display: 'flex', gap: 10, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, flexShrink: 0 }}>
+          <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: GOLD, marginRight: 4 }} />Closed</span>
+          <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: BORDER, marginRight: 4 }} />Pipeline</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 84 }}>
+        {months.map(m => (
+          <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+            <div style={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-end', height: 64 }}>
+              <div
+                style={{ flex: 1, background: GOLD, borderRadius: '2px 2px 0 0', height: `${Math.round((m.closedGHS / maxVal) * 100)}%`, minHeight: m.closedGHS > 0 ? 2 : 0 }}
+                title={`Closed: GHS ${m.closedGHS.toLocaleString()}`}
+              />
+              <div
+                style={{ flex: 1, background: BORDER, borderRadius: '2px 2px 0 0', height: `${Math.round((m.pipelineGHS / maxVal) * 100)}%`, minHeight: m.pipelineGHS > 0 ? 2 : 0 }}
+                title={`New pipeline: GHS ${m.pipelineGHS.toLocaleString()}`}
+              />
+            </div>
+            <span style={{ fontSize: 9, color: m.isCurrent ? TEXT : MUTED, fontFamily: FONT_HEADING, fontWeight: m.isCurrent ? 700 : 500 }}>
+              {m.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ─── CommandCenter ────────────────────────────────────────────────────────────
 
 // ─── ForecastCard ─────────────────────────────────────────────────────────────
@@ -2785,6 +2848,9 @@ function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleT
           </div>
         </div>
       </div>
+
+      {/* Month-by-month segregation */}
+      <MonthlyBreakdown deals={deals} />
 
       {/* Stage chips */}
       <div style={{ display: 'flex', gap: 6, padding: '12px 16px 0', overflowX: 'auto' } as React.CSSProperties}>
