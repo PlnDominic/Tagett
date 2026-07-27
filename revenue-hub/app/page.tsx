@@ -26,6 +26,16 @@ const FONT_BODY    = "var(--font-inter), 'Inter', sans-serif"
 
 const MONTHLY_GOAL_GHS = 12_000
 
+// Calendar-month boundary for scoping the goal ring / pipeline stats to "this
+// month" — without it, both figures accumulate forever and never reflect
+// which month is actually being worked.
+function startOfMonth(d: Date = new Date()): number {
+  return new Date(d.getFullYear(), d.getMonth(), 1).getTime()
+}
+function currentMonthLabel(): string {
+  return new Date().toLocaleDateString('en-GB', { month: 'long' })
+}
+
 // ─── SVG Icons ───────────────────────────────────────────────────────────────
 
 const IconBell = ({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) => (
@@ -2562,10 +2572,73 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '20px 0' }}>
       {arc}
       <div style={{ textAlign: 'center' }}>
-        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Monthly Goal</div>
+        <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{currentMonthLabel()} Goal</div>
         <div style={{ fontFamily: FONT_HEADING, fontSize: 13, color: TEXT, fontWeight: 600, marginTop: 2 }}>
           GHS {earned.toLocaleString()} / {MONTHLY_GOAL_GHS.toLocaleString()}
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── MonthlyBreakdown ─────────────────────────────────────────────────────────
+// Shows closed vs. new-pipeline GHS side by side for each of the last 6
+// months, so month-over-month activity is actually visible on screen instead
+// of only ever showing the current month's two numbers in isolation.
+
+function MonthlyBreakdown({ deals }: { deals: Deal[] }) {
+  const months = useMemo(() => {
+    const now = new Date()
+    const result: { label: string; closedGHS: number; pipelineGHS: number; isCurrent: boolean }[] = []
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const y = d.getFullYear(); const m = d.getMonth()
+      const label = d.toLocaleDateString('en-GB', { month: 'short' })
+      let closedGHS = 0
+      let pipelineGHS = 0
+      deals.forEach(deal => {
+        if (deal.stage === 'closed') {
+          const dd = new Date(deal.stageChangedAt ?? deal.createdAt)
+          if (dd.getFullYear() === y && dd.getMonth() === m) closedGHS += deal.valueGHS
+        } else if (deal.stage !== 'lost') {
+          const dd = new Date(deal.createdAt)
+          if (dd.getFullYear() === y && dd.getMonth() === m) pipelineGHS += deal.valueGHS
+        }
+      })
+      result.push({ label, closedGHS, pipelineGHS, isCurrent: i === 0 })
+    }
+    return result
+  }, [deals])
+
+  const maxVal = Math.max(...months.map(m => Math.max(m.closedGHS, m.pipelineGHS)), 1)
+
+  return (
+    <div style={{ margin: '16px 16px 0', padding: '14px 16px', borderRadius: 12, border: `1px solid ${BORDER}`, background: SURFACE2 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <div style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Month by Month</div>
+        <div style={{ display: 'flex', gap: 10, fontSize: 10, color: MUTED, fontFamily: FONT_BODY, flexShrink: 0 }}>
+          <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: GOLD, marginRight: 4 }} />Closed</span>
+          <span><span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 2, background: BORDER, marginRight: 4 }} />Pipeline</span>
+        </div>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 84 }}>
+        {months.map(m => (
+          <div key={m.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+            <div style={{ width: '100%', display: 'flex', gap: 2, alignItems: 'flex-end', height: 64 }}>
+              <div
+                style={{ flex: 1, background: GOLD, borderRadius: '2px 2px 0 0', height: `${Math.round((m.closedGHS / maxVal) * 100)}%`, minHeight: m.closedGHS > 0 ? 2 : 0 }}
+                title={`Closed: GHS ${m.closedGHS.toLocaleString()}`}
+              />
+              <div
+                style={{ flex: 1, background: BORDER, borderRadius: '2px 2px 0 0', height: `${Math.round((m.pipelineGHS / maxVal) * 100)}%`, minHeight: m.pipelineGHS > 0 ? 2 : 0 }}
+                title={`New pipeline: GHS ${m.pipelineGHS.toLocaleString()}`}
+              />
+            </div>
+            <span style={{ fontSize: 9, color: m.isCurrent ? TEXT : MUTED, fontFamily: FONT_HEADING, fontWeight: m.isCurrent ? 700 : 500 }}>
+              {m.label}
+            </span>
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -2577,14 +2650,14 @@ function GoalRing({ earned, mini = false }: { earned: number; mini?: boolean }) 
 
 function ForecastCard({ deals }: { deals: Deal[] }) {
   const now = new Date()
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const monthStart = startOfMonth(now)
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
   const dayOfMonth = now.getDate()
   const daysLeft = daysInMonth - dayOfMonth
 
   const closedThisMonth = deals.filter(d => {
     if (d.stage !== 'closed') return false
-    return new Date(d.stageChangedAt ?? d.createdAt) >= monthStart
+    return (d.stageChangedAt ?? d.createdAt) >= monthStart
   })
   const earned = closedThisMonth.reduce((s, d) => s + d.valueGHS, 0)
   const dailyRate = earned / Math.max(dayOfMonth, 1)
@@ -2725,9 +2798,10 @@ function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string,
   )
 }
 
-function CommandCenter({ deals, earnedGHS, mrrGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading, onUpdateDeal }: {
+function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleTheme, notifToggle, onNavigate, onRunBrief, briefResult, briefLoading, onUpdateDeal }: {
   deals: Deal[]
   earnedGHS: number
+  pipelineGHS: number
   mrrGHS: number
   theme: 'dark' | 'light'
   onToggleTheme: () => void
@@ -2744,7 +2818,8 @@ function CommandCenter({ deals, earnedGHS, mrrGHS, theme, onToggleTheme, notifTo
     return c
   }, [deals])
 
-  const pipelineValue = deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0)
+  const monthStart = useMemo(() => startOfMonth(), [])
+  const newLeadsThisMonth = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost' && d.createdAt >= monthStart).length
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', paddingTop: 'max(48px, env(safe-area-inset-top))' } as React.CSSProperties}>
@@ -2763,16 +2838,19 @@ function CommandCenter({ deals, earnedGHS, mrrGHS, theme, onToggleTheme, notifTo
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '8px 16px 0' }}>
         <GoalRing earned={earnedGHS} />
         <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Active Pipeline</div>
+          <div style={{ fontFamily: FONT_HEADING, fontSize: 11, color: MUTED, textTransform: 'uppercase', letterSpacing: '0.08em' }}>New Pipeline · {currentMonthLabel()}</div>
           <div style={{ fontFamily: FONT_HEADING, fontSize: 24, fontWeight: 700, color: TEXT, marginTop: 2 }}>
-            GHS {pipelineValue.toLocaleString()}
+            GHS {pipelineGHS.toLocaleString()}
           </div>
           <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
-            {deals.filter(d => d.stage !== 'closed').length} open deals
+            {newLeadsThisMonth} new lead{newLeadsThisMonth === 1 ? '' : 's'} this month
             {mrrGHS > 0 && <> · <span style={{ color: WA_GREEN }}>GHS {mrrGHS.toLocaleString()}/mo retainers</span></>}
           </div>
         </div>
       </div>
+
+      {/* Month-by-month segregation */}
+      <MonthlyBreakdown deals={deals} />
 
       {/* Stage chips */}
       <div style={{ display: 'flex', gap: 6, padding: '12px 16px 0', overflowX: 'auto' } as React.CSSProperties}>
@@ -6921,7 +6999,7 @@ function MissionBar({ workspace, earnedGHS, pipelineGHS, onClearWorkspace }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, overflow: 'hidden' }}>
         <span style={{ fontSize: 10, color: GOLD, fontFamily: FONT_BODY, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', flexShrink: 0 }}>Mission</span>
         <span style={{ fontSize: 11, color: TEXT, fontFamily: FONT_BODY, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          GHS {earnedGHS.toLocaleString()} closed · GHS {pipelineGHS.toLocaleString()} pipeline · {pct}% of GHS 12k
+          GHS {earnedGHS.toLocaleString()} closed · GHS {pipelineGHS.toLocaleString()} new pipeline · {pct}% of GHS 12k this month
         </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -7431,8 +7509,17 @@ export default function Page() {
   }, [])
 
   const earnedGHS = useMemo(() => {
-    const fromDeals = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.valueGHS, 0)
+    // Scoped to deals closed THIS calendar month — an all-time cumulative
+    // total never resets, so the "Monthly Goal" ring looked the same (or
+    // just kept climbing) no matter which month it actually was.
+    const monthStart = startOfMonth()
+    const fromDeals = deals
+      .filter(d => d.stage === 'closed' && (d.stageChangedAt ?? d.createdAt) >= monthStart)
+      .reduce((s, d) => s + d.valueGHS, 0)
     if (fromDeals > 0) return fromDeals
+    // Deals are already being tracked but none closed yet this month — that's
+    // a real GHS 0, not a cue to fall back to the chat-scan heuristic below.
+    if (deals.length > 0) return 0
     let max = 0
     for (const m of allChats.revenue ?? []) {
       for (const match of m.content.match(/GHS\s*([\d,]+)/gi) ?? []) {
@@ -7443,10 +7530,16 @@ export default function Page() {
     return max
   }, [deals, allChats.revenue])
 
-  const pipelineGHS = useMemo(
-    () => deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.valueGHS, 0),
-    [deals]
-  )
+  const pipelineGHS = useMemo(() => {
+    // Scoped to deals opened THIS calendar month (and genuinely still active —
+    // 'lost' deals were previously still counted as "active" pipeline value).
+    // Without the month scope this only ever grew, so it couldn't show
+    // month-over-month prospecting activity the way the goal ring now can.
+    const monthStart = startOfMonth()
+    return deals
+      .filter(d => d.stage !== 'closed' && d.stage !== 'lost' && d.createdAt >= monthStart)
+      .reduce((s, d) => s + d.valueGHS, 0)
+  }, [deals])
 
   const mrrGHS = useMemo(
     () => retainers.filter(r => r.status === 'active').reduce((s, r) => s + r.monthlyGHS, 0),
@@ -7497,7 +7590,7 @@ export default function Page() {
 
     // ── Home ──────────────────────────────────────────────────────────────────
     if (activeView === 'home') return shell(
-      <CommandCenter deals={deals} earnedGHS={earnedGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
+      <CommandCenter deals={deals} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
 
     // ── Work tab (Deals + Clients) ────────────────────────────────────────────
@@ -7631,7 +7724,7 @@ export default function Page() {
 
   const renderMainContent = () => {
     if (activeView === 'home') return (
-      <CommandCenter deals={deals} earnedGHS={earnedGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
+      <CommandCenter deals={deals} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
     if (activeView === 'pipeline') return (
       <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} onRetainerAdded={refreshRetainers} />
