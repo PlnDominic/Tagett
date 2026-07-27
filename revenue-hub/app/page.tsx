@@ -6253,22 +6253,41 @@ interface SearchHit {
   created_at: string
 }
 
+const HIT_TYPE_LABEL: Record<LocalHit['type'], string> = {
+  deal: 'Deal', invoice: 'Invoice', client: 'Client', proposal: 'Proposal', portal: 'Portal', retainer: 'Retainer',
+}
+
+interface SearchProposal { id: string; deal_id: string | null; business_name: string; industry: string | null; price_ghs: number; status: string }
+interface SearchPortal { id: string; dealId: string | null; clientName: string; projectTitle: string; status: string }
+
 interface LocalHit {
-  type: 'deal' | 'invoice'
+  type: 'deal' | 'invoice' | 'client' | 'proposal' | 'portal' | 'retainer'
   id: string
   title: string
   subtitle: string
   badge: string
   badgeColor: string
+  onOpen: () => void
 }
 
-function ConversationSearch({ onClose, deals, invoices }: { onClose: () => void; deals: Deal[]; invoices: Invoice[] }) {
+function ConversationSearch({ onClose, onNavigate, deals, invoices, retainers }: { onClose: () => void; onNavigate: (v: ViewId) => void; deals: Deal[]; invoices: Invoice[]; retainers: Retainer[] }) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<SearchHit[]>([])
   const [searching, setSearching] = useState(false)
+  const [clients, setClients] = useState<Client[]>([])
+  const [proposals, setProposals] = useState<SearchProposal[]>([])
+  const [portals, setPortals] = useState<SearchPortal[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { inputRef.current?.focus() }, [])
+  useEffect(() => {
+    inputRef.current?.focus()
+    fetchAuthed('/api/clients').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) && setClients(d)).catch(() => {})
+    fetchAuthed('/api/proposals').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) && setProposals(d)).catch(() => {})
+    fetchAuthed('/api/portals').then(r => r.ok ? r.json() : []).then(d => Array.isArray(d) && setPortals(d)).catch(() => {})
+  }, [])
+
+  const goTo = useCallback((v: ViewId) => { onNavigate(v); onClose() }, [onNavigate, onClose])
+  const openLink = useCallback((path: string) => { window.open(path, '_blank', 'noopener,noreferrer'); onClose() }, [onClose])
 
   const search = async (q: string) => {
     if (!q.trim()) { setResults([]); return }
@@ -6296,16 +6315,36 @@ function ConversationSearch({ onClose, deals, invoices }: { onClose: () => void;
     const hits: LocalHit[] = []
     deals.forEach(d => {
       if ([d.name, d.industry, d.phone ?? ''].some(f => f.toLowerCase().includes(q))) {
-        hits.push({ type: 'deal', id: d.id, title: d.name, subtitle: `${d.industry} · GHS ${d.valueGHS.toLocaleString()}`, badge: STAGE_LABELS[d.stage], badgeColor: STAGE_COLOR[d.stage] })
+        hits.push({ type: 'deal', id: d.id, title: d.name, subtitle: `${d.industry} · GHS ${d.valueGHS.toLocaleString()}`, badge: STAGE_LABELS[d.stage], badgeColor: STAGE_COLOR[d.stage], onOpen: () => goTo('pipeline') })
       }
     })
     invoices.forEach(inv => {
       if ([inv.clientName, inv.description].some(f => f.toLowerCase().includes(q))) {
-        hits.push({ type: 'invoice', id: inv.id, title: inv.clientName, subtitle: `${inv.description} · GHS ${inv.totalGHS.toLocaleString()}`, badge: INV_STATUS_LABEL[inv.status], badgeColor: INV_STATUS_COLOR[inv.status] })
+        hits.push({ type: 'invoice', id: inv.id, title: inv.clientName, subtitle: `${inv.description} · GHS ${inv.totalGHS.toLocaleString()}`, badge: INV_STATUS_LABEL[inv.status], badgeColor: INV_STATUS_COLOR[inv.status], onOpen: () => goTo('invoices') })
+      }
+    })
+    clients.forEach(c => {
+      if ([c.name, c.industry ?? '', c.phone ?? '', c.email ?? ''].some(f => f.toLowerCase().includes(q))) {
+        hits.push({ type: 'client', id: c.id, title: c.name, subtitle: [c.industry, c.phone].filter(Boolean).join(' · '), badge: 'Client', badgeColor: MUTED, onOpen: () => goTo('clients') })
+      }
+    })
+    retainers.forEach(r => {
+      if ([r.clientName, r.notes ?? ''].some(f => f.toLowerCase().includes(q))) {
+        hits.push({ type: 'retainer', id: r.id, title: r.clientName, subtitle: `GHS ${r.monthlyGHS.toLocaleString()}/mo`, badge: r.status, badgeColor: r.status === 'active' ? '#10B981' : MUTED, onOpen: () => goTo('analytics') })
+      }
+    })
+    proposals.forEach(p => {
+      if ([p.business_name, p.industry ?? ''].some(f => f.toLowerCase().includes(q))) {
+        hits.push({ type: 'proposal', id: p.id, title: p.business_name, subtitle: `GHS ${p.price_ghs.toLocaleString()}`, badge: p.status, badgeColor: GOLD, onOpen: () => openLink(`/p/${p.id}`) })
+      }
+    })
+    portals.forEach(p => {
+      if ([p.clientName, p.projectTitle].some(f => f.toLowerCase().includes(q))) {
+        hits.push({ type: 'portal', id: p.id, title: p.clientName, subtitle: p.projectTitle, badge: p.status, badgeColor: '#3B82F6', onOpen: () => openLink(`/c/${p.id}`) })
       }
     })
     return hits
-  }, [query, deals, invoices])
+  }, [query, deals, invoices, clients, retainers, proposals, portals, goTo, openLink])
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 200, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: 60 }}
@@ -6317,7 +6356,7 @@ function ConversationSearch({ onClose, deals, invoices }: { onClose: () => void;
             ref={inputRef}
             value={query}
             onChange={e => handleChange(e.target.value)}
-            placeholder="Search deals, invoices, conversations…"
+            placeholder="Search deals, clients, invoices, retainers, proposals, portals, conversations…"
             style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: TEXT, fontSize: 15, fontFamily: FONT_BODY }}
           />
           {searching && <ThinkingDots />}
@@ -6326,9 +6365,14 @@ function ConversationSearch({ onClose, deals, invoices }: { onClose: () => void;
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {localHits.length > 0 && (
             <>
-              <div style={{ padding: '8px 16px 4px', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Deals & Invoices</div>
+              <div style={{ padding: '8px 16px 4px', fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Matches</div>
               {localHits.map(h => (
-                <div key={`${h.type}-${h.id}`} style={{ padding: '10px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  key={`${h.type}-${h.id}`}
+                  onClick={h.onOpen}
+                  style={{ padding: '10px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                >
+                  <span style={{ fontSize: 9, fontFamily: FONT_HEADING, fontWeight: 600, color: MUTED, textTransform: 'uppercase', width: 44, flexShrink: 0 }}>{HIT_TYPE_LABEL[h.type]}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, color: TEXT }}>{h.title}</div>
                     <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>{h.subtitle}</div>
@@ -6343,7 +6387,7 @@ function ConversationSearch({ onClose, deals, invoices }: { onClose: () => void;
             <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>No results for &ldquo;{query}&rdquo;</div>
           )}
           {localHits.length === 0 && results.length === 0 && !query && (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Search deals, invoices, and agent conversations</div>
+            <div style={{ padding: '32px 0', textAlign: 'center', color: MUTED, fontFamily: FONT_BODY, fontSize: 13 }}>Search deals, clients, invoices, retainers, proposals, portals, and agent conversations</div>
           )}
           {results.map((hit, i) => {
             const dt = new Date(hit.created_at)
@@ -7285,6 +7329,17 @@ export default function Page() {
 
   useEffect(() => { refreshRetainers() }, [refreshRetainers])
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setSearchOpen(true)
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   // Load workspace (team intel) from Supabase on mount
   useEffect(() => {
     fetchAuthed('/api/workspace', { cache: 'no-store' })
@@ -7801,7 +7856,7 @@ export default function Page() {
             <div style={{ fontSize: 12, color: MUTED, marginTop: 2, fontFamily: FONT_BODY }}>{agent.description}</div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button onClick={() => setSearchOpen(true)} title="Search conversations" style={{ fontSize: 15, color: MUTED, padding: '4px 8px', border: `1px solid ${BORDER}`, borderRadius: 6, background: 'none', cursor: 'pointer' }}>⌕</button>
+            <button onClick={() => setSearchOpen(true)} title="Search everything (Ctrl/Cmd+K)" style={{ fontSize: 15, color: MUTED, padding: '4px 8px', border: `1px solid ${BORDER}`, borderRadius: 6, background: 'none', cursor: 'pointer' }}>⌕</button>
             {agent.id !== 'prospect' && <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />}
             {messages.length > 0 && (
               <button onClick={handleClear} style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, transition: 'color 0.15s, border-color 0.15s' }}
@@ -7870,7 +7925,7 @@ export default function Page() {
         {renderMainContent()}
       </div>
       <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
-      {searchOpen && <ConversationSearch onClose={() => setSearchOpen(false)} deals={deals} invoices={pageInvoices} />}
+      {searchOpen && <ConversationSearch onClose={() => setSearchOpen(false)} onNavigate={setActiveView} deals={deals} invoices={pageInvoices} retainers={retainers} />}
       {importModal && <ImportProspectsModal prospects={importModal} existingDeals={deals} onImport={handleImportProspects} onClose={() => setImportModal(null)} />}
     </div>
   )

@@ -11,11 +11,21 @@ export const dynamic = 'force-dynamic'
 
 // GET ?dealId=xxx — look up the portal for a deal (used by the modal to decide
 // between "create" and "update status" mode).
+// GET (no dealId) — list all portals (used by the search view).
 export async function GET(req: NextRequest) {
   try {
     const dealId = req.nextUrl.searchParams.get('dealId')
-    if (!dealId) return NextResponse.json({ error: 'dealId required' }, { status: 400 })
     const sb = getSupabase()
+    if (!dealId) {
+      const { data, error } = await sb
+        .from('portals')
+        .select('id, deal_id, client_name, project_title, status, created_at')
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return NextResponse.json((data ?? []).map(p => ({
+        id: p.id, dealId: p.deal_id, clientName: p.client_name, projectTitle: p.project_title, status: p.status,
+      })))
+    }
     const { data, error } = await sb.from('portals').select('*').eq('deal_id', dealId).maybeSingle()
     if (error) throw error
     if (!data) return NextResponse.json(null)
