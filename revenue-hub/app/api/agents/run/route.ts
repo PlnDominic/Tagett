@@ -5,6 +5,7 @@ import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 import { getSupabase } from '@/lib/supabase'
 import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
+import { sendPush } from '@/lib/push'
 
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
@@ -214,14 +215,15 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
   }
 
   // ── 6. Push notification ──────────────────────────────────────────────────────
+  // Called directly rather than fetching /api/notify/send: that route sits
+  // behind session middleware, and this Vercel Cron request carries no
+  // session cookie, so the fetch was silently redirected to /login — the
+  // try/catch never saw an error because a redirect response isn't a thrown
+  // exception, so this notification never actually went out.
   try {
-    await fetch(`${req.nextUrl.origin}/api/notify/send`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: '🤖 Tagett auto-run complete',
-        body: `Leads found. Pitches drafted. Check your email — ${runAt}`,
-      }),
+    await sendPush({
+      title: '🤖 Tagett auto-run complete',
+      body: `Leads found. Pitches drafted. Check your email — ${runAt}`,
     })
   } catch { /* non-fatal */ }
 

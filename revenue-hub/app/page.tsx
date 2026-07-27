@@ -1876,7 +1876,7 @@ function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
             Meet The Council.
           </div>
           <div style={{ fontSize: 13, color: MUTED, textAlign: 'center', lineHeight: 1.6, marginBottom: 36, fontFamily: FONT_BODY }}>
-            Five advisors that pressure-test every decision. No operator acts without The Council's check.
+            Five advisors that pressure-test every decision. No operator acts without The Council&apos;s check.
           </div>
         </>
       )}
@@ -2032,7 +2032,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
     } catch {
       setStatuses(prev => ({ ...prev, [idx]: 'error' }))
     }
-  }, [profiles])
+  }, [profiles, schedule])
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(content)
@@ -2882,7 +2882,7 @@ function CommandCenter({ deals, earnedGHS, pipelineGHS, mrrGHS, theme, onToggleT
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: briefResult ? 12 : 0 }}>
           <div>
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 14, color: TEXT }}>Morning Brief</div>
-            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Executor: today's 3 highest-leverage actions</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Executor: today&apos;s 3 highest-leverage actions</div>
           </div>
           <button onClick={onRunBrief} disabled={briefLoading} style={{
             padding: '8px 16px', borderRadius: 8,
@@ -3186,7 +3186,7 @@ function ProposalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               )}
             </div>
             <div style={{ marginTop: 10, fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
-              You'll get a push notification the moment they open it.
+              You&apos;ll get a push notification the moment they open it.
             </div>
           </>
         )}
@@ -3473,7 +3473,7 @@ function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 14, fontFamily: FONT_BODY, outline: 'none', boxSizing: 'border-box', marginBottom: 12 }}
             />
             <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginBottom: 12 }}>
-              A live page showing project status and payment milestones (pulled from this client's invoices). Share the link once. It stays current.
+              A live page showing project status and payment milestones (pulled from this client&apos;s invoices). Share the link once. It stays current.
             </div>
             {error && <div style={{ marginBottom: 10, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
             <button onClick={create} disabled={creating || !projectTitle.trim()} style={{ padding: '10px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, cursor: creating ? 'default' : 'pointer', opacity: creating || !projectTitle.trim() ? 0.5 : 1 }}>
@@ -5655,7 +5655,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
 
       {!loading && projects.length === 0 && !fetchError && (
         <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY, padding: '8px 0', opacity: 0.6 }}>
-          No projects published yet. Click "+ Add Project" to publish your first project to ecstasytechnologies.com.
+          No projects published yet. Click &quot;+ Add Project&quot; to publish your first project to ecstasytechnologies.com.
         </div>
       )}
 
@@ -5752,7 +5752,7 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
                         {parsed.proof && (
                           <div style={{ marginTop: 4, padding: '10px 12px', borderRadius: 8, border: `1px solid ${GOLD}40`, background: `${GOLD}08` }}>
                             <div style={{ fontSize: 10, fontFamily: FONT_HEADING, fontWeight: 700, color: GOLD, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>Pitch Proof</div>
-                            <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, fontStyle: 'italic', marginBottom: 8 }}>"{parsed.proof}"</div>
+                            <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, fontStyle: 'italic', marginBottom: 8 }}>&quot;{parsed.proof}&quot;</div>
                             <button onClick={() => handleCopyProof(parsed.proof)} style={{ fontSize: 11, padding: '4px 12px', borderRadius: 14, border: `1px solid ${GOLD}50`, background: copiedProof ? `${GOLD}20` : 'none', color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>
                               {copiedProof ? '✓ Copied' : 'Copy'}
                             </button>
@@ -7512,23 +7512,19 @@ export default function Page() {
     // Scoped to deals closed THIS calendar month — an all-time cumulative
     // total never resets, so the "Monthly Goal" ring looked the same (or
     // just kept climbing) no matter which month it actually was.
+    //
+    // This used to fall back to regex-scraping the largest "GHS ####" mention
+    // out of the RevenueBot chat history whenever no deals existed yet, and
+    // display that as earned revenue. That chat is an AI conversation, not a
+    // ledger — a speculative or hypothetical figure the AI mentioned (e.g.
+    // "you could earn GHS 8,000 if...") would get shown on the Monthly Goal
+    // ring indistinguishably from real closed revenue. Zero deals closed this
+    // month is genuinely GHS 0; no heuristic should override that.
     const monthStart = startOfMonth()
-    const fromDeals = deals
+    return deals
       .filter(d => d.stage === 'closed' && (d.stageChangedAt ?? d.createdAt) >= monthStart)
       .reduce((s, d) => s + d.valueGHS, 0)
-    if (fromDeals > 0) return fromDeals
-    // Deals are already being tracked but none closed yet this month — that's
-    // a real GHS 0, not a cue to fall back to the chat-scan heuristic below.
-    if (deals.length > 0) return 0
-    let max = 0
-    for (const m of allChats.revenue ?? []) {
-      for (const match of m.content.match(/GHS\s*([\d,]+)/gi) ?? []) {
-        const val = parseInt(match.replace(/[^0-9]/g, ''), 10)
-        if (val < MONTHLY_GOAL_GHS && val > max) max = val
-      }
-    }
-    return max
-  }, [deals, allChats.revenue])
+  }, [deals])
 
   const pipelineGHS = useMemo(() => {
     // Scoped to deals opened THIS calendar month (and genuinely still active —

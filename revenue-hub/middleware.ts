@@ -5,6 +5,23 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABAS
 const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 const CRON_SECRET = process.env.CRON_SECRET
 
+// Tagett is a single-operator CRM (Ecstasy Technologies, run by Dominic) — it
+// was never meant to be multi-tenant. Every /api/* data route reads and
+// writes with the Supabase service-role key, which bypasses Row Level
+// Security entirely, and no table actually has an RLS policy defined anyway.
+// That means "is there a valid Supabase session" was previously the ONLY
+// check standing between the whole business's deals, clients, invoices, and
+// phone numbers and anyone who could authenticate — including a stranger who
+// simply signs up, if signups are enabled on the Supabase project. This
+// allowlist is defense in depth: even a successfully authenticated session is
+// rejected unless the email matches. Defaults to the operator's own email so
+// this is protective out of the box; ALLOWED_EMAILS (comma-separated) can
+// override it if a teammate ever needs access too.
+const ALLOWED_EMAILS = (process.env.ALLOWED_EMAILS ?? 'dominickudom1738@gmail.com')
+  .split(',')
+  .map(e => e.trim().toLowerCase())
+  .filter(Boolean)
+
 // Proposal and client-portal links are shared over WhatsApp — the recipients
 // have no Tagett session and never will. /p/[id] and /c/[id] are the pages they
 // see; /api/proposals/[id] and /api/portals/[id] are the (GET-only) routes those
@@ -70,13 +87,22 @@ export async function middleware(req: NextRequest) {
   // Let auth routes through always
   if (isAuthCallback) return res
 
+  // A real Supabase session that isn't the operator's own email is treated as
+  // not logged in at all — sign it out so the stray cookie doesn't linger,
+  // and fall through to the normal "not logged in" handling below rather than
+  // ever letting it reach a data route.
+  const authorized = !!user && ALLOWED_EMAILS.includes((user.email ?? '').toLowerCase())
+  if (user && !authorized) {
+    await supabase.auth.signOut()
+  }
+
   // Already logged in and going to /login → redirect home
-  if (user && isLogin) {
+  if (authorized && isLogin) {
     return NextResponse.redirect(new URL('/', req.url))
   }
 
-  // Not logged in and not on /login → redirect to /login
-  if (!user && !isLogin) {
+  // Not logged in (or not authorized) and not on /login → redirect to /login
+  if (!authorized && !isLogin) {
     return NextResponse.redirect(new URL('/login', req.url))
   }
 

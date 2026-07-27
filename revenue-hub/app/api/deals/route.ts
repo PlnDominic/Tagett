@@ -124,25 +124,22 @@ export async function DELETE(req: NextRequest) {
   }
 }
 
+// PUT — upsert-only bulk sync of the client's in-memory deals array (used by
+// the 1500ms-debounced autosave for edits like stage moves and field updates).
+// This used to also delete every server-side row whose id was missing from
+// the sent array, on the theory that "not in the list" meant "deleted". That
+// made the array whichever device pushed last: if a deal was added on one
+// device (or by the immediate POST above) and a second device's array — open
+// in another tab, mid-edit, not yet aware of it — synced afterward, its
+// shorter array would delete the other device's brand-new deal from
+// Supabase. Deletion is now only ever done explicitly via DELETE above.
 export async function PUT(req: NextRequest) {
   try {
     const deals: Deal[] = await req.json()
+    if (deals.length === 0) return NextResponse.json({ ok: true })
     const sb = getSupabase()
-
-    const { data: existing } = await sb.from('deals').select('id')
-    const existingIds = new Set((existing ?? []).map((r: { id: string }) => r.id))
-    const newIds = new Set(deals.map(d => d.id))
-    const toDelete = [...existingIds].filter(id => !newIds.has(id))
-
-    if (deals.length > 0) {
-      const { error } = await sb.from('deals').upsert(deals.map(toRow), { onConflict: 'id' })
-      if (error) throw error
-    }
-    if (toDelete.length > 0) {
-      const { error } = await sb.from('deals').delete().in('id', toDelete)
-      if (error) throw error
-    }
-
+    const { error } = await sb.from('deals').upsert(deals.map(toRow), { onConflict: 'id' })
+    if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (err) {
     console.error('[deals PUT]', err)

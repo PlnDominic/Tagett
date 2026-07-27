@@ -15,11 +15,22 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
 
     // Milestones from this client's invoices — matched by deal first (precise),
     // falling back to exact client-name match for invoices created standalone.
-    const { data: invoices } = portal.deal_id
-      ? await sb.from('invoices').select('id, client_name, deal_id').or(`deal_id.eq.${portal.deal_id},client_name.eq.${portal.client_name}`)
-      : await sb.from('invoices').select('id, client_name, deal_id').eq('client_name', portal.client_name)
+    // Two separate parameterized .eq() queries, merged here, rather than
+    // building a single .or(`deal_id.eq.${x},client_name.eq.${y}`) filter
+    // string: PostgREST's filter syntax treats commas, dots, and parens as
+    // structural, so a client name containing any of those (e.g. "Acme, Ltd")
+    // would silently corrupt the query and return the wrong milestones.
+    const invoices: { id: string; client_name: string; deal_id: string | null }[] = []
+    if (portal.deal_id) {
+      const { data } = await sb.from('invoices').select('id, client_name, deal_id').eq('deal_id', portal.deal_id)
+      invoices.push(...(data ?? []))
+    }
+    const { data: byName } = await sb.from('invoices').select('id, client_name, deal_id').eq('client_name', portal.client_name)
+    for (const inv of byName ?? []) {
+      if (!invoices.some(i => i.id === inv.id)) invoices.push(inv)
+    }
 
-    const invoiceIds = (invoices ?? []).map(i => i.id as string)
+    const invoiceIds = invoices.map(i => i.id)
     const { data: milestones } = invoiceIds.length
       ? await sb.from('invoice_milestones').select('*').in('invoice_id', invoiceIds)
       : { data: [] }

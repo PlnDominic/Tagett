@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { sendPush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -30,13 +31,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, nudged: false, postsThisWeek: count })
     }
 
-    await fetch(`${req.nextUrl.origin}/api/notify/send`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: '📅 No posts this week',
-        body: 'The Social Calendar has been quiet for 7 days. Generate a Status pack or an X/LinkedIn pair.',
-      }),
+    // Called directly rather than fetching /api/notify/send: that route sits
+    // behind session middleware, and this Vercel Cron request carries no
+    // session cookie, so the fetch was silently redirected to /login and
+    // swallowed by .catch(() => {}) — this notification never actually sent.
+    await sendPush({
+      title: '📅 No posts this week',
+      body: 'The Social Calendar has been quiet for 7 days. Generate a Status pack or an X/LinkedIn pair.',
     }).catch(() => {})
 
     return NextResponse.json({ ok: true, nudged: true })

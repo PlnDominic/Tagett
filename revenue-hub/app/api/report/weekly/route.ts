@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
 import { sendReportEmail } from '@/lib/mailer'
+import { sendPush } from '@/lib/push'
 
 export const dynamic = 'force-dynamic'
 
@@ -134,13 +135,13 @@ export async function GET(req: NextRequest) {
       emailSent = true
     } catch { /* push still goes out below */ }
 
-    await fetch(`${req.nextUrl.origin}/api/notify/send`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        title: '📊 Weekly report',
-        body: `${pitchesNow} pitches · ${repliesNow} replies · ${closedThisWeek.length} closed${closedThisWeek.length > 0 ? ` (GHS ${closedGHS.toLocaleString()})` : ''} · ${stale.length} going cold. Full report in your email.`,
-      }),
+    // Called directly rather than fetching /api/notify/send: that route sits
+    // behind session middleware, and this Vercel Cron request carries no
+    // session cookie, so the fetch was silently redirected to /login and
+    // swallowed by .catch(() => {}) — this notification never actually sent.
+    await sendPush({
+      title: '📊 Weekly report',
+      body: `${pitchesNow} pitches · ${repliesNow} replies · ${closedThisWeek.length} closed${closedThisWeek.length > 0 ? ` (GHS ${closedGHS.toLocaleString()})` : ''} · ${stale.length} going cold. Full report in your email.`,
     }).catch(() => {})
 
     return NextResponse.json({ ok: true, emailSent, pitchesNow, repliesNow, closed: closedThisWeek.length, stale: stale.length })
