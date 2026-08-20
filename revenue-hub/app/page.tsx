@@ -3807,9 +3807,32 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   const [verifying, setVerifying] = useState(false)
   const [editingEmail, setEditingEmail] = useState(false)
   const [emailDraft, setEmailDraft] = useState(deal.email ?? '')
+  const [findingEmail, setFindingEmail] = useState(false)
+  const [findEmailError, setFindEmailError] = useState(false)
   const saveEmail = () => {
     onUpdate(deal.id, { email: emailDraft.trim() || undefined })
     setEditingEmail(false)
+  }
+  const findEmail = async () => {
+    setFindingEmail(true)
+    setFindEmailError(false)
+    try {
+      const res = await fetch('/api/deals/find-email', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: deal.name, hint: deal.industry, websiteUrl: deal.websiteCheckUrl }),
+      })
+      const data = await res.json()
+      if (res.ok && data.email) {
+        onUpdate(deal.id, { email: data.email })
+      } else {
+        setFindEmailError(true)
+      }
+    } catch {
+      setFindEmailError(true)
+    } finally {
+      setFindingEmail(false)
+    }
   }
   const handleVerify = async () => {
     setVerifying(true)
@@ -3899,12 +3922,24 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
           <button onClick={() => setEditingEmail(true)} title="Edit email" style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✎</button>
         </div>
       ) : (
-        <button
-          onClick={() => setEditingEmail(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
-        >
-          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>+ Add Email</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
+          <button
+            onClick={() => setEditingEmail(true)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+          >
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>+ Add Email</span>
+          </button>
+          <button
+            onClick={findEmail}
+            disabled={findingEmail}
+            title="Search for this business's email"
+            style={{ background: 'none', border: 'none', cursor: findingEmail ? 'wait' : 'pointer', padding: 0 }}
+          >
+            <span style={{ fontSize: 11, color: findEmailError ? '#e05c5c' : GOLD, fontFamily: FONT_BODY, opacity: findingEmail ? 0.6 : 1 }}>
+              {findingEmail ? 'Searching…' : findEmailError ? 'Not found · retry' : '⌕ Find Email'}
+            </span>
+          </button>
+        </div>
       )}
 
       {followUpLabel && (
