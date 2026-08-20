@@ -7353,12 +7353,24 @@ export default function Page() {
       .catch(() => {})
   }, [])
 
-  useEffect(() => {
-    // Show local data immediately, then hydrate from Supabase
-    const local = loadDeals()
-    if (local.length > 0) setDeals(local)
+  const dbSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Stage moves, field edits and follow-up dates reach Supabase only via the
+  // 1500ms debounced PUT below, so between the edit and that response the
+  // server's copy is stale. Bump on every such edit; record the bumped value
+  // once its PUT succeeds. Unequal means "local has edits the server hasn't
+  // confirmed". A counter rather than a boolean because a second edit can land
+  // while the first PUT is still in flight — that reply must not mark the
+  // newer edit as saved.
+  const editSeqRef = useRef(0)
+  const syncedSeqRef = useRef(0)
+
+  const hydrateDeals = useCallback(() => {
+    // Never merge a server snapshot over unconfirmed local edits: it would
+    // revert them on screen and the pending PUT would then write the reverted
+    // state back, losing the edit for good. The next focus refreshes anyway.
+    if (editSeqRef.current !== syncedSeqRef.current) return
     fetchAuthed('/api/deals', { cache: 'no-store' })
-      .then(r => r.json())
+      .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (!Array.isArray(d)) return
         // Merge rather than replace: a deal added on this device (e.g. from
@@ -7377,6 +7389,29 @@ export default function Page() {
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    // Show local data immediately, then hydrate from Supabase
+    const local = loadDeals()
+    if (local.length > 0) setDeals(local)
+    hydrateDeals()
+  }, [hydrateDeals])
+
+  // Deals arrive from places this tab never hears about: the nightly
+  // /api/agents/run prospecting cron, the same account open on another device,
+  // or a write straight to the API. Hydrating only on mount meant none of them
+  // ever showed up — and an installed PWA is backgrounded and foregrounded, not
+  // reloaded, so a phone could sit on a stale pipeline indefinitely. Refetch
+  // whenever the tab comes back to the foreground.
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') hydrateDeals() }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', hydrateDeals)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', hydrateDeals)
+    }
+  }, [hydrateDeals])
 
   // ── Stale deal notifications ──────────────────────────────────────────────
   // Safety net for deals with no explicit follow-up date set: once a deal sits
@@ -7440,16 +7475,21 @@ export default function Page() {
     }, 1500)
   }, [pinnedNotes])
 
-  const dbSyncRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     saveDeals(deals) // Always write to localStorage immediately
     if (dbSyncRef.current) clearTimeout(dbSyncRef.current)
     dbSyncRef.current = setTimeout(() => {
+      dbSyncRef.current = null
+      // Captured before the request: any edit made while it's in flight bumps
+      // editSeqRef past this value, so this reply won't mark that edit saved.
+      const seq = editSeqRef.current
       fetch('/api/deals', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(deals),
-      }).catch(() => {})
+      })
+        .then(r => { if (r.ok) syncedSeqRef.current = seq })
+        .catch(() => {})
     }, 1500)
   }, [deals])
 
@@ -7559,6 +7599,7 @@ export default function Page() {
   }, [])
 
   const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
+    editSeqRef.current++
     const deal = deals.find(d => d.id === id)
     const justClosed = stage === 'closed' && deal?.stage !== 'closed'
     setDeals(prev => prev.map(d => {
@@ -7593,10 +7634,12 @@ export default function Page() {
   }, [])
 
   const handleUpdateDeal = useCallback((id: string, updates: Partial<Deal>) => {
+    editSeqRef.current++
     setDeals(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d))
   }, [])
 
   const handleSetFollowUp = useCallback((id: string, ts: number | undefined) => {
+    editSeqRef.current++
     setDeals(prev => prev.map(d => d.id === id ? { ...d, followUpAt: ts } : d))
   }, [])
 
