@@ -3809,9 +3809,11 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   const [emailDraft, setEmailDraft] = useState(deal.email ?? '')
   const [findingEmail, setFindingEmail] = useState(false)
   const [findEmailError, setFindEmailError] = useState(false)
+  const [foundEmailInfo, setFoundEmailInfo] = useState<{ confidence: 'high' | 'low'; reason: string; source: string } | null>(null)
   const saveEmail = () => {
     onUpdate(deal.id, { email: emailDraft.trim() || undefined })
     setEditingEmail(false)
+    setFoundEmailInfo(null)
   }
   const findEmail = async () => {
     setFindingEmail(true)
@@ -3824,7 +3826,13 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       })
       const data = await res.json()
       if (res.ok && data.email) {
-        onUpdate(deal.id, { email: data.email })
+        // Never write a found email straight to the deal — surface it in the
+        // editable field with where it came from and how confident the match
+        // is, so a "this snippet mentioned a totally different business's
+        // email" false positive gets caught before it's ever used to pitch.
+        setEmailDraft(data.email)
+        setFoundEmailInfo({ confidence: data.confidence ?? 'low', reason: data.reason ?? '', source: data.source ?? '' })
+        setEditingEmail(true)
       } else {
         setFindEmailError(true)
       }
@@ -3898,17 +3906,27 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       </button>
 
       {editingEmail ? (
-        <div style={{ display: 'flex', gap: 4, marginTop: 5 }} onClick={e => e.stopPropagation()}>
-          <input
-            autoFocus
-            value={emailDraft}
-            onChange={e => setEmailDraft(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') saveEmail(); if (e.key === 'Escape') { setEmailDraft(deal.email ?? ''); setEditingEmail(false) } }}
-            placeholder="email@business.com"
-            type="email"
-            style={{ flex: 1, minWidth: 0, padding: '3px 6px', borderRadius: 6, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 11, fontFamily: FONT_BODY, outline: 'none' }}
-          />
-          <button onClick={saveEmail} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Save</button>
+        <div style={{ marginTop: 5 }} onClick={e => e.stopPropagation()}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <input
+              autoFocus
+              value={emailDraft}
+              onChange={e => { setEmailDraft(e.target.value); setFoundEmailInfo(null) }}
+              onKeyDown={e => { if (e.key === 'Enter') saveEmail(); if (e.key === 'Escape') { setEmailDraft(deal.email ?? ''); setFoundEmailInfo(null); setEditingEmail(false) } }}
+              placeholder="email@business.com"
+              type="email"
+              style={{ flex: 1, minWidth: 0, padding: '3px 6px', borderRadius: 6, border: `1px solid ${foundEmailInfo?.confidence === 'low' ? '#F59E0B' : BORDER}`, background: SURFACE2, color: TEXT, fontSize: 11, fontFamily: FONT_BODY, outline: 'none' }}
+            />
+            <button onClick={saveEmail} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Save</button>
+          </div>
+          {foundEmailInfo && (
+            <div style={{ marginTop: 3, fontSize: 10, color: foundEmailInfo.confidence === 'low' ? '#F59E0B' : MUTED, fontFamily: FONT_BODY, lineHeight: 1.4 }}>
+              {foundEmailInfo.confidence === 'low' ? '⚠ Unverified — ' : '✓ '}{foundEmailInfo.reason}
+              {foundEmailInfo.source && (
+                <> · <a href={foundEmailInfo.source} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>source</a></>
+              )}
+            </div>
+          )}
         </div>
       ) : deal.email ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
