@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { COUNTRIES, marketFor, toE164 } from '@/lib/markets'
 import type {
   Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
   DealStage, Deal, ParsedProspect, InvoiceMilestone, Invoice, Retainer,
@@ -6606,6 +6607,8 @@ const GHANA_CITIES = ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Su
 
 function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void }) {
   const [query, setQuery] = useState('')
+  const [country, setCountry] = useState('Ghana')
+  const market = marketFor(country)
   const [city, setCity] = useState('Accra')
   const [results, setResults] = useState<PlaceResult[]>([])
   const [loading, setLoading] = useState(false)
@@ -6621,7 +6624,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
       const res = await fetch('/api/maps/search', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query, city }),
+        body: JSON.stringify({ query, city, country }),
       })
       const data = await res.json()
       if (!res.ok) { setError(data.error ?? 'Search failed'); return }
@@ -6636,7 +6639,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
       industry: query,
       valueGHS: 0,
       stage: 'found',
-      phone: p.phone ? p.phone.replace(/\s/g, '').replace(/^0/, '+233') : undefined,
+      phone: toE164(p.phone, market),
     })
     setAdded(prev => new Set([...prev, p.id]))
   }
@@ -6671,11 +6674,22 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
             style={{ ...inputStyle, flex: 2, minWidth: 160 }}
           />
           <select
+            value={country}
+            onChange={e => {
+              const next = e.target.value
+              setCountry(next)
+              setCity(marketFor(next).cities[0])
+            }}
+            style={{ ...inputStyle, flex: 1, minWidth: 110 }}
+          >
+            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select
             value={city}
             onChange={e => setCity(e.target.value)}
             style={{ ...inputStyle, flex: 1, minWidth: 100 }}
           >
-            {GHANA_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+            {market.cities.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
           <button
             onClick={search}
@@ -6766,7 +6780,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
                   </button>
                   {p.website && (
                     <button
-                      onClick={() => setAuditTarget({ url: p.website!, name: p.name, phone: p.phone ? p.phone.replace(/\s/g, '').replace(/^0/, '+233') : undefined })}
+                      onClick={() => setAuditTarget({ url: p.website!, name: p.name, phone: toE164(p.phone, market) })}
                       title="Scan their site with PageSpeed Insights and draft a pitch"
                       style={{ padding: '5px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 11, cursor: 'pointer' }}
                     >

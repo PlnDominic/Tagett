@@ -6,6 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
 import { sendPush } from '@/lib/push'
+import { MARKETS, Market, Region, outreachNotes } from '@/lib/markets'
 
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
@@ -25,14 +26,25 @@ const INDUSTRIES = [
   'Auto Mechanics & Car Dealers', 'Farms & Agribusiness',
 ]
 
-const CITIES = [
-  'Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Ho',
-  'Koforidua', 'Sunyani', 'Techiman', 'Bolgatanga', 'Wa', 'Tema',
-  'Kasoa', 'Obuasi', 'Ejisu', 'Nsawam', 'Winneba', 'Agona Swedru',
-]
-
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]
+}
+
+// Ecstasy Technologies delivers remotely, so the prospecting surface isn't only
+// Ghana. Ghana stays weighted highest — it's the home market, the referral
+// network is there, and WhatsApp outreach converts — but Europe and North
+// America are worth a run each because the same small-business site bills at
+// several times the Ghanaian rate, so one closed deal there moves the monthly
+// goal much further.
+const REGION_WEIGHTS: Array<Region> = [
+  'Ghana', 'Ghana', 'Ghana',
+  'Europe', 'Europe',
+  'North America', 'North America',
+]
+
+function pickMarket(): Market {
+  const region = pick(REGION_WEIGHTS)
+  return pick(MARKETS.filter(m => m.region === region))
 }
 
 interface GroqToolCall {
@@ -120,7 +132,9 @@ export async function GET(req: NextRequest) {
 
   const runAt = new Date().toUTCString().replace(' GMT', '')
   const industry = pick(INDUSTRIES)
-  const city = pick(CITIES)
+  const market = pickMarket()
+  const city = pick(market.cities)
+  const outreach = outreachNotes(market)
   const workspace: Record<string, string> = {}
 
   // ── 1. Scout + Prospect in parallel ──────────────────────────────────────────
@@ -129,17 +143,20 @@ export async function GET(req: NextRequest) {
       apiKey,
       tools: getAgentTools('scout'),
       system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
-You are SocialScout. Call search_google FIRST — it's a real Google search via SerpAPI and actually surfaces Facebook posts, reviews, and local mentions. Reddit has almost no Ghanaian SME activity, so only use search_reddit as a cheap secondary check. Try queries like '"need a website" Ghana', 'site:facebook.com [industry] Ghana', or '[industry] [city] Ghana reviews "no website"'. Report 3-5 specific, actionable findings — real names, links, what they said. Never invent a result if a search comes up empty — say so and try a different query. Be concise.`,
-      userMsg: 'Find businesses in Ghana right now who need a website or are complaining about their current one. Use search_google first.',
+You are SocialScout. Market this run: ${city}, ${market.country}.
+Call search_google FIRST — it's a real Google search via SerpAPI and actually surfaces Facebook posts, reviews, and local mentions. Always pass country="${market.country}" so results come back for the right market. Reddit has almost no Ghanaian SME activity but is genuinely active for UK/US/Canada small business, so use search_reddit as a real second source outside Ghana. Try queries like '"need a website" ${city}', 'site:facebook.com [industry] ${city}', or '[industry] ${city} reviews "no website"'. Report 3-5 specific, actionable findings — real names, links, what they said. Never invent a result if a search comes up empty — say so and try a different query. Be concise.
+OUTREACH FOR THIS MARKET: ${outreach}`,
+      userMsg: `Find businesses in ${city}, ${market.country} right now who need a website or are complaining about their current one. Use search_google first with country="${market.country}".`,
     }),
     runAgent({
       apiKey,
       tools: getAgentTools('prospect'),
       system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
 You are ProspectBot. NEVER invent businesses — only report what a tool call actually returns.
-Industry focus this run: ${industry}. City focus: ${city}, Ghana.
-Call search_google_maps FIRST with query="${industry}" and city="${city}" — it returns real local businesses with a website field, so any result with no website is a confirmed prime prospect with a verified phone number. Only fall back to search_web if search_google_maps returns no results or is unavailable. Find 3-5 real businesses without websites. Include phone numbers where found.`,
-      userMsg: `Find ${industry} businesses in ${city}, Ghana that don't have websites. Use search_google_maps first — it's built for exactly this.`,
+Industry focus this run: ${industry}. City focus: ${city}, ${market.country}.
+Call search_google_maps FIRST with query="${industry}", city="${city}" and country="${market.country}" — it returns real local businesses with a website field, so any result with no website is a confirmed prime prospect with a verified phone number. The country argument matters: city names repeat across countries and Maps will silently return the wrong one. Only fall back to search_web if search_google_maps returns no results or is unavailable. Find 3-5 real businesses without websites. Include phone numbers where found.
+OUTREACH FOR THIS MARKET: ${outreach}`,
+      userMsg: `Find ${industry} businesses in ${city}, ${market.country} that don't have websites. Use search_google_maps first with country="${market.country}" — it's built for exactly this.`,
     }),
   ])
 
@@ -152,11 +169,13 @@ Call search_google_maps FIRST with query="${industry}" and city="${city}" — it
     apiKey,
     tools: [],
     system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month.
-You are ContentBot. Based on the TEAM INTEL below, draft 3 short WhatsApp pitch messages (under 60 words each) for the top leads found. Each message should be warm, specific to their business, reference a real Ecstasy Technologies project as proof, and end with one clear CTA.
+You are ContentBot. Leads this run are in ${city}, ${market.country}.
+OUTREACH FOR THIS MARKET: ${outreach}
+Based on the TEAM INTEL below, draft 3 short pitch messages (under 60 words each) for the top leads found, in whichever channel the note above says this market actually uses. Each message should be warm, specific to their business, reference a real Ecstasy Technologies project as proof, and end with one clear CTA.
 
 TEAM INTEL:
 ${intel}`,
-    userMsg: 'Draft 3 WhatsApp pitch messages for the best leads from the team intel above.',
+    userMsg: `Draft 3 pitch messages for the best leads from the team intel above, written for ${market.country}.`,
   })
 
   workspace.content = pitches
@@ -191,7 +210,9 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
     await sb.from('agent_runs').insert({
       run_at: new Date().toISOString(),
       industry,
-      city,
+      // Qualified with the country: run history is ambiguous otherwise now that
+      // cities span three regions. Stays a plain string, so no migration.
+      city: `${city}, ${market.country}`,
       social_results: social,
       prospect_results: prospect,
       pitch_drafts: pitches,
