@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 import { stripEmDashes } from '@/lib/text'
 
-const GROQ_MODEL    = 'llama-3.3-70b-versatile'
+// Groq deprecated llama-3.3-70b-versatile for free/developer tiers in June 2026;
+// it now answers every request with a 404 "model does not exist". gpt-oss-120b
+// is the migration target Groq names for it.
+const GROQ_MODEL    = 'openai/gpt-oss-120b'
 const GEMINI_MODEL  = 'gemini-2.0-flash'
 const MISTRAL_MODEL = 'mistral-small-latest'
 const MAX_TOOL_ITERATIONS = 5
@@ -54,8 +57,8 @@ export async function POST(req: NextRequest) {
   const geminiKey  = process.env.GEMINI_API_KEY
   const mistralKey = process.env.MISTRAL_API_KEY
 
-  if (!groqKey) {
-    return NextResponse.json({ error: 'GROQ_API_KEY not configured' }, { status: 500 })
+  if (!groqKey && !geminiKey && !mistralKey) {
+    return NextResponse.json({ error: 'No LLM provider configured (set GROQ_API_KEY, GEMINI_API_KEY or MISTRAL_API_KEY)' }, { status: 500 })
   }
 
   let body: ChatRequest
@@ -72,13 +75,24 @@ export async function POST(req: NextRequest) {
 
   const tools: ToolDefinition[] = agentId ? getAgentTools(agentId) : []
 
-  // Priority for tool-using agents: Mistral → Gemini → Groq
-  // Plain chat agents always use Groq
-  const useMistral = tools.length > 0 && !!mistralKey
-  const useGemini  = tools.length > 0 && !useMistral && !!geminiKey
-  const apiUrl = useMistral ? MISTRAL_URL : useGemini ? GEMINI_URL : GROQ_URL
-  const apiKey = useMistral ? mistralKey! : useGemini ? geminiKey! : groqKey
-  const model  = useMistral ? MISTRAL_MODEL : useGemini ? GEMINI_MODEL : GROQ_MODEL
+  const groq    = groqKey    ? { url: GROQ_URL,    key: groqKey,    model: GROQ_MODEL }    : null
+  const gemini  = geminiKey  ? { url: GEMINI_URL,  key: geminiKey,  model: GEMINI_MODEL }  : null
+  const mistral = mistralKey ? { url: MISTRAL_URL, key: mistralKey, model: MISTRAL_MODEL } : null
+
+  // Tool-using agents lead with Mistral/Gemini (llama-family tool calls are the
+  // least reliable); plain chat leads with Groq for latency. Every configured
+  // provider is a fallback for the others regardless.
+  //
+  // The fallback used to trigger on 429 alone, which meant one provider going
+  // permanently bad took every non-tool feature down with it — exactly what
+  // happened when Groq retired the model this route hardcoded: the WhatsApp
+  // draft button, and every plain-chat agent, returned a 404 with no fallback
+  // even though Gemini and Mistral were configured and healthy. Any failure
+  // now moves to the next provider.
+  const chain = (tools.length > 0
+    ? [mistral, gemini, groq]
+    : [groq, mistral, gemini]
+  ).filter((p): p is NonNullable<typeof p> => p !== null)
 
   const chatMessages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -86,34 +100,32 @@ export async function POST(req: NextRequest) {
   ]
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
-    let res = await callLLM(apiUrl, apiKey, model, chatMessages, tools)
+    let res: Response | null = null
+    let lastError = 'No LLM provider available'
+    let lastStatus = 502
 
-    // Rate-limited (429) — cascade to next available provider
-    if (res.status === 429) {
-      if (useMistral && geminiKey) {
-        res = await callLLM(GEMINI_URL, geminiKey, GEMINI_MODEL, chatMessages, tools)
-      }
-      if (res.status === 429) {
-        res = await callLLM(GROQ_URL, groqKey, GROQ_MODEL, chatMessages, tools)
-      }
-    }
+    for (const provider of chain) {
+      const attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
+      if (attempt.ok) { res = attempt; break }
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      const message =
-        (err as { error?: { message?: string } })?.error?.message ??
-        `API error ${res.status}`
+      const err = await attempt.json().catch(() => ({}))
+      lastError = (err as { error?: { message?: string } })?.error?.message ?? `API error ${attempt.status}`
+      lastStatus = attempt.status
 
-      // Groq/llama occasionally produces malformed tool calls — retry without tools
-      if (tools.length > 0 && message.includes('tool call validation failed')) {
-        const fallback = await callLLM(GROQ_URL, groqKey, GROQ_MODEL, chatMessages, [])
-        if (fallback.ok) {
-          const fd = await fallback.json()
+      // Malformed tool calls are a quirk of the model, not the provider —
+      // retrying the same one without tools usually succeeds.
+      if (tools.length > 0 && lastError.includes('tool call validation failed')) {
+        const retry = await callLLM(provider.url, provider.key, provider.model, chatMessages, [])
+        if (retry.ok) {
+          const fd = await retry.json()
           return NextResponse.json({ text: stripEmDashes((fd.choices?.[0]?.message?.content as string) ?? '') })
         }
       }
+    }
 
-      return NextResponse.json({ error: message }, { status: res.status })
+    if (!res) {
+      console.error('[chat] all providers failed:', lastError)
+      return NextResponse.json({ error: lastError }, { status: lastStatus })
     }
 
     const data = await res.json()

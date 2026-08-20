@@ -3016,6 +3016,7 @@ function WhatsAppModal({ deal, onClose, onSent }: {
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [genError, setGenError] = useState<string | null>(null)
 
   const isReferralAsk = deal.followUpReason === 'referral'
   // Touches sent so far in the automated sequence: 1+ means a pitch already went
@@ -3027,6 +3028,7 @@ function WhatsAppModal({ deal, onClose, onSent }: {
 
   const generate = async () => {
     setLoading(true)
+    setGenError(null)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -3045,8 +3047,15 @@ function WhatsAppModal({ deal, onClose, onSent }: {
           messages: [{ role: 'user', content: `Write a WhatsApp cold-open message for this prospect:\n\nBusiness: ${deal.name}\nIndustry: ${deal.industry || 'unknown'}\nEstimated value: GHS ${deal.valueGHS.toLocaleString()}\nStage: ${STAGE_LABELS[deal.stage]}\n\nRequirements:\n- 3–4 sentences, friendly and direct\n- Open by introducing yourself by name exactly like "I am Dominic from Ecstasy Technologies" (a web design and development company based in Bibiani, Ghana)\n- Identify the single most likely, concrete pain point a "${deal.industry || 'business'}" in Ghana has *because* it lacks a good website (be specific to that industry, not generic) — and describe in plain terms how a website fixes exactly that\n- End with a soft CTA (not pushy)\n- No emojis unless natural` }],
         }),
       })
-      const d = await res.json()
-      setMessage(d.text ?? '')
+      // Without this the button just span and left an empty box: a failed
+      // generate fell through to `d.text ?? ''`, which is indistinguishable
+      // from the model returning nothing. Show what actually went wrong.
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setGenError(d.error ?? `Couldn't generate (error ${res.status}).`); return }
+      if (!d.text) { setGenError("The model returned an empty message. Try Generate again."); return }
+      setMessage(d.text)
+    } catch {
+      setGenError('Network error — check your connection and try again.')
     } finally { setLoading(false) }
   }
 
@@ -3095,6 +3104,10 @@ function WhatsAppModal({ deal, onClose, onSent }: {
             Send on WhatsApp
           </button>
         </div>
+
+        {genError && (
+          <div style={{ marginTop: 8, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY, lineHeight: 1.5 }}>{genError}</div>
+        )}
 
         {!deal.phone && (
           <div style={{ marginTop: 8, fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>No phone number — add one to this deal to send directly.</div>

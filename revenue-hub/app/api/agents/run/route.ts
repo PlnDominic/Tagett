@@ -10,7 +10,9 @@ import { sendPush } from '@/lib/push'
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
 
-const MODEL = 'llama-3.3-70b-versatile'
+// Groq retired llama-3.3-70b-versatile for free/developer tiers in June 2026 —
+// it 404s now, which had been silently failing this nightly prospecting run.
+const MODEL = 'openai/gpt-oss-120b'
 const MAX_ITER = 3
 
 // Weighted toward segments that actually pay GHS 3,500+ for a website — schools,
