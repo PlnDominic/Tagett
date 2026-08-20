@@ -6,7 +6,7 @@ import { getSupabase } from '@/lib/supabase'
 import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
 import { sendPush } from '@/lib/push'
-import { MARKETS, Market, Region, outreachNotes } from '@/lib/markets'
+import { MARKETS, Market, Region, outreachNotes, randomPlace } from '@/lib/markets'
 
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
@@ -135,7 +135,15 @@ export async function GET(req: NextRequest) {
   const runAt = new Date().toUTCString().replace(' GMT', '')
   const industry = pick(INDUSTRIES)
   const market = pickMarket()
-  const city = pick(market.cities)
+  // Drawn from GeoNames: any town, village or hamlet in the country, weighted
+  // toward the small ones. A hardcoded city list would keep sending the run at
+  // the same dozen saturated metros — the least likely places to find a
+  // business still without a website.
+  const place = await randomPlace(market)
+  const city = place.name
+  // Villages share names freely ("Newport" exists many times over in the UK
+  // alone), so carry the region into the search string when we have one.
+  const locale = place.admin1 ? `${city}, ${place.admin1}, ${market.country}` : `${city}, ${market.country}`
   const outreach = outreachNotes(market)
   const workspace: Record<string, string> = {}
 
@@ -145,20 +153,20 @@ export async function GET(req: NextRequest) {
       apiKey,
       tools: getAgentTools('scout'),
       system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
-You are SocialScout. Market this run: ${city}, ${market.country}.
-Call search_google FIRST — it's a real Google search via SerpAPI and actually surfaces Facebook posts, reviews, and local mentions. Always pass country="${market.country}" so results come back for the right market. Reddit has almost no Ghanaian SME activity but is genuinely active for UK/US/Canada small business, so use search_reddit as a real second source outside Ghana. Try queries like '"need a website" ${city}', 'site:facebook.com [industry] ${city}', or '[industry] ${city} reviews "no website"'. Report 3-5 specific, actionable findings — real names, links, what they said. Never invent a result if a search comes up empty — say so and try a different query. Be concise.
+You are SocialScout. Market this run: ${locale}. This is deliberately often a small town or village, not a big city — those are far less picked over.
+Call search_google FIRST — it's a real Google search via SerpAPI and actually surfaces Facebook posts, reviews, and local mentions. Always pass country="${market.country}" so results come back for the right market. Reddit has almost no Ghanaian SME activity but is genuinely active for UK/US/Canada small business, so use search_reddit as a real second source outside Ghana. Try queries like '"need a website" ${city}', 'site:facebook.com [industry] ${city}', or '[industry] ${locale} reviews "no website"'. If a small place returns nothing at all, widen to the surrounding district or county rather than inventing results. Report 3-5 specific, actionable findings — real names, links, what they said. Never invent a result if a search comes up empty — say so and try a different query. Be concise.
 OUTREACH FOR THIS MARKET: ${outreach}`,
-      userMsg: `Find businesses in ${city}, ${market.country} right now who need a website or are complaining about their current one. Use search_google first with country="${market.country}".`,
+      userMsg: `Find businesses in ${locale} right now who need a website or are complaining about their current one. Use search_google first with country="${market.country}".`,
     }),
     runAgent({
       apiKey,
       tools: getAgentTools('prospect'),
       system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
 You are ProspectBot. NEVER invent businesses — only report what a tool call actually returns.
-Industry focus this run: ${industry}. City focus: ${city}, ${market.country}.
+Industry focus this run: ${industry}. Place focus: ${locale} — often a small town or village, which is the point: businesses there are far less likely to already have a website.
 Call search_google_maps FIRST with query="${industry}", city="${city}" and country="${market.country}" — it returns real local businesses with a website field, so any result with no website is a confirmed prime prospect with a verified phone number. The country argument matters: city names repeat across countries and Maps will silently return the wrong one. Only fall back to search_web if search_google_maps returns no results or is unavailable. Find 3-5 real businesses without websites. Include phone numbers where found.
 OUTREACH FOR THIS MARKET: ${outreach}`,
-      userMsg: `Find ${industry} businesses in ${city}, ${market.country} that don't have websites. Use search_google_maps first with country="${market.country}" — it's built for exactly this.`,
+      userMsg: `Find ${industry} businesses in ${locale} that don't have websites. Use search_google_maps first with country="${market.country}" — it's built for exactly this.`,
     }),
   ])
 
@@ -171,7 +179,7 @@ OUTREACH FOR THIS MARKET: ${outreach}`,
     apiKey,
     tools: [],
     system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month.
-You are ContentBot. Leads this run are in ${city}, ${market.country}.
+You are ContentBot. Leads this run are in ${locale}.
 OUTREACH FOR THIS MARKET: ${outreach}
 Based on the TEAM INTEL below, draft 3 short pitch messages (under 60 words each) for the top leads found, in whichever channel the note above says this market actually uses. Each message should be warm, specific to their business, reference a real Ecstasy Technologies project as proof, and end with one clear CTA.
 
@@ -214,7 +222,7 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
       industry,
       // Qualified with the country: run history is ambiguous otherwise now that
       // cities span three regions. Stays a plain string, so no migration.
-      city: `${city}, ${market.country}`,
+      city: locale,
       social_results: social,
       prospect_results: prospect,
       pitch_drafts: pitches,

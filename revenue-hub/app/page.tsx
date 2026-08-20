@@ -6691,19 +6691,27 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
             onChange={e => {
               const next = e.target.value
               setCountry(next)
-              setCity(marketFor(next).cities[0])
+              setCity(marketFor(next).seedCities[0])
             }}
             style={{ ...inputStyle, flex: 1, minWidth: 110 }}
           >
             {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          <select
+          {/* Free text with suggestions rather than a fixed dropdown: the
+              whole point is reaching villages and rural areas, which no
+              curated list could enumerate. The datalist offers well-known
+              cities as a starting point without limiting input to them. */}
+          <input
             value={city}
             onChange={e => setCity(e.target.value)}
-            style={{ ...inputStyle, flex: 1, minWidth: 100 }}
-          >
-            {market.cities.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
+            onKeyDown={e => e.key === 'Enter' && search()}
+            list="place-suggestions"
+            placeholder="any town or village…"
+            style={{ ...inputStyle, flex: 1, minWidth: 130 }}
+          />
+          <datalist id="place-suggestions">
+            {market.seedCities.map(c => <option key={c} value={c} />)}
+          </datalist>
           <button
             onClick={search}
             disabled={loading || !query.trim()}

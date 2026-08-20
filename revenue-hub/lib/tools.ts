@@ -64,7 +64,7 @@ const SEARCH_GOOGLE_MAPS: ToolDefinition = {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Business type to search for, e.g. "pharmacies" or "restaurants"' },
-        city: { type: 'string', description: 'City to focus the search on, e.g. "Accra", "Manchester", "Houston"' },
+        city: { type: 'string', description: 'Place to focus the search on — any town, village or rural area, not only large cities, e.g. "Accra", "Hebden Bridge", "Marfa". Include the region if the name is ambiguous, e.g. "Newport, Shropshire".' },
         country: { type: 'string', description: `Country the city is in — one of: ${COUNTRIES.join(', ')}. Defaults to Ghana. Always pass this, because city names repeat across countries.` },
       },
       required: ['query', 'city'],
@@ -182,7 +182,7 @@ export async function executeTool(name: string, args: Record<string, string>): P
       const key = process.env.SERPAPI_KEY
       if (!key) return 'Google Maps search not available — SERPAPI_KEY not set.'
       const market = marketFor(args.country)
-      const city = (args.city ?? market.cities[0]).trim()
+      const city = (args.city ?? market.seedCities[0]).trim()
       const query = (args.query ?? '').trim()
       const params = new URLSearchParams({
         engine: 'google_maps',
