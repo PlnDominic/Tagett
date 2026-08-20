@@ -6623,12 +6623,49 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
   const [country, setCountry] = useState('Ghana')
   const market = marketFor(country)
   const [city, setCity] = useState('Accra')
+  const [placeHits, setPlaceHits] = useState<Array<{ name: string; admin1: string; population: number; fcode: string }>>([])
+  const [placeFocused, setPlaceFocused] = useState(false)
+  const [placeNote, setPlaceNote] = useState('')
   const [results, setResults] = useState<PlaceResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(false)
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [auditTarget, setAuditTarget] = useState<{ url: string; name?: string; phone?: string } | null>(null)
+
+  // Live gazetteer lookup for the place field. The seed-city datalist this
+  // replaces could only ever offer a dozen metros, so a village was reachable
+  // only by typing its exact name from memory — the opposite of the point.
+  useEffect(() => {
+    const term = city.trim()
+    if (!placeFocused || term.length < 2) { setPlaceHits([]); return }
+    let cancelled = false
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/places/search?country=${encodeURIComponent(country)}&q=${encodeURIComponent(term)}`)
+        const data = await res.json()
+        if (cancelled) return
+        if (!res.ok) { setPlaceHits([]); setPlaceNote(data.error ?? ''); return }
+        setPlaceNote('')
+        setPlaceHits(Array.isArray(data) ? data : [])
+      } catch { if (!cancelled) setPlaceHits([]) }
+    }, 250) // debounce: GeoNames' free tier is credit-metered per request
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [city, country, placeFocused])
+
+  const pickRandomPlace = async () => {
+    setPlaceNote('')
+    try {
+      const res = await fetch(`/api/places/search?country=${encodeURIComponent(country)}&random=1`)
+      const data = await res.json()
+      if (!res.ok) { setPlaceNote(data.error ?? 'Could not reach the place index.'); return }
+      if (Array.isArray(data) && data[0]) {
+        setCity(data[0].name)
+        setPlaceHits([])
+        setPlaceNote(`${data[0].name}${data[0].admin1 ? `, ${data[0].admin1}` : ''} · pop ${Number(data[0].population).toLocaleString()}`)
+      }
+    } catch { setPlaceNote('Could not reach the place index.') }
+  }
 
   const search = async () => {
     if (!query.trim()) return
@@ -6689,29 +6726,56 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
           <select
             value={country}
             onChange={e => {
-              const next = e.target.value
-              setCountry(next)
-              setCity(marketFor(next).seedCities[0])
+              setCountry(e.target.value)
+              // Cleared rather than defaulted to a metro: pre-filling the
+              // biggest city is what kept every search landing on Houston.
+              setCity('')
+              setPlaceHits([]); setPlaceNote('')
             }}
             style={{ ...inputStyle, flex: 1, minWidth: 110 }}
           >
             {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
-          {/* Free text with suggestions rather than a fixed dropdown: the
-              whole point is reaching villages and rural areas, which no
-              curated list could enumerate. The datalist offers well-known
-              cities as a starting point without limiting input to them. */}
-          <input
-            value={city}
-            onChange={e => setCity(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && search()}
-            list="place-suggestions"
-            placeholder="any town or village…"
-            style={{ ...inputStyle, flex: 1, minWidth: 130 }}
-          />
-          <datalist id="place-suggestions">
-            {market.seedCities.map(c => <option key={c} value={c} />)}
-          </datalist>
+          {/* Live gazetteer autocomplete — every town, village and hamlet
+              GeoNames knows, not a curated list of metros. */}
+          <div style={{ position: 'relative', flex: 1, minWidth: 170 }}>
+            <input
+              value={city}
+              onChange={e => setCity(e.target.value)}
+              onFocus={() => setPlaceFocused(true)}
+              onBlur={() => setTimeout(() => setPlaceFocused(false), 150)}
+              onKeyDown={e => e.key === 'Enter' && search()}
+              placeholder="any town or village…"
+              style={{ ...inputStyle, width: '100%' }}
+            />
+            {placeFocused && placeHits.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 4, background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 8, maxHeight: 260, overflowY: 'auto', zIndex: 40 }}>
+                {placeHits.map((p, i) => (
+                  <button
+                    key={`${p.name}-${i}`}
+                    onMouseDown={() => { setCity(p.name); setPlaceHits([]) }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', background: 'none', border: 'none', borderBottom: i < placeHits.length - 1 ? `1px solid ${BORDER}` : 'none', color: TEXT, fontFamily: FONT_BODY, fontSize: 13, cursor: 'pointer' }}
+                  >
+                    {p.name}
+                    <span style={{ color: MUTED, fontSize: 11 }}>
+                      {p.admin1 ? ` · ${p.admin1}` : ''}
+                      {/* Population is the signal that matters here: it tells
+                          you at a glance whether this is a saturated city or
+                          the kind of village worth prospecting. */}
+                      {p.population > 0 ? ` · pop ${p.population.toLocaleString()}` : ' · rural'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={pickRandomPlace}
+            title="Jump to a random small town or village — weighted away from big cities"
+            style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, cursor: 'pointer' }}
+          >
+            🎲
+          </button>
           <button
             onClick={search}
             disabled={loading || !query.trim()}
@@ -6733,6 +6797,11 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
           </div>
         )}
 
+        {/* Without this a GeoNames failure would just show an empty suggestion
+            list — indistinguishable from "this country has no towns", the same
+            silent-failure shape as the WhatsApp Generate button. */}
+        {placeNote && <div style={{ marginTop: 8, fontSize: 12, color: MUTED, fontFamily: FONT_BODY }}>{placeNote}</div>}
+
         {error && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', fontFamily: FONT_BODY }}>{error}</div>}
       </div>
 
@@ -6741,7 +6810,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
         {!loading && results.length === 0 && !error && (
           <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>📍</div>
-            <div style={{ fontSize: 14 }}>Search for businesses in Ghana</div>
+            <div style={{ fontSize: 14 }}>Search for businesses in {country}</div>
             <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>Businesses without a website are flagged as prime prospects</div>
           </div>
         )}

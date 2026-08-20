@@ -119,6 +119,52 @@ export async function searchPlaces(q: PlaceQuery): Promise<Place[]> {
 }
 
 /**
+ * Type-ahead lookup by name prefix, for the Find Prospects place field.
+ *
+ * Without this the UI can only offer the handful of seed cities, which means a
+ * village is reachable only if the user already knows its exact name — no way
+ * to browse or discover one. GeoNames' name_startsWith surfaces the real long
+ * tail: "Marf" finds Marfa, Texas (pop 1,733) alongside two West Virginia
+ * hamlets.
+ */
+export async function lookupPlaces(countryCode: string, prefix: string, limit = 12): Promise<Place[]> {
+  const username = process.env.GEONAMES_USERNAME
+  if (!username) throw new GeoNamesError('GEONAMES_USERNAME not set.')
+  const trimmed = prefix.trim()
+  if (trimmed.length < 2) return []
+
+  const params = new URLSearchParams({
+    country: countryCode,
+    featureClass: 'P',
+    name_startsWith: trimmed,
+    maxRows: String(Math.min(limit, 50)),
+    // Population-ordered so the recognisable place wins the top slot when a
+    // name is shared, while the smaller ones stay visible right below it.
+    orderby: 'population',
+    style: 'MEDIUM',
+    username,
+  })
+
+  const res = await fetch(`${GEONAMES_BASE}/searchJSON?${params}`, { signal: AbortSignal.timeout(15000) })
+  if (!res.ok) throw new GeoNamesError(`GeoNames HTTP ${res.status}`)
+  const body = await res.json() as {
+    status?: { message?: string; value?: number }
+    geonames?: Array<Record<string, unknown>>
+  }
+  assertOk(body)
+
+  return (body.geonames ?? []).map(g => ({
+    name: String(g.name ?? ''),
+    admin1: String(g.adminName1 ?? ''),
+    countryCode: String(g.countryCode ?? countryCode),
+    population: Number(g.population ?? 0),
+    fcode: String(g.fcode ?? ''),
+    lat: String(g.lat ?? ''),
+    lng: String(g.lng ?? ''),
+  })).filter(p => p.name)
+}
+
+/**
  * One place to prospect, biased toward the underserved tail.
  *
  * Weighting is deliberate: small places are where businesses are least likely
