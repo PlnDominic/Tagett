@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { marketFor } from '@/lib/markets'
 
 export const dynamic = 'force-dynamic'
 
@@ -20,12 +21,13 @@ export interface PlaceResult {
 export async function POST(req: Request) {
   if (!KEY) return NextResponse.json({ error: 'SERPAPI_KEY not configured' }, { status: 500 })
 
-  const { query, city = 'Accra' } = await req.json()
+  const { query, city = 'Accra', country } = await req.json()
   if (!query?.trim()) return NextResponse.json({ error: 'query required' }, { status: 400 })
 
+  const market = marketFor(country)
   const params = new URLSearchParams({
     engine: 'google_maps',
-    q: `${query.trim()} ${city.trim()} Ghana`,
+    q: `${query.trim()} ${city.trim()} ${market.country}`,
     type: 'search',
     hl: 'en',
     api_key: KEY,
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
       hasWebsite: !!website,
       rating: p.rating as number | undefined,
       ratingCount: p.reviews as number | undefined,
-      mapsUrl: (p.link as string) ?? `https://www.google.com/maps/search/${encodeURIComponent((p.title as string) ?? '')}+Ghana`,
+      mapsUrl: (p.link as string) ?? `https://www.google.com/maps/search/${encodeURIComponent(`${(p.title as string) ?? ''} ${market.country}`)}`,
       thumbnail: p.thumbnail as string | undefined,
     }
   })

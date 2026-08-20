@@ -1,3 +1,5 @@
+import { COUNTRIES, marketFor, glFor } from '@/lib/markets'
+
 export interface ToolDefinition {
   type: 'function'
   function: {
@@ -57,12 +59,13 @@ const SEARCH_GOOGLE_MAPS: ToolDefinition = {
   type: 'function',
   function: {
     name: 'search_google_maps',
-    description: 'Search Google Maps for real local businesses in Ghana using SerpAPI. Returns business names, addresses, phone numbers, websites, and ratings. Ideal for finding businesses without websites — those are the prime prospects.',
+    description: 'Search Google Maps for real local businesses using SerpAPI. Returns business names, addresses, phone numbers, websites, and ratings. Ideal for finding businesses without websites — those are the prime prospects.',
     parameters: {
       type: 'object',
       properties: {
         query: { type: 'string', description: 'Business type to search for, e.g. "pharmacies" or "restaurants"' },
-        city: { type: 'string', description: 'Ghana city to focus the search on, e.g. "Accra", "Kumasi", "Tamale"' },
+        city: { type: 'string', description: 'City to focus the search on, e.g. "Accra", "Manchester", "Houston"' },
+        country: { type: 'string', description: `Country the city is in — one of: ${COUNTRIES.join(', ')}. Defaults to Ghana. Always pass this, because city names repeat across countries.` },
       },
       required: ['query', 'city'],
     },
@@ -77,7 +80,8 @@ const SEARCH_GOOGLE: ToolDefinition = {
     parameters: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'The search query, e.g. \'"need a website" Ghana\' or \'site:facebook.com restaurant Kumasi\'' },
+        query: { type: 'string', description: 'The search query, e.g. \'"need a website" Ghana\' or \'site:facebook.com restaurant Manchester\'' },
+        country: { type: 'string', description: `Country to bias results toward — one of: ${COUNTRIES.join(', ')}. Defaults to Ghana. Set this when prospecting outside Ghana or the results come back for the wrong market.` },
       },
       required: ['query'],
     },
@@ -177,11 +181,14 @@ export async function executeTool(name: string, args: Record<string, string>): P
     if (name === 'search_google_maps') {
       const key = process.env.SERPAPI_KEY
       if (!key) return 'Google Maps search not available — SERPAPI_KEY not set.'
-      const city = (args.city ?? 'Accra').trim()
+      const market = marketFor(args.country)
+      const city = (args.city ?? market.cities[0]).trim()
       const query = (args.query ?? '').trim()
       const params = new URLSearchParams({
         engine: 'google_maps',
-        q: `${query} ${city} Ghana`,
+        // Country is appended, not assumed: "Kumasi" and "Cambridge" both exist
+        // in more than one country, and Maps silently picks the wrong one.
+        q: `${query} ${city} ${market.country}`,
         type: 'search',
         hl: 'en',
         api_key: key,
@@ -208,7 +215,7 @@ export async function executeTool(name: string, args: Record<string, string>): P
       const key = process.env.SERPAPI_KEY
       if (!key) return 'Google search not available — SERPAPI_KEY not set. Fall back to search_web.'
       const query = (args.query ?? '').trim()
-      const params = new URLSearchParams({ engine: 'google', q: query, hl: 'en', gl: 'gh', num: '10', api_key: key })
+      const params = new URLSearchParams({ engine: 'google', q: query, hl: 'en', gl: glFor(args.country), num: '10', api_key: key })
       const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
       if (!res.ok) return `SerpAPI error: HTTP ${res.status}`
       const data = await res.json() as { organic_results?: Array<{ title?: string; link?: string; snippet?: string }> }
