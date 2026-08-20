@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase, describeDbError, writeToleratingSchemaDrift } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -98,12 +98,16 @@ export async function POST(req: NextRequest) {
     const deal: Deal = await req.json()
     if (!deal?.id) return NextResponse.json({ error: 'id required' }, { status: 400 })
     const sb = getSupabase()
-    const { error } = await sb.from('deals').upsert(toRow(deal), { onConflict: 'id' })
+    const { error, dropped } = await writeToleratingSchemaDrift([toRow(deal)], rows =>
+      sb.from('deals').upsert(rows, { onConflict: 'id' }),
+    )
     if (error) throw error
-    return NextResponse.json({ ok: true })
+    if (dropped.length) console.warn('[deals POST] deals table is missing columns, saved without them:', dropped.join(', '))
+    return NextResponse.json({ ok: true, ...(dropped.length ? { droppedColumns: dropped } : {}) })
   } catch (err) {
-    console.error('[deals POST]', err)
-    return NextResponse.json({ error: 'Save failed' }, { status: 500 })
+    const detail = describeDbError(err)
+    console.error('[deals POST]', detail)
+    return NextResponse.json({ error: `Save failed: ${detail}` }, { status: 500 })
   }
 }
 
@@ -119,8 +123,9 @@ export async function DELETE(req: NextRequest) {
     if (error) throw error
     return NextResponse.json({ ok: true })
   } catch (err) {
-    console.error('[deals DELETE]', err)
-    return NextResponse.json({ error: 'Delete failed' }, { status: 500 })
+    const detail = describeDbError(err)
+    console.error('[deals DELETE]', detail)
+    return NextResponse.json({ error: `Delete failed: ${detail}` }, { status: 500 })
   }
 }
 
@@ -138,11 +143,15 @@ export async function PUT(req: NextRequest) {
     const deals: Deal[] = await req.json()
     if (deals.length === 0) return NextResponse.json({ ok: true })
     const sb = getSupabase()
-    const { error } = await sb.from('deals').upsert(deals.map(toRow), { onConflict: 'id' })
+    const { error, dropped } = await writeToleratingSchemaDrift(deals.map(toRow), rows =>
+      sb.from('deals').upsert(rows, { onConflict: 'id' }),
+    )
     if (error) throw error
-    return NextResponse.json({ ok: true })
+    if (dropped.length) console.warn('[deals PUT] deals table is missing columns, saved without them:', dropped.join(', '))
+    return NextResponse.json({ ok: true, ...(dropped.length ? { droppedColumns: dropped } : {}) })
   } catch (err) {
-    console.error('[deals PUT]', err)
-    return NextResponse.json({ error: 'Save failed' }, { status: 500 })
+    const detail = describeDbError(err)
+    console.error('[deals PUT]', detail)
+    return NextResponse.json({ error: `Save failed: ${detail}` }, { status: 500 })
   }
 }
