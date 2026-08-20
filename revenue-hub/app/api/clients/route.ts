@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase, describeDbError } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -13,7 +13,8 @@ export async function GET() {
       .order('created_at', { ascending: false })
     if (error) throw error
     return NextResponse.json(data ?? [])
-  } catch {
+  } catch (err) {
+    console.error('[clients GET]', describeDbError(err))
     return NextResponse.json([])
   }
 }
@@ -37,8 +38,10 @@ export async function POST(req: NextRequest) {
       .single()
     if (error) throw error
     return NextResponse.json(data)
-  } catch {
-    return NextResponse.json({ error: 'Save failed' }, { status: 500 })
+  } catch (err) {
+    const detail = describeDbError(err)
+    console.error('[clients POST]', detail)
+    return NextResponse.json({ error: `Save failed: ${detail}` }, { status: 500 })
   }
 }
 
@@ -53,8 +56,10 @@ export async function PUT(req: NextRequest) {
       .eq('id', id)
     if (error) throw error
     return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ error: 'Update failed' }, { status: 500 })
+  } catch (err) {
+    const detail = describeDbError(err)
+    console.error('[clients PUT]', detail)
+    return NextResponse.json({ error: `Update failed: ${detail}` }, { status: 500 })
   }
 }
 
@@ -65,7 +70,9 @@ export async function DELETE(req: NextRequest) {
     const { error } = await sb.from('clients').delete().eq('id', id)
     if (error) throw error
     return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ error: 'Delete failed' }, { status: 500 })
+  } catch (err) {
+    const detail = describeDbError(err)
+    console.error('[clients DELETE]', detail)
+    return NextResponse.json({ error: `Delete failed: ${detail}` }, { status: 500 })
   }
 }
