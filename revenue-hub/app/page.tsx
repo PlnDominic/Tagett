@@ -3805,6 +3805,12 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
     : null
 
   const [verifying, setVerifying] = useState(false)
+  const [editingEmail, setEditingEmail] = useState(false)
+  const [emailDraft, setEmailDraft] = useState(deal.email ?? '')
+  const saveEmail = () => {
+    onUpdate(deal.id, { email: emailDraft.trim() || undefined })
+    setEditingEmail(false)
+  }
   const handleVerify = async () => {
     setVerifying(true)
     try {
@@ -3867,6 +3873,39 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
           </span>
         )}
       </button>
+
+      {editingEmail ? (
+        <div style={{ display: 'flex', gap: 4, marginTop: 5 }} onClick={e => e.stopPropagation()}>
+          <input
+            autoFocus
+            value={emailDraft}
+            onChange={e => setEmailDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') saveEmail(); if (e.key === 'Escape') { setEmailDraft(deal.email ?? ''); setEditingEmail(false) } }}
+            placeholder="email@business.com"
+            type="email"
+            style={{ flex: 1, minWidth: 0, padding: '3px 6px', borderRadius: 6, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 11, fontFamily: FONT_BODY, outline: 'none' }}
+          />
+          <button onClick={saveEmail} style={{ fontSize: 10, padding: '3px 7px', borderRadius: 6, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Save</button>
+        </div>
+      ) : deal.email ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
+          <a
+            href={`mailto:${deal.email}`}
+            title="Open in Mail"
+            style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}
+          >
+            ✉ {deal.email}
+          </a>
+          <button onClick={() => setEditingEmail(true)} title="Edit email" style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✎</button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setEditingEmail(true)}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        >
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>+ Add Email</span>
+        </button>
+      )}
 
       {followUpLabel && (
         <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: isOverdue ? '#e05c5c' : MUTED, fontFamily: FONT_BODY }}>
@@ -3985,7 +4024,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   onRetainerAdded: () => void
 }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '' })
+  const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '', email: '' })
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropStage, setDropStage] = useState<DealStage | null>(null)
   const [waModal, setWaModal] = useState<Deal | null>(null)
@@ -3997,8 +4036,8 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
 
   const handleSubmit = () => {
     if (!form.name) return
-    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone || undefined })
-    setForm({ name: '', industry: '', valueGHS: '', phone: '' })
+    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone || undefined, email: form.email || undefined })
+    setForm({ name: '', industry: '', valueGHS: '', phone: '', email: '' })
     setShowForm(false)
   }
 
@@ -4016,9 +4055,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
 
   const exportDealsCSV = () => {
     const rows = [
-      ['Name', 'Industry', 'Stage', 'Value (GHS)', 'Phone', 'Follow-up', 'Last Contacted', 'Created'],
+      ['Name', 'Industry', 'Stage', 'Value (GHS)', 'Phone', 'Email', 'Follow-up', 'Last Contacted', 'Created'],
       ...deals.map(d => [
-        d.name, d.industry, STAGE_LABELS[d.stage], String(d.valueGHS), d.phone ?? '',
+        d.name, d.industry, STAGE_LABELS[d.stage], String(d.valueGHS), d.phone ?? '', d.email ?? '',
         d.followUpAt ? new Date(d.followUpAt).toLocaleDateString('en-GB') : '',
         d.lastContactedAt ? new Date(d.lastContactedAt).toLocaleDateString('en-GB') : '',
         new Date(d.createdAt).toLocaleDateString('en-GB'),
@@ -4063,6 +4102,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
             <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="Industry" style={inputStyle} />
             <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder="Value (GHS)" type="number" style={inputStyle} />
             <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone (+233…)" style={inputStyle} />
+            <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="Email (for international leads)" type="email" style={inputStyle} />
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={handleSubmit} style={{ flex: 1, padding: '9px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Add</button>
               <button onClick={() => setShowForm(false)} style={{ padding: '9px 14px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>

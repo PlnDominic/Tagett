@@ -75,6 +75,7 @@ export interface Deal {
   valueGHS: number
   stage: DealStage
   phone?: string
+  email?: string
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
