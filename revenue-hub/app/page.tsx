@@ -1015,6 +1015,20 @@ async function fetchAuthed(url: string, init?: RequestInit): Promise<Response> {
   return res
 }
 
+// A serverless function that crashes or hits its execution timeout (e.g. a
+// slow GitHub API round trip on the website-publish routes) returns an
+// empty/non-JSON body — plain res.json() then throws "Unexpected end of JSON
+// input", which is meaningless to whoever reads it. Parse defensively and
+// fall back to the HTTP status so the error message actually says something.
+// Return type intentionally matches res.json()'s own Promise<any>.
+async function safeJson(res: Response): Promise<any> {
+  try {
+    return await res.json()
+  } catch {
+    return { error: res.ok ? 'Empty response from server' : `Request failed (${res.status} ${res.statusText || 'server error'}) — it may have timed out` }
+  }
+}
+
 function saveMessage(agentId: string, role: 'user' | 'assistant', content: string) {
   fetch('/api/conversations', {
     method: 'POST',
@@ -5414,8 +5428,8 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ base64, filename: file.name }),
         })
-        const data = await res.json()
-        if (res.ok) { onChange(data.path) }
+        const data = await safeJson(res)
+        if (res.ok) { onChange(data.path as string) }
         else { onChange(base64) } // fall back to data URL
       } catch { onChange(base64) }
       finally { setUploading(false) }
@@ -5565,14 +5579,14 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(SEED_PROJECTS),
       })
-      const d = await res.json()
-      if (!res.ok) throw new Error(d.error ?? 'Import failed')
+      const d = await safeJson(res)
+      if (!res.ok) throw new Error((d.error as string) ?? 'Import failed')
       if (d.added === 0) {
         setBulkMsg(`All ${d.skipped} projects already published.`)
       } else {
         setBulkMsg(`✓ Imported ${d.added} project${d.added !== 1 ? 's' : ''}${d.skipped ? ` (${d.skipped} already existed)` : ''}.`)
         const freshRes = await fetch('/api/website/projects')
-        const freshData = await freshRes.json()
+        const freshData = await safeJson(freshRes)
         if (Array.isArray(freshData)) setProjects(freshData)
       }
     } catch (err) {
@@ -5584,8 +5598,8 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
 
   useEffect(() => {
     fetch('/api/website/projects')
-      .then(r => r.json())
-      .then(d => { if (Array.isArray(d)) setProjects(d); else setFetchError(d.error ?? 'Failed to load') })
+      .then(safeJson)
+      .then(d => { if (Array.isArray(d)) setProjects(d); else setFetchError((d as { error?: string }).error ?? 'Failed to load') })
       .catch(() => setFetchError('Network error'))
       .finally(() => setLoading(false))
   }, [])
@@ -5640,10 +5654,10 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
     const isNewPublish = editing === 'new'
     try {
       const res = await fetch('/api/website/projects', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-      const d = await res.json()
-      if (!res.ok) throw new Error(d.error ?? 'Publish failed')
+      const d = await safeJson(res)
+      if (!res.ok) throw new Error((d.error as string) ?? 'Publish failed')
       // Use the image path returned by the API (may differ if image was mirrored to public/)
-      const saved: WebsiteProject = { ...payload, id: d.id ?? (editing as number), image: d.image ?? payload.image } as WebsiteProject
+      const saved: WebsiteProject = { ...payload, id: (d.id as number) ?? (editing as number), image: (d.image as string) ?? payload.image } as WebsiteProject
       setProjects(prev => { const i = prev.findIndex(p => p.id === saved.id); return i >= 0 ? prev.map((p, j) => j === i ? saved : p) : [saved, ...prev] })
       setSaveMsg('✓ Published to website!')
       setEditing(null)

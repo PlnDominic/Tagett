@@ -1,5 +1,14 @@
 import { NextResponse } from 'next/server'
 
+// POST can chain readFile → (mirror an external image: fetch it, check for an
+// existing copy, upload it) → writeFile, up to 3 retries on a sha conflict —
+// several sequential GitHub API round trips that can comfortably exceed
+// Vercel's default 10s function timeout, especially mirroring a real image.
+// A killed function returns an empty/non-JSON body, which the client's
+// res.json() then fails on with a cryptic "Unexpected end of JSON input"
+// instead of a real error. See /api/agents/run for the same pattern.
+export const maxDuration = 60
+
 const TOKEN = process.env.GITHUB_WEBSITE_TOKEN
 const REPO  = process.env.GITHUB_WEBSITE_REPO  ?? 'PlnDominic/Ecstasy-Technologies'
 const FILE  = process.env.GITHUB_WEBSITE_FILE  ?? 'data/projects.json'

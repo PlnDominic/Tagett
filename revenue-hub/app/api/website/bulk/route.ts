@@ -1,5 +1,10 @@
 import { NextResponse } from 'next/server'
 
+// Same reasoning as /api/website/projects: readFile + writeFile with up to 3
+// retries is several sequential GitHub API calls that can exceed Vercel's
+// default 10s function timeout on a slow response or a 409 retry.
+export const maxDuration = 60
+
 const TOKEN = process.env.GITHUB_WEBSITE_TOKEN
 const REPO = process.env.GITHUB_WEBSITE_REPO ?? 'PlnDominic/Ecstasy-Technologies'
 const FILE = process.env.GITHUB_WEBSITE_FILE ?? 'data/projects.json'
