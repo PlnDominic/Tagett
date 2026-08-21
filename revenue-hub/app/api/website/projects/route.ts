@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { compressImage } from '@/lib/image'
 
 // POST can chain readFile → (mirror an external image: fetch it, check for an
 // existing copy, upload it) → writeFile, up to 3 retries on a sha conflict —
@@ -105,14 +106,28 @@ async function writeFile(
 async function mirrorImageToWebsite(imageUrl: string): Promise<string> {
   if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl
 
-  const filename = imageUrl.split('/').pop()?.split('?')[0] ?? ''
+  let filename = imageUrl.split('/').pop()?.split('?')[0] ?? ''
   if (!filename) return imageUrl
-  const githubPath = `public/project-images/${filename}`
 
   // Fetch the image bytes
   const imgRes = await fetch(imageUrl, { signal: AbortSignal.timeout(15000) })
   if (!imgRes.ok) return imageUrl
-  const buffer = Buffer.from(await imgRes.arrayBuffer())
+  let buffer: Buffer<ArrayBufferLike> = Buffer.from(await imgRes.arrayBuffer())
+
+  // Re-encode into a size-capped WebP before it's committed to the repo —
+  // images uploaded through /api/website/upload are already compressed, but
+  // this also covers a pasted external image URL that never went through
+  // that route. Skip SVGs (already tiny, vector).
+  if (!filename.toLowerCase().endsWith('.svg')) {
+    try {
+      const compressed = await compressImage(buffer)
+      buffer = compressed.buffer
+      filename = filename.replace(/\.[a-zA-Z0-9]+$/, '') + '.' + compressed.ext
+    } catch {
+      // Not decodable as an image — commit the original bytes as-is.
+    }
+  }
+  const githubPath = `public/project-images/${filename}`
   const base64 = buffer.toString('base64')
 
   // Check if the file already exists in the repo (need its SHA to update)
