@@ -51,14 +51,34 @@ async function readProjectsFile(): Promise<{ projects: WebsiteProject[]; sha: st
   return { projects: JSON.parse(raw), sha: data.sha }
 }
 
-async function writeProjectsFile(projects: WebsiteProject[], sha: string | null, message: string) {
+async function writeProjectsFile(projects: WebsiteProject[], sha: string | null, message: string): Promise<boolean> {
   const content = Buffer.from(JSON.stringify(projects, null, 2) + '\n').toString('base64')
   const body: Record<string, unknown> = { message, content, branch: BRANCH }
   if (sha) body.sha = sha
   const res = await fetch(API_BASE, { method: 'PUT', headers: githubHeaders(), body: JSON.stringify(body) })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { message?: string }).message ?? `GitHub ${res.status} writing projects.json`)
+  if (res.ok) return true
+  if (res.status === 409) return false // stale sha — caller re-reads and retries
+  const err = await res.json().catch(() => ({}))
+  throw new Error((err as { message?: string }).message ?? `GitHub ${res.status} writing projects.json`)
+}
+
+// Re-reads the live file and re-applies just the tracked id -> new image path
+// changes on top of whatever it currently contains, retrying on a sha
+// conflict instead of blindly overwriting with a stale in-memory copy. This
+// is what a concurrent run (e.g. a client retry that raced an earlier
+// still-running request) needs: without it, a losing write's file
+// renames/deletes still happened, but the JSON pointing at them never
+// landed — exactly what happened the first time this route ran twice at once.
+async function applyImageUpdates(updates: Map<number, string>, message: string, maxRetries = 3): Promise<void> {
+  if (updates.size === 0) return
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const { projects, sha } = await readProjectsFile()
+    for (const project of projects) {
+      const next = updates.get(project.id)
+      if (next) project.image = next
+    }
+    if (await writeProjectsFile(projects, sha, message)) return
+    if (attempt === maxRetries) throw new Error('Failed to write projects.json after retries (repeated sha conflict)')
   }
 }
 
@@ -132,8 +152,8 @@ export async function POST() {
   // to match in the same run; the old file is then deleted.
   if (TOKEN) {
     try {
-      const { projects, sha } = await readProjectsFile()
-      let changed = false
+      const { projects } = await readProjectsFile()
+      const updates = new Map<number, string>()
       for (const project of projects) {
         const img = project.image
         if (typeof img !== 'string' || !img.startsWith('/project-images/')) { summary.github.skipped++; continue }
@@ -156,17 +176,16 @@ export async function POST() {
           const ok = await githubPutFile(newPath, compressed.buffer, `[Tagett] Compress project image: ${filename} -> ${newFilename}`)
           if (!ok) { summary.github.failed++; continue }
           await githubDeleteFile(oldPath, file.sha, `[Tagett] Remove uncompressed image: ${filename}`)
-          project.image = `/project-images/${newFilename}`
-          changed = true
+          // Track the change rather than mutating this stale in-memory copy —
+          // applyImageUpdates re-reads the live file right before writing.
+          updates.set(project.id, `/project-images/${newFilename}`)
           summary.github.bytesAfter += compressed.buffer.length
           summary.github.processed++
         } catch {
           summary.github.failed++
         }
       }
-      if (changed) {
-        await writeProjectsFile(projects, sha, '[Tagett] Point compressed images at their new .webp files')
-      }
+      await applyImageUpdates(updates, '[Tagett] Point compressed images at their new .webp files')
     } catch (err) {
       return NextResponse.json({ error: `GitHub stage failed: ${err instanceof Error ? err.message : 'unknown'}`, summary }, { status: 500 })
     }
