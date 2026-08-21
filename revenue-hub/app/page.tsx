@@ -5414,14 +5414,16 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
   const [uploading, setUploading] = useState(false)
   const [preview, setPreview] = useState<string | null>(value && !value.startsWith('data:') ? null : value || null)
   const [dragOver, setDragOver] = useState(false)
+  const [uploadError, setUploadError] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
   const upload = async (file: File) => {
     setUploading(true)
+    setUploadError('')
     const reader = new FileReader()
     reader.onload = async (e) => {
       const base64 = e.target?.result as string
-      setPreview(base64)
+      setPreview(base64) // local-only preview, never sent anywhere as-is
       try {
         const res = await fetch('/api/website/upload', {
           method: 'POST',
@@ -5429,10 +5431,22 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
           body: JSON.stringify({ base64, filename: file.name }),
         })
         const data = await safeJson(res)
-        if (res.ok) { onChange(data.path as string) }
-        else { onChange(base64) } // fall back to data URL
-      } catch { onChange(base64) }
-      finally { setUploading(false) }
+        if (res.ok) {
+          onChange(data.path as string)
+        } else {
+          // Do NOT fall back to embedding the raw base64 — that's exactly what
+          // previously bloated projects.json past GitHub's 1MB inline-content
+          // limit and broke every read of the file. Surface the failure and
+          // leave the image field empty so the user knows to retry instead.
+          setPreview(null)
+          setUploadError((data.error as string) || 'Upload failed — try again.')
+        }
+      } catch {
+        setPreview(null)
+        setUploadError('Upload failed — try again.')
+      } finally {
+        setUploading(false)
+      }
     }
     reader.readAsDataURL(file)
   }
@@ -5475,6 +5489,7 @@ function ImageUploader({ value, onChange }: { value: string; onChange: (url: str
         placeholder="Or paste image URL manually"
         style={{ padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none', width: '100%', boxSizing: 'border-box' }}
       />
+      {uploadError && <div style={{ fontSize: 11, color: '#e05c5c', fontFamily: FONT_BODY }}>{uploadError}</div>}
     </div>
   )
 }

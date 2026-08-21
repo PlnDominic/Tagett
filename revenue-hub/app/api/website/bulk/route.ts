@@ -42,8 +42,26 @@ async function readFile(): Promise<{ projects: WebsiteProject[]; sha: string | n
     throw new Error((body as { message?: string }).message ?? `GitHub ${res.status}`)
   }
   const data = await res.json()
-  const raw = Buffer.from(data.content, 'base64').toString('utf-8')
-  return { projects: JSON.parse(raw), sha: data.sha }
+
+  // Same size-limit fallback as /api/website/projects — see the comment there.
+  let raw: string
+  if (data.content) {
+    raw = Buffer.from(data.content, 'base64').toString('utf-8')
+  } else if (data.download_url) {
+    const dl = await fetch(data.download_url)
+    if (!dl.ok) throw new Error(`Failed to fetch large projects.json via download_url: HTTP ${dl.status}`)
+    raw = await dl.text()
+  } else {
+    throw new Error('GitHub returned no content and no download_url for projects.json')
+  }
+
+  let projects: WebsiteProject[]
+  try {
+    projects = JSON.parse(raw)
+  } catch {
+    throw new Error('projects.json is not valid JSON — it may need manual repair in the repo')
+  }
+  return { projects, sha: data.sha }
 }
 
 // POST { projects: Partial<WebsiteProject>[] }

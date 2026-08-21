@@ -50,8 +50,30 @@ async function readFile(): Promise<{ projects: WebsiteProject[]; sha: string | n
     throw new Error(body.message ?? `GitHub ${res.status}`)
   }
   const data = await res.json()
-  const raw = Buffer.from(data.content, 'base64').toString('utf-8')
-  return { projects: JSON.parse(raw), sha: data.sha }
+
+  // GitHub's Contents API only embeds base64 `content` for files under 1MB —
+  // past that it comes back empty (this file has hit that size, almost
+  // certainly from a project image stored as a raw data: URI instead of a
+  // hosted path). Fall back to the plain download_url, which has no such
+  // limit, instead of JSON.parse()-ing an empty string.
+  let raw: string
+  if (data.content) {
+    raw = Buffer.from(data.content, 'base64').toString('utf-8')
+  } else if (data.download_url) {
+    const dl = await fetch(data.download_url)
+    if (!dl.ok) throw new Error(`Failed to fetch large projects.json via download_url: HTTP ${dl.status}`)
+    raw = await dl.text()
+  } else {
+    throw new Error('GitHub returned no content and no download_url for projects.json')
+  }
+
+  let projects: WebsiteProject[]
+  try {
+    projects = JSON.parse(raw)
+  } catch {
+    throw new Error('projects.json is not valid JSON — it may need manual repair in the repo')
+  }
+  return { projects, sha: data.sha }
 }
 
 // Read-modify-write against a single GitHub file races: two requests landing close
@@ -131,6 +153,15 @@ export async function POST(req: Request) {
   try {
     const body = await req.json()
     if (!body.title) return NextResponse.json({ error: 'title required' }, { status: 400 })
+
+    // A raw data: URI (a failed /api/website/upload silently falling back to
+    // the base64 it never got to upload) is what previously bloated
+    // projects.json past GitHub's 1MB inline-content limit and broke every
+    // read of it. Refuse it outright instead of writing it into the file —
+    // the client should retry the upload, not fall back to embedding it.
+    if (typeof body.image === 'string' && body.image.startsWith('data:')) {
+      return NextResponse.json({ error: 'Image upload did not finish — please re-upload the image (a data: URI can\'t be saved directly, it would bloat the file past GitHub\'s size limit).' }, { status: 400 })
+    }
 
     // Mirror external images (Supabase, etc.) into the website's public folder
     if (body.image?.startsWith('http')) {
