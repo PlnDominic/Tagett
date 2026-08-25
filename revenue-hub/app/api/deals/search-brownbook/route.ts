@@ -41,14 +41,18 @@ function extractEmails(text: string): string[] {
     })
 }
 
-async function fetchBusiness(url: string): Promise<BrownbookResult | null> {
+async function fetchBusiness(url: string, diagOut?: Record<string, unknown>[]): Promise<BrownbookResult | null> {
   try {
     const res = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TagettBot/1.0; +https://ecstasytechnologies.com)' },
       signal: AbortSignal.timeout(10000),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      diagOut?.push({ url, status: res.status, ok: false })
+      return null
+    }
     const html = await res.text()
+    diagOut?.push({ url, status: res.status, len: html.length, hasLdScript: html.includes('application/ld+json'), snippet: html.slice(0, 300) })
 
     const idMatch = url.match(/\/business\/(\d+)\//)
     const id = idMatch ? idMatch[1] : url
@@ -120,9 +124,10 @@ export async function POST(req: Request) {
     return NextResponse.json([])
   }
 
-  const results = (await Promise.all(uniqueLinks.map(fetchBusiness))).filter((r): r is BrownbookResult => !!r)
+  const diag: Record<string, unknown>[] = []
+  const results = (await Promise.all(uniqueLinks.map(l => fetchBusiness(l, debug ? diag : undefined)))).filter((r): r is BrownbookResult => !!r)
   if (debug) {
-    return NextResponse.json({ debug: true, stage: 'parsed', q, uniqueLinks, resultCount: results.length, results })
+    return NextResponse.json({ debug: true, stage: 'parsed', q, uniqueLinks, resultCount: results.length, results, diag })
   }
 
   // Prospects with no separate website and no email yet found are the
