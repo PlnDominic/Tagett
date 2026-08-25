@@ -288,6 +288,8 @@ Search multiple times if needed. NEVER invent or make up businesses, phone numbe
 
 How to find phone numbers: Search for the business name + "Ghana" + "phone" or "contact". Check Facebook pages, Google Maps listings, and business directories.
 
+When prospecting abroad (outside Ghana), also call search_brownbook — a free global business directory that's independently sourced from Google Maps and sometimes has an email address listed, which Maps rarely does. Use it alongside search_google_maps, not instead of it.
+
 Output format for each REAL prospect found:
 1. Business Name: [exact name from search]
    Industry: [type]
@@ -6731,11 +6733,13 @@ interface PlaceResult {
   name: string
   address: string
   phone?: string
+  email?: string
   website?: string
   hasWebsite: boolean
   rating?: number
   ratingCount?: number
   mapsUrl: string
+  source?: 'maps' | 'brownbook'
 }
 
 const GHANA_CITIES = ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Sunyani', 'Ho', 'Koforidua', 'Wa', 'Bolgatanga']
@@ -6751,6 +6755,8 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
   const [results, setResults] = useState<PlaceResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [bbLoading, setBbLoading] = useState(false)
+  const [bbError, setBbError] = useState('')
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(false)
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [auditTarget, setAuditTarget] = useState<{ url: string; name?: string; phone?: string } | null>(null)
@@ -6812,8 +6818,37 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
       valueGHS: 0,
       stage: 'found',
       phone: toE164(p.phone, market),
+      email: p.email,
     })
     setAdded(prev => new Set([...prev, p.id]))
+  }
+
+  // Brownbook.net: a free, independently-sourced global business directory —
+  // complements Google Maps rather than replacing it. Merged into the same
+  // results list (ids prefixed so they can't collide with Maps place_ids) so
+  // the existing add-to-pipeline flow, "no website only" filter, and card UI
+  // all work unchanged for either source. Adds, not replaces, so running both
+  // searches for the same query/city layers their results together.
+  const searchBrownbook = async () => {
+    if (!query.trim()) return
+    setBbLoading(true); setBbError('')
+    try {
+      const res = await fetch('/api/deals/search-brownbook', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ query, city, country }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setBbError(data.error ?? 'Brownbook search failed'); return }
+      if (Array.isArray(data)) {
+        const tagged: PlaceResult[] = data.map((p: PlaceResult) => ({ ...p, id: `bb-${p.id}`, source: 'brownbook' as const }))
+        setResults(prev => {
+          const existingIds = new Set(prev.map(r => r.id))
+          return [...prev, ...tagged.filter(t => !existingIds.has(t.id))]
+        })
+      }
+    } catch { setBbError('Network error') }
+    finally { setBbLoading(false) }
   }
 
   const visible = noWebsiteOnly ? results.filter(p => !p.hasWebsite) : results
@@ -6827,7 +6862,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
       <div style={{ padding: '14px 16px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>
-            Find Prospects on Google Maps
+            Find Prospects
           </div>
           <button
             onClick={() => setAuditTarget({ url: '' })}
@@ -6905,7 +6940,17 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
           >
             {loading ? '…' : 'Search'}
           </button>
+          <button
+            onClick={searchBrownbook}
+            disabled={bbLoading || !query.trim()}
+            title="Search Brownbook.net — a free global business directory, good for abroad markets Google Maps may not cover as well"
+            style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: bbLoading || !query.trim() ? MUTED : TEXT, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, cursor: bbLoading || !query.trim() ? 'default' : 'pointer' }}
+          >
+            {bbLoading ? '…' : '🌍 Brownbook'}
+          </button>
         </div>
+
+        {bbError && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', fontFamily: FONT_BODY }}>{bbError}</div>}
 
         {results.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
@@ -6929,17 +6974,17 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
 
       {/* Results */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px' }}>
-        {!loading && results.length === 0 && !error && (
+        {!loading && !bbLoading && results.length === 0 && !error && (
           <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>📍</div>
             <div style={{ fontSize: 14 }}>Search for businesses in {country}</div>
             <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>Businesses without a website are flagged as prime prospects</div>
           </div>
         )}
-        {loading && (
+        {(loading || bbLoading) && (
           <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
             <ThinkingDots />
-            <div style={{ fontSize: 12, marginTop: 10 }}>Searching Google Maps…</div>
+            <div style={{ fontSize: 12, marginTop: 10 }}>{loading ? 'Searching Google Maps…' : 'Searching Brownbook…'}</div>
           </div>
         )}
         {visible.map(p => {
@@ -6960,11 +7005,19 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
                         No Website
                       </span>
                     )}
+                    {p.source === 'brownbook' && (
+                      <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 10, background: `${MUTED}20`, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                        🌍 Brownbook
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 3 }}>{p.address}</div>
                   <div style={{ display: 'flex', gap: 10, marginTop: 6, flexWrap: 'wrap' }}>
                     {p.phone && (
                       <a href={`tel:${p.phone}`} style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>📞 {p.phone}</a>
+                    )}
+                    {p.email && (
+                      <a href={`mailto:${p.email}`} style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>✉ {p.email}</a>
                     )}
                     {p.rating && (
                       <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>⭐ {p.rating.toFixed(1)} ({p.ratingCount?.toLocaleString()})</span>

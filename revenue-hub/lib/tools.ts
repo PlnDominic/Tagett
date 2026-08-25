@@ -88,12 +88,29 @@ const SEARCH_GOOGLE: ToolDefinition = {
   },
 }
 
-const ALL_TOOLS: ToolDefinition[] = [SEARCH_WEB, SEARCH_REDDIT, CHECK_DOMAIN, SEARCH_GOOGLE_MAPS, SEARCH_GOOGLE]
+const SEARCH_BROWNBOOK: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'search_brownbook',
+    description: 'Search Brownbook.net, a free global business directory, for real businesses — name, phone, address, and email when listed. Complements search_google_maps: independently sourced, and often has businesses (and occasionally an email address) that Google Maps does not. Especially useful for abroad markets outside Ghana.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Business type to search for, e.g. "pharmacies" or "restaurants"' },
+        city: { type: 'string', description: 'City or town to focus the search on.' },
+        country: { type: 'string', description: `Country the city is in — one of: ${COUNTRIES.join(', ')}. Defaults to Ghana.` },
+      },
+      required: ['query'],
+    },
+  },
+}
+
+const ALL_TOOLS: ToolDefinition[] = [SEARCH_WEB, SEARCH_REDDIT, CHECK_DOMAIN, SEARCH_GOOGLE_MAPS, SEARCH_GOOGLE, SEARCH_BROWNBOOK]
 
 // Tools available per agent
 const AGENT_TOOLS: Record<string, string[]> = {
   scout: ['search_google', 'search_reddit', 'search_web', 'check_domain'],
-  prospect: ['search_web', 'check_domain', 'search_google_maps'],
+  prospect: ['search_web', 'check_domain', 'search_google_maps', 'search_brownbook'],
   scope: ['search_web', 'check_domain'],
   content: ['search_web'],
   revenue: ['search_web'],
@@ -222,6 +239,54 @@ export async function executeTool(name: string, args: Record<string, string>): P
       const items = (data.organic_results ?? []).slice(0, 8)
       if (!items.length) return 'No Google results found for this query.'
       const lines = items.map((r, i) => `${i + 1}. ${r.title ?? 'Untitled'}\n   ${r.snippet ?? ''}\n   ${r.link ?? ''}`)
+      return lines.join('\n\n')
+    }
+
+    if (name === 'search_brownbook') {
+      const key = process.env.SERPAPI_KEY
+      if (!key) return 'Brownbook search not available — SERPAPI_KEY not set.'
+      const market = marketFor(args.country)
+      const query = (args.query ?? '').trim()
+      const city = (args.city ?? '').trim()
+      // Brownbook.net's own robots.txt allows individual /business/{id}/{slug}/
+      // pages but disallows its /countries/* browse pages — so businesses are
+      // discovered via a real Google search (Brownbook fully allows Googlebot)
+      // and only the allowed individual pages are ever fetched directly.
+      const q = `site:brownbook.net/business "${query}" ${[city, market.country].filter(Boolean).join(' ')}`
+      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: key })
+      const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
+      if (!res.ok) return `SerpAPI error: HTTP ${res.status}`
+      const data = await res.json() as { organic_results?: Array<{ link?: string }> }
+      const links = [...new Set((data.organic_results ?? [])
+        .map(r => r.link)
+        .filter((l): l is string => !!l && /brownbook\.net\/business\/\d+\/[a-z0-9-]+/i.test(l)))]
+        .slice(0, 6)
+      if (!links.length) return 'No Brownbook results found for this query.'
+
+      const emailRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
+      const businesses = await Promise.all(links.map(async url => {
+        try {
+          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TagettBot/1.0; +https://ecstasytechnologies.com)' }, signal: AbortSignal.timeout(10000) })
+          if (!r.ok) return null
+          const html = await r.text()
+          const ldMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)
+          if (!ldMatch) return null
+          const ld = JSON.parse(ldMatch[1])
+          const addr = ld.address ?? ld.location
+          const mailto = html.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
+          const email = ld.email || mailto?.[1] || html.match(emailRe)?.[0]
+          return { name: ld.name as string | undefined, phone: ld.telephone as string | undefined, address: addr ? [addr.streetAddress, addr.postalCode].filter(Boolean).join(', ') : undefined, email, url }
+        } catch { return null }
+      }))
+      const found = businesses.filter((b): b is NonNullable<typeof b> => !!b?.name)
+      if (!found.length) return 'Brownbook results found but could not be parsed.'
+      const lines = found.map((b, i) => [
+        `${i + 1}. ${b.name}`,
+        `   Address: ${b.address ?? 'N/A'}`,
+        `   Phone: ${b.phone ?? 'N/A'}`,
+        `   Email: ${b.email ?? 'NONE — not listed on this directory entry'}`,
+        `   Source: ${b.url}`,
+      ].join('\n'))
       return lines.join('\n\n')
     }
 
