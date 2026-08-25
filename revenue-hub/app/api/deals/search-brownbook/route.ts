@@ -115,15 +115,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err?.error ?? `SerpAPI ${res.status}` }, { status: 502 })
   }
   const data = await res.json()
-  const links = ((data.organic_results ?? []) as Array<{ link?: string }>)
+  const organic = (data.organic_results ?? []) as Array<{ link?: string; title?: string; snippet?: string }>
+  const links = organic
     .map(r => r.link)
     .filter((l): l is string => !!l && BUSINESS_URL_RE.test(l))
   const uniqueLinks = [...new Set(links)].slice(0, 8)
 
   if (uniqueLinks.length === 0) {
     if (debug) {
-      const all = ((data.organic_results ?? []) as Array<{ link?: string; title?: string }>)
-      return NextResponse.json({ debug: true, stage: 'no-links-matched-regex', q, totalResults: all.length, sample: all.slice(0, 10) })
+      return NextResponse.json({ debug: true, stage: 'no-links-matched-regex', q, totalResults: organic.length, sample: organic.slice(0, 10) })
     }
     return NextResponse.json([])
   }
@@ -131,7 +131,8 @@ export async function POST(req: Request) {
   const diag: Record<string, unknown>[] = []
   const results = (await Promise.all(uniqueLinks.map(l => fetchBusiness(l, debug ? diag : undefined)))).filter((r): r is BrownbookResult => !!r)
   if (debug) {
-    return NextResponse.json({ debug: true, stage: 'parsed', q, uniqueLinks, resultCount: results.length, results, diag })
+    const matchedOrganic = organic.filter(r => r.link && uniqueLinks.includes(r.link))
+    return NextResponse.json({ debug: true, stage: 'parsed', q, uniqueLinks, resultCount: results.length, results, diag, matchedOrganic })
   }
 
   // Prospects with no separate website and no email yet found are the
