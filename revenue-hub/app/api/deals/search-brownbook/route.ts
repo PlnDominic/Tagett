@@ -115,12 +115,15 @@ export async function POST(req: Request) {
   if (uniqueLinks.length === 0) {
     if (debug) {
       const all = ((data.organic_results ?? []) as Array<{ link?: string; title?: string }>)
-      return NextResponse.json({ debug: true, q, totalResults: all.length, sample: all.slice(0, 10) })
+      return NextResponse.json({ debug: true, stage: 'no-links-matched-regex', q, totalResults: all.length, sample: all.slice(0, 10) })
     }
     return NextResponse.json([])
   }
 
   const results = (await Promise.all(uniqueLinks.map(fetchBusiness))).filter((r): r is BrownbookResult => !!r)
+  if (debug) {
+    return NextResponse.json({ debug: true, stage: 'parsed', q, uniqueLinks, resultCount: results.length, results })
+  }
 
   // Prospects with no separate website and no email yet found are the
   // priority — a phone-only, no-site listing is exactly what this is for.
