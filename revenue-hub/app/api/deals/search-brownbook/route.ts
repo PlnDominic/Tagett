@@ -94,7 +94,7 @@ async function fetchBusiness(url: string): Promise<BrownbookResult | null> {
 export async function POST(req: Request) {
   if (!KEY) return NextResponse.json({ error: 'SERPAPI_KEY not configured' }, { status: 500 })
 
-  const { query, city, country } = await req.json()
+  const { query, city, country, debug } = await req.json()
   if (!query?.trim()) return NextResponse.json({ error: 'query required' }, { status: 400 })
 
   const market = marketFor(country)
@@ -113,6 +113,10 @@ export async function POST(req: Request) {
   const uniqueLinks = [...new Set(links)].slice(0, 8)
 
   if (uniqueLinks.length === 0) {
+    if (debug) {
+      const all = ((data.organic_results ?? []) as Array<{ link?: string; title?: string }>)
+      return NextResponse.json({ debug: true, q, totalResults: all.length, sample: all.slice(0, 10) })
+    }
     return NextResponse.json([])
   }
 
