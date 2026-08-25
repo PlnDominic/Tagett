@@ -94,11 +94,11 @@ async function fetchBusiness(url: string): Promise<BrownbookResult | null> {
 export async function POST(req: Request) {
   if (!KEY) return NextResponse.json({ error: 'SERPAPI_KEY not configured' }, { status: 500 })
 
-  const { query, city, country, debug } = await req.json()
-  if (!query?.trim()) return NextResponse.json({ error: 'query required' }, { status: 400 })
+  const { query, city, country, debug, qOverride } = await req.json()
+  if (!query?.trim() && !qOverride) return NextResponse.json({ error: 'query required' }, { status: 400 })
 
   const market = marketFor(country)
-  const q = `site:brownbook.net/business "${query.trim()}" ${[city?.trim(), market.country].filter(Boolean).join(' ')}`
+  const q = qOverride || `site:brownbook.net/business "${query.trim()}" ${[city?.trim(), market.country].filter(Boolean).join(' ')}`
   const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: KEY })
 
   const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
