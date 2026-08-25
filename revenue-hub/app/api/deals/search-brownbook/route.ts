@@ -94,11 +94,14 @@ export async function POST(req: Request) {
   if (!query?.trim()) return NextResponse.json({ error: 'query required' }, { status: 400 })
 
   const market = marketFor(country)
-  // No site:.../business path restriction or quoted phrase — both were
-  // tested against SerpAPI directly and returned zero organic_results even
-  // for categories with many real listings; a plain site: + keywords query
-  // reliably surfaces them instead.
-  const q = `site:brownbook.net ${query.trim()} ${[city?.trim(), market.country].filter(Boolean).join(' ')}`
+  // No site:.../business path restriction, no quoted phrase, and no literal
+  // country name in the query text — all three were tested directly against
+  // production and each independently zeroed out organic_results, even for
+  // categories with many real listings (a small-ish site's site:-restricted
+  // index appears to need every extra keyword to actually co-occur in the
+  // indexed text, and pages show "GB"/county names, not "United Kingdom").
+  // The gl param already biases region without needing it as a keyword.
+  const q = `site:brownbook.net ${query.trim()} ${city?.trim() ?? ''}`.trim()
   const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: KEY })
 
   const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })

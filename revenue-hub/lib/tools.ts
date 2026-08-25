@@ -254,9 +254,11 @@ export async function executeTool(name: string, args: Record<string, string>): P
       // ranges. So this parses SerpAPI's own indexed title/snippet instead —
       // that request goes to serpapi.com, never directly to brownbook.net.
       // A plain site: + keywords query surfaces real listings; a site:.../business
-      // path restriction plus a quoted phrase returned zero results even for
-      // categories with many real listings — tested directly before writing this.
-      const q = `site:brownbook.net ${query} ${[city, market.country].filter(Boolean).join(' ')}`
+      // path restriction, a quoted phrase, OR a literal country name in the
+      // query text each independently zeroed out results even for categories
+      // with many real listings — all tested directly before writing this.
+      // gl already biases region without needing the country as a keyword.
+      const q = `site:brownbook.net ${query} ${city}`.trim()
       const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: key })
       const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
       if (!res.ok) return `SerpAPI error: HTTP ${res.status}`
