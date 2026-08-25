@@ -248,41 +248,60 @@ export async function executeTool(name: string, args: Record<string, string>): P
       const market = marketFor(args.country)
       const query = (args.query ?? '').trim()
       const city = (args.city ?? '').trim()
-      // Brownbook.net's own robots.txt allows individual /business/{id}/{slug}/
-      // pages but disallows its /countries/* browse pages — so businesses are
-      // discovered via a real Google search (Brownbook fully allows Googlebot)
-      // and only the allowed individual pages are ever fetched directly.
-      const q = `site:brownbook.net/business "${query}" ${[city, market.country].filter(Boolean).join(' ')}`
+      // Fetching individual brownbook.net business pages directly (for their
+      // clean schema.org JSON-LD) reliably gets a 403 from Vercel's own IPs —
+      // confirmed by hand, not a fingerprint issue, a WAF blocking datacenter
+      // ranges. So this parses SerpAPI's own indexed title/snippet instead —
+      // that request goes to serpapi.com, never directly to brownbook.net.
+      // A plain site: + keywords query surfaces real listings; a site:.../business
+      // path restriction plus a quoted phrase returned zero results even for
+      // categories with many real listings — tested directly before writing this.
+      const q = `site:brownbook.net ${query} ${[city, market.country].filter(Boolean).join(' ')}`
       const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: key })
       const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
       if (!res.ok) return `SerpAPI error: HTTP ${res.status}`
-      const data = await res.json() as { organic_results?: Array<{ link?: string }> }
-      const links = [...new Set((data.organic_results ?? [])
-        .map(r => r.link)
-        .filter((l): l is string => !!l && /brownbook\.net\/business\/\d+\/[a-z0-9-]+/i.test(l)))]
-        .slice(0, 6)
-      if (!links.length) return 'No Brownbook results found for this query.'
+      const data = await res.json() as { organic_results?: Array<{ link?: string; title?: string; snippet?: string }> }
 
+      // Candidate phone-shaped substrings are checked by digit count, not
+      // just regex shape — a street number ("147-149") matches the same
+      // loose pattern as a real phone number, but never reaches 9 digits.
+      const phoneCandidateRe = /\+?\d[\d\-\s()]{5,}\d/g
       const emailRe = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/
-      const businesses = await Promise.all(links.map(async url => {
-        try {
-          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TagettBot/1.0; +https://ecstasytechnologies.com)' }, signal: AbortSignal.timeout(10000) })
-          if (!r.ok) return null
-          const html = await r.text()
-          const ldMatch = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)
-          if (!ldMatch) return null
-          const ld = JSON.parse(ldMatch[1])
-          const addr = ld.address ?? ld.location
-          const mailto = html.match(/mailto:([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/)
-          const email = ld.email || mailto?.[1] || html.match(emailRe)?.[0]
-          return { name: ld.name as string | undefined, phone: ld.telephone as string | undefined, address: addr ? [addr.streetAddress, addr.postalCode].filter(Boolean).join(', ') : undefined, email, url }
-        } catch { return null }
-      }))
-      const found = businesses.filter((b): b is NonNullable<typeof b> => !!b?.name)
-      if (!found.length) return 'Brownbook results found but could not be parsed.'
+      const findPhone = (text: string): { phone: string; index: number } | undefined => {
+        for (const m of text.matchAll(phoneCandidateRe)) {
+          if ((m[0].match(/\d/g) ?? []).length >= 9) return { phone: m[0].trim(), index: m.index ?? 0 }
+        }
+        return undefined
+      }
+
+      const seen = new Set<string>()
+      const found: Array<{ name: string; address: string; phone?: string; email?: string; url: string }> = []
+      for (const r of data.organic_results ?? []) {
+        if (!r.link || !/brownbook\.net\/business\/\d+\/[a-z0-9-]+/i.test(r.link) || seen.has(r.link)) continue
+        seen.add(r.link)
+        const text = (r.snippet ?? '').trim()
+        if (!text) continue
+
+        let listingName = ''
+        let rest = text
+        const profileMatch = text.match(/^Business profile:\s*([^,]+),\s*(.+)$/i)
+        const sentenceMatch = text.match(/^([^.]+)\.\s*(.+)$/)
+        if (profileMatch) { listingName = profileMatch[1].trim(); rest = profileMatch[2] }
+        else if (sentenceMatch && sentenceMatch[1].length < 80) { listingName = sentenceMatch[1].trim(); rest = sentenceMatch[2] }
+        else { listingName = (r.title ?? '').split(/\s{2,}/)[0].trim() }
+        if (!listingName) continue
+
+        const phoneHit = findPhone(rest)
+        let address = phoneHit ? rest.slice(0, phoneHit.index).trim() : rest.trim()
+        address = address.replace(/Share Edit listing.*$/i, '').replace(/\.\s*$/, '').trim()
+
+        found.push({ name: listingName, address, phone: phoneHit?.phone, email: text.match(emailRe)?.[0], url: r.link })
+        if (found.length >= 6) break
+      }
+      if (!found.length) return 'No Brownbook results found for this query.'
       const lines = found.map((b, i) => [
         `${i + 1}. ${b.name}`,
-        `   Address: ${b.address ?? 'N/A'}`,
+        `   Address: ${b.address || 'N/A'}`,
         `   Phone: ${b.phone ?? 'N/A'}`,
         `   Email: ${b.email ?? 'NONE — not listed on this directory entry'}`,
         `   Source: ${b.url}`,
