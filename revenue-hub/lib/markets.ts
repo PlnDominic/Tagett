@@ -1,15 +1,18 @@
 // ─── Target markets ───────────────────────────────────────────────────────────
 // Ecstasy Technologies sells remotely, so the prospecting surface is not limited
 // to Ghana. Ghana stays the home market (local phone numbers, WhatsApp-first
-// outreach, GHS pricing); Europe and North America are added because the same
-// small-business website work bills at several times the Ghanaian rate there.
+// outreach, GHS pricing); the rest of Africa, Europe, North America, and Oceania
+// are added because the same small-business website work is a real market in
+// each — some (Europe/North America) bill at several times the Ghanaian rate,
+// some (Nigeria, Kenya) are close enough culturally that the same WhatsApp-first
+// playbook converts, just in a bigger market.
 //
 // Country matters mechanically, not just in prompt wording: Google Maps queries
 // need the country appended to disambiguate city names (there is a Kumasi and a
 // Cambridge in more than one country), and Google web search needs the right
 // `gl` region code or results skew to the wrong market entirely.
 
-export type Region = 'Ghana' | 'Europe' | 'North America'
+export type Region = 'Ghana' | 'Africa' | 'Europe' | 'North America' | 'Oceania'
 
 export interface Market {
   country: string
@@ -26,6 +29,15 @@ export interface Market {
   dialCode: string
   region: Region
   /**
+   * Whether a direct WhatsApp message to the business owner is the expected
+   * norm in this market (as in Ghana) rather than something that reads as
+   * spam (as in most of Europe/North America). Kept as its own flag instead
+   * of inferring it from `region` — Nigeria and Kenya are their own Africa
+   * region entries but share Ghana's outreach style, and a future region
+   * could easily contain a mix.
+   */
+  whatsappFirst?: boolean
+  /**
    * A handful of well-known cities, kept only as a fallback for when
    * GEONAMES_USERNAME isn't configured or the API call fails — NOT the
    * primary place source. See lib/places.ts for the real one, which draws
@@ -40,10 +52,23 @@ export interface Market {
 
 export const MARKETS: Market[] = [
   {
-    country: 'Ghana', gl: 'gh', iso2: 'GH', dialCode: '+233', region: 'Ghana', currency: 'GHS', budget: '3,500–6,000',
+    country: 'Ghana', gl: 'gh', iso2: 'GH', dialCode: '+233', region: 'Ghana', whatsappFirst: true, currency: 'GHS', budget: '3,500–6,000',
     seedCities: ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Ho', 'Koforidua',
              'Sunyani', 'Techiman', 'Bolgatanga', 'Wa', 'Tema', 'Kasoa', 'Obuasi',
              'Ejisu', 'Nsawam', 'Winneba', 'Agona Swedru'],
+  },
+  {
+    country: 'Nigeria', gl: 'ng', iso2: 'NG', dialCode: '+234', region: 'Africa', whatsappFirst: true, currency: '₦', budget: '150,000–400,000',
+    seedCities: ['Lagos', 'Abuja', 'Kano', 'Ibadan', 'Port Harcourt', 'Benin City',
+             'Kaduna', 'Enugu', 'Aba', 'Onitsha', 'Warri', 'Uyo'],
+  },
+  {
+    country: 'Kenya', gl: 'ke', iso2: 'KE', dialCode: '+254', region: 'Africa', whatsappFirst: true, currency: 'KSh', budget: '15,000–40,000',
+    seedCities: ['Nairobi', 'Mombasa', 'Kisumu', 'Nakuru', 'Eldoret', 'Thika', 'Nyeri'],
+  },
+  {
+    country: 'South Africa', gl: 'za', iso2: 'ZA', dialCode: '+27', region: 'Africa', currency: 'R', budget: '2,500–6,000',
+    seedCities: ['Johannesburg', 'Cape Town', 'Durban', 'Pretoria', 'Port Elizabeth', 'Bloemfontein'],
   },
   {
     country: 'United Kingdom', gl: 'uk', iso2: 'GB', dialCode: '+44', region: 'Europe', currency: '£', budget: '1,500–4,000',
@@ -59,12 +84,52 @@ export const MARKETS: Market[] = [
     seedCities: ['Berlin', 'Hamburg', 'Cologne', 'Frankfurt', 'Stuttgart', 'Leipzig', 'Bremen'],
   },
   {
+    country: 'France', gl: 'fr', iso2: 'FR', dialCode: '+33', region: 'Europe', currency: '€', budget: '1,500–4,000',
+    seedCities: ['Paris', 'Marseille', 'Lyon', 'Toulouse', 'Nice', 'Nantes', 'Strasbourg'],
+  },
+  {
+    country: 'Italy', gl: 'it', iso2: 'IT', dialCode: '+39', region: 'Europe', currency: '€', budget: '1,500–4,000',
+    seedCities: ['Rome', 'Milan', 'Naples', 'Turin', 'Bologna', 'Florence', 'Bari'],
+  },
+  {
+    country: 'Portugal', gl: 'pt', iso2: 'PT', dialCode: '+351', region: 'Europe', currency: '€', budget: '1,200–3,000',
+    seedCities: ['Lisbon', 'Porto', 'Braga', 'Coimbra', 'Faro'],
+  },
+  {
     country: 'Netherlands', gl: 'nl', iso2: 'NL', dialCode: '+31', region: 'Europe', currency: '€', budget: '2,000–5,000',
     seedCities: ['Amsterdam', 'Rotterdam', 'The Hague', 'Utrecht', 'Eindhoven'],
   },
   {
+    country: 'Belgium', gl: 'be', iso2: 'BE', dialCode: '+32', region: 'Europe', currency: '€', budget: '1,800–4,500',
+    seedCities: ['Brussels', 'Antwerp', 'Ghent', 'Bruges', 'Liège'],
+  },
+  {
     country: 'Spain', gl: 'es', iso2: 'ES', dialCode: '+34', region: 'Europe', currency: '€', budget: '1,500–3,500',
     seedCities: ['Madrid', 'Barcelona', 'Valencia', 'Seville', 'Malaga', 'Bilbao'],
+  },
+  {
+    country: 'Switzerland', gl: 'ch', iso2: 'CH', dialCode: '+41', region: 'Europe', currency: 'CHF', budget: '2,500–6,000',
+    seedCities: ['Zurich', 'Geneva', 'Basel', 'Bern', 'Lausanne'],
+  },
+  {
+    country: 'Austria', gl: 'at', iso2: 'AT', dialCode: '+43', region: 'Europe', currency: '€', budget: '2,000–5,000',
+    seedCities: ['Vienna', 'Graz', 'Linz', 'Salzburg', 'Innsbruck'],
+  },
+  {
+    country: 'Sweden', gl: 'se', iso2: 'SE', dialCode: '+46', region: 'Europe', currency: 'kr', budget: '15,000–40,000',
+    seedCities: ['Stockholm', 'Gothenburg', 'Malmö', 'Uppsala'],
+  },
+  {
+    country: 'Norway', gl: 'no', iso2: 'NO', dialCode: '+47', region: 'Europe', currency: 'kr', budget: '15,000–40,000',
+    seedCities: ['Oslo', 'Bergen', 'Trondheim', 'Stavanger'],
+  },
+  {
+    country: 'Denmark', gl: 'dk', iso2: 'DK', dialCode: '+45', region: 'Europe', currency: 'kr', budget: '10,000–25,000',
+    seedCities: ['Copenhagen', 'Aarhus', 'Odense', 'Aalborg'],
+  },
+  {
+    country: 'Poland', gl: 'pl', iso2: 'PL', dialCode: '+48', region: 'Europe', currency: 'zł', budget: '6,000–15,000',
+    seedCities: ['Warsaw', 'Krakow', 'Łódź', 'Wrocław', 'Poznań'],
   },
   {
     country: 'United States', gl: 'us', iso2: 'US', dialCode: '+1', region: 'North America', currency: '$', budget: '2,500–6,000',
@@ -74,6 +139,18 @@ export const MARKETS: Market[] = [
   {
     country: 'Canada', gl: 'ca', iso2: 'CA', dialCode: '+1', region: 'North America', currency: 'C$', budget: '2,500–6,000',
     seedCities: ['Toronto', 'Calgary', 'Ottawa', 'Edmonton', 'Winnipeg', 'Hamilton', 'Mississauga'],
+  },
+  {
+    country: 'Mexico', gl: 'mx', iso2: 'MX', dialCode: '+52', region: 'North America', whatsappFirst: true, currency: 'MX$', budget: '25,000–60,000',
+    seedCities: ['Mexico City', 'Guadalajara', 'Monterrey', 'Puebla', 'Tijuana', 'León'],
+  },
+  {
+    country: 'Australia', gl: 'au', iso2: 'AU', dialCode: '+61', region: 'Oceania', currency: 'A$', budget: '2,500–6,000',
+    seedCities: ['Sydney', 'Melbourne', 'Brisbane', 'Perth', 'Adelaide', 'Newcastle'],
+  },
+  {
+    country: 'New Zealand', gl: 'nz', iso2: 'NZ', dialCode: '+64', region: 'Oceania', currency: 'NZ$', budget: '2,500–6,000',
+    seedCities: ['Auckland', 'Wellington', 'Christchurch', 'Hamilton', 'Dunedin'],
   },
 ]
 
@@ -140,13 +217,15 @@ export function toE164(raw: string | undefined, m: Market): string | undefined {
 }
 
 // Outreach differs by market in ways that change the pitch, not just the
-// currency: a Ghanaian SME is reachable on WhatsApp and responds to a direct
-// message, while a UK or US business expects email and a company that looks
-// established before it replies. Handing this to the drafting agents keeps the
-// pitch from reading as obviously foreign.
+// currency: a Ghanaian, Nigerian, Kenyan, or Mexican SME is reachable on
+// WhatsApp and responds to a direct message, while a UK or US business
+// expects email and a company that looks established before it replies.
+// Handing this to the drafting agents keeps the pitch from reading as
+// obviously foreign. See Market.whatsappFirst for why this checks a flag,
+// not the region label.
 export function outreachNotes(m: Market): string {
-  if (m.region === 'Ghana') {
-    return 'WhatsApp-first: a direct, warm message to the business owner is normal and expected. Quote in GHS.'
+  if (m.whatsappFirst) {
+    return `WhatsApp-first: a direct, warm message to the business owner is normal and expected. Quote in ${m.currency}.`
   }
   return [
     `Quote in ${m.currency} (typical small-business site: ${m.currency}${m.budget}).`,

@@ -35,13 +35,16 @@ function pick<T>(arr: T[]): T {
 // Ecstasy Technologies delivers remotely, so the prospecting surface isn't only
 // Ghana. Ghana stays weighted highest — it's the home market, the referral
 // network is there, and WhatsApp outreach converts — but Europe and North
-// America are worth a run each because the same small-business site bills at
-// several times the Ghanaian rate, so one closed deal there moves the monthly
-// goal much further.
+// America are worth two runs each because the same small-business site bills
+// at several times the Ghanaian rate, so one closed deal there moves the
+// monthly goal much further. Africa (Nigeria, Kenya, South Africa) and
+// Oceania get one run each — real markets, just not weighted as heavily yet.
 const REGION_WEIGHTS: Array<Region> = [
   'Ghana', 'Ghana', 'Ghana',
+  'Africa',
   'Europe', 'Europe',
   'North America', 'North America',
+  'Oceania',
 ]
 
 function pickMarket(): Market {
