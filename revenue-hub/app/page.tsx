@@ -288,7 +288,7 @@ Search multiple times if needed. NEVER invent or make up businesses, phone numbe
 
 How to find phone numbers: Search for the business name + "Ghana" + "phone" or "contact". Check Facebook pages, Google Maps listings, and business directories.
 
-When prospecting abroad (outside Ghana), also call search_brownbook — a free global business directory that's independently sourced from Google Maps and sometimes has an email address listed, which Maps rarely does. Use it alongside search_google_maps, not instead of it.
+When prospecting abroad (outside Ghana), also call search_brownbook — a free global business directory that's independently sourced from Google Maps and sometimes has an email address listed, which Maps rarely does. In the UK specifically, also call search_yell — Yell.com is the UK's major business directory; it has real phone numbers on some listings but not all, so a result with no phone is still worth noting. Use these alongside search_google_maps, not instead of it.
 
 Output format for each REAL prospect found:
 1. Business Name: [exact name from search]
@@ -6739,7 +6739,7 @@ interface PlaceResult {
   rating?: number
   ratingCount?: number
   mapsUrl: string
-  source?: 'maps' | 'brownbook'
+  source?: 'maps' | 'brownbook' | 'yell'
 }
 
 const GHANA_CITIES = ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Sunyani', 'Ho', 'Koforidua', 'Wa', 'Bolgatanga']
@@ -6757,6 +6757,8 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
   const [error, setError] = useState('')
   const [bbLoading, setBbLoading] = useState(false)
   const [bbError, setBbError] = useState('')
+  const [yellLoading, setYellLoading] = useState(false)
+  const [yellError, setYellError] = useState('')
   const [noWebsiteOnly, setNoWebsiteOnly] = useState(false)
   const [added, setAdded] = useState<Set<string>>(new Set())
   const [auditTarget, setAuditTarget] = useState<{ url: string; name?: string; phone?: string } | null>(null)
@@ -6823,33 +6825,35 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
     setAdded(prev => new Set([...prev, p.id]))
   }
 
-  // Brownbook.net: a free, independently-sourced global business directory —
-  // complements Google Maps rather than replacing it. Merged into the same
-  // results list (ids prefixed so they can't collide with Maps place_ids) so
-  // the existing add-to-pipeline flow, "no website only" filter, and card UI
-  // all work unchanged for either source. Adds, not replaces, so running both
+  // Business directories (Brownbook, Yell): free, independently-sourced from
+  // Google Maps — complement it rather than replace it. Merged into the same
+  // results list (ids prefixed per-source so they can't collide) so the
+  // existing add-to-pipeline flow, "no website only" filter, and card UI all
+  // work unchanged for every source. Adds, not replaces, so running several
   // searches for the same query/city layers their results together.
-  const searchBrownbook = async () => {
+  const searchDirectory = async (endpoint: string, source: 'brownbook' | 'yell', setLoadingFn: (v: boolean) => void, setErrorFn: (v: string) => void) => {
     if (!query.trim()) return
-    setBbLoading(true); setBbError('')
+    setLoadingFn(true); setErrorFn('')
     try {
-      const res = await fetch('/api/deals/search-brownbook', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ query, city, country }),
       })
       const data = await res.json()
-      if (!res.ok) { setBbError(data.error ?? 'Brownbook search failed'); return }
+      if (!res.ok) { setErrorFn(data.error ?? `${source} search failed`); return }
       if (Array.isArray(data)) {
-        const tagged: PlaceResult[] = data.map((p: PlaceResult) => ({ ...p, id: `bb-${p.id}`, source: 'brownbook' as const }))
+        const tagged: PlaceResult[] = data.map((p: PlaceResult) => ({ ...p, id: `${source}-${p.id}`, source }))
         setResults(prev => {
           const existingIds = new Set(prev.map(r => r.id))
           return [...prev, ...tagged.filter(t => !existingIds.has(t.id))]
         })
       }
-    } catch { setBbError('Network error') }
-    finally { setBbLoading(false) }
+    } catch { setErrorFn('Network error') }
+    finally { setLoadingFn(false) }
   }
+  const searchBrownbook = () => searchDirectory('/api/deals/search-brownbook', 'brownbook', setBbLoading, setBbError)
+  const searchYell = () => searchDirectory('/api/deals/search-yell', 'yell', setYellLoading, setYellError)
 
   const visible = noWebsiteOnly ? results.filter(p => !p.hasWebsite) : results
   const noWebsiteCount = results.filter(p => !p.hasWebsite).length
@@ -6948,9 +6952,20 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
           >
             {bbLoading ? '…' : '🌍 Brownbook'}
           </button>
+          {country === 'United Kingdom' && (
+            <button
+              onClick={searchYell}
+              disabled={yellLoading || !query.trim()}
+              title="Search Yell.com — the UK's major business directory. Phone numbers are found on some results, not all."
+              style={{ padding: '8px 14px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: yellLoading || !query.trim() ? MUTED : TEXT, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, cursor: yellLoading || !query.trim() ? 'default' : 'pointer' }}
+            >
+              {yellLoading ? '…' : '📞 Yell'}
+            </button>
+          )}
         </div>
 
         {bbError && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', fontFamily: FONT_BODY }}>{bbError}</div>}
+        {yellError && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', fontFamily: FONT_BODY }}>{yellError}</div>}
 
         {results.length > 0 && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10 }}>
@@ -6974,17 +6989,17 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
 
       {/* Results */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '10px 16px' }}>
-        {!loading && !bbLoading && results.length === 0 && !error && (
+        {!loading && !bbLoading && !yellLoading && results.length === 0 && !error && (
           <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
             <div style={{ fontSize: 28, marginBottom: 10 }}>📍</div>
             <div style={{ fontSize: 14 }}>Search for businesses in {country}</div>
             <div style={{ fontSize: 12, marginTop: 6, opacity: 0.7 }}>Businesses without a website are flagged as prime prospects</div>
           </div>
         )}
-        {(loading || bbLoading) && (
+        {(loading || bbLoading || yellLoading) && (
           <div style={{ textAlign: 'center', padding: '48px 0', color: MUTED, fontFamily: FONT_BODY }}>
             <ThinkingDots />
-            <div style={{ fontSize: 12, marginTop: 10 }}>{loading ? 'Searching Google Maps…' : 'Searching Brownbook…'}</div>
+            <div style={{ fontSize: 12, marginTop: 10 }}>{loading ? 'Searching Google Maps…' : yellLoading ? 'Searching Yell…' : 'Searching Brownbook…'}</div>
           </div>
         )}
         {visible.map(p => {
@@ -7008,6 +7023,11 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
                     {p.source === 'brownbook' && (
                       <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 10, background: `${MUTED}20`, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                         🌍 Brownbook
+                      </span>
+                    )}
+                    {p.source === 'yell' && (
+                      <span style={{ fontSize: 9, padding: '2px 7px', borderRadius: 10, background: `${MUTED}20`, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                        📞 Yell
                       </span>
                     )}
                   </div>
