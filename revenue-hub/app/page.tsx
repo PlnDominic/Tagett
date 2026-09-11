@@ -3618,6 +3618,7 @@ function PortalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
 
 interface AuditResult {
   loadedOk: boolean
+  quotaExceeded?: boolean
   url: string
   reason?: string
   performanceScore?: number
@@ -3730,7 +3731,14 @@ function AuditModal({ initialUrl, contextName, contextPhone, onClose }: {
           </div>
         )}
 
-        {result && !result.loadedOk && (
+        {result && !result.loadedOk && result.quotaExceeded && (
+          <div style={{ padding: '14px', borderRadius: 10, border: '1px solid #F59E0B50', background: '#F59E0B10', fontSize: 13, color: '#F59E0B', fontFamily: FONT_BODY, lineHeight: 1.6, marginBottom: 12 }}>
+            ⚠ The scan couldn&apos;t run — this is on our side, not the prospect&apos;s site.<br />
+            <span style={{ fontSize: 12, color: MUTED }}>{result.reason}</span>
+          </div>
+        )}
+
+        {result && !result.loadedOk && !result.quotaExceeded && (
           <div style={{ padding: '14px', borderRadius: 10, border: '1px solid #e05c5c50', background: '#e05c5c10', fontSize: 13, color: '#e05c5c', fontFamily: FONT_BODY, lineHeight: 1.6, marginBottom: 12 }}>
             ⚠ This website failed to load during the scan.<br />
             <span style={{ fontSize: 12, color: MUTED }}>{result.reason}</span>
@@ -3765,7 +3773,7 @@ function AuditModal({ initialUrl, contextName, contextPhone, onClose }: {
           </div>
         )}
 
-        {result && (
+        {result && !result.quotaExceeded && (
           <button onClick={draftPitch} disabled={drafting} style={{ padding: '9px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_HEADING, fontSize: 12, fontWeight: 500, cursor: drafting ? 'wait' : 'pointer', opacity: drafting ? 0.6 : 1, marginBottom: 12 }}>
             {drafting ? 'Drafting…' : '✦ Draft WhatsApp Pitch'}
           </button>
