@@ -1850,7 +1850,10 @@ function parseProspects(text: string): ParsedProspect[] {
 
     const valueRaw = field('Estimated value')
     let valueGHS = 0
-    if (valueRaw) {
+    // A value quoted in another currency (£1,500, KSh 30,000) is not GHS; leave
+    // it at 0 to be set after the call rather than store the wrong amount.
+    const foreignCurrency = valueRaw && !/GHS|₵/i.test(valueRaw) && /[£$€₦]|KSh|\bR\s?\d|MX\$|[A-Z]{2,3}\s?\d/.test(valueRaw)
+    if (valueRaw && !foreignCurrency) {
       const m = valueRaw.match(/GHS\s*([\d,]+)|₵\s*([\d,]+)|([\d,]+)/)
       if (m) valueGHS = parseInt((m[1] || m[2] || m[3]).replace(/,/g, ''), 10) || 0
     }
@@ -1864,6 +1867,7 @@ function parseProspects(text: string): ParsedProspect[] {
       address: field('Address'),
       phone,
       whyNeedsWebsite: field('Why they need a website'),
+      country: field('Country'),
       servicePitch: field('Service to pitch'),
       valueGHS,
       phonePitch,
@@ -2724,7 +2728,8 @@ async function writeProspectLines(candidates: ProspectCandidate[], market: Marke
 - why: one sentence on why THIS business is losing customers without a website, using only the facts given (industry, reviews, rating, area, social page). Never invent history, owners, competitors or numbers.
 - service: one of "web design", "mobile app", "business software", "GIS".
 - value: whole number in ${market.currency}; a typical small-business website there costs ${market.currency}${market.budget}.
-- pitch: one sentence to say when they answer the phone, using their business name.
+- pitch: one opening sentence for first contact, using their business name.
+How first contact works in ${market.country}: ${outreachNotes(market)}
 Output only the JSON array, nothing else.`
   try {
     const res = await fetch('/api/chat', {
@@ -2773,7 +2778,11 @@ async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise
   if (candidates.length === 0) {
     return `${header}\n\nNo new businesses without a website this time. Try another area of ${search.city} or another industry; running the same search again digs further down the Maps results.`
   }
+  return presentProspects(candidates, search.city, market, `${header} Here are the busiest ${candidates.length} without one, best first:`)
+}
 
+/** Writes a lead list in ProspectBot's format (parseProspects reads it back for Import). */
+async function presentProspects(candidates: ProspectCandidate[], city: string, market: Market, header: string): Promise<string> {
   const lines = await writeProspectLines(candidates, market)
   const defaultValue = parseInt(market.budget.replace(/,/g, ''), 10) || 0
   const money = market.country === 'Ghana' ? 'GHS ' : market.currency
@@ -2784,10 +2793,11 @@ async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise
       `${i + 1}. Business Name — ${c.name}`,
       `   Industry: ${c.industry}`,
       `   Address: ${c.address ?? 'Not listed on Google Maps'}`,
+      `   Country: ${market.country}`,
       `   Phone: ${c.phone ?? 'Not listed on Google Maps'}`,
       `   Google Maps: ${busy}`,
       `   Online presence: ${c.socialOnly ? `social page only (${c.socialOnly})` : 'no website found'}`,
-      `   Why they need a website: ${l.why ?? `Customers searching for ${c.industry.toLowerCase()} in ${search.city} find them on Maps (${busy}) but have no website to check before they call or visit.`}`,
+      `   Why they need a website: ${l.why ?? `Customers searching for ${c.industry.toLowerCase()} in ${city} find them on Maps (${busy}) but have no website to check before they call or visit.`}`,
       `   Service to pitch: ${l.service ?? 'web design'}`,
       `   Estimated value: ${money}${(l.value && l.value > 0 ? l.value : defaultValue).toLocaleString()}`,
       `   Phone pitch: "${l.pitch ?? `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I saw you on Google Maps and noticed you don't have a website yet, and I'd like to show you what one could do for you.`}"`,
@@ -2796,7 +2806,50 @@ async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise
   })
   const total = candidates.reduce((sum, _, i) => sum + (lines[i].value && lines[i].value! > 0 ? lines[i].value! : defaultValue), 0)
   const aiNote = lines.every(l => !l.why) ? '\n\n(The AI providers were busy, so the why/pitch lines are standard ones. Every business, phone and address above is from Google Maps.)' : ''
-  return `${header} Here are the busiest ${candidates.length} without one, best first:\n\n${blocks.join('\n\n')}\n\nPIPELINE SUMMARY\nTotal estimated value: ${money}${total.toLocaleString()}${market.country === 'Ghana' ? `\nThat is ${Math.round((total / 12000) * 100)}% of the GHS 12,000 monthly goal.` : ''}\nCall first: ${candidates[0].name}${candidates[0].reviews ? ` (${candidates[0].reviews} reviews)` : ''}.${aiNote}`
+  return `${header}\n\n${blocks.join('\n\n')}\n\nPIPELINE SUMMARY\nTotal estimated value: ${money}${total.toLocaleString()}${market.country === 'Ghana' ? `\nThat is ${Math.round((total / 12000) * 100)}% of the GHS 12,000 monthly goal.` : ''}\nCall first: ${candidates[0].name}${candidates[0].reviews ? ` (${candidates[0].reviews} reviews)` : ''}.${aiNote}`
+}
+
+// ─── Overnight leads ──────────────────────────────────────────────────────────
+// The 3am run (/api/agents/run) saves real Maps leads on its agent_runs row.
+// This shows the newest unseen batch at the top of ProspectBot; "Show them"
+// turns it into a normal lead list with the Import button.
+
+interface OvernightRun {
+  /** BIGSERIAL in supabase-schema.sql, uuid in supabase-setup.sql. */
+  id: number | string
+  run_at: string
+  prospect_leads?: { country: string; city: string; locale: string; industry: string; leads: ProspectCandidate[] } | null
+}
+const OVERNIGHT_SEEN_KEY = 'tagett-overnight-seen-v1'
+
+function OvernightLeadsBanner({ onShow }: { onShow: (run: OvernightRun) => void }) {
+  const [run, setRun] = useState<OvernightRun | null>(null)
+  useEffect(() => {
+    const seen = new Set(loadJSON<Array<number | string>>(OVERNIGHT_SEEN_KEY, []))
+    fetch('/api/agents/history?limit=5', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { runs: [] })
+      .then((d: { runs?: OvernightRun[] }) => {
+        const fresh = (d.runs ?? []).find(r =>
+          r.prospect_leads?.leads?.length && !seen.has(r.id) && Date.now() - new Date(r.run_at).getTime() < 3 * 86400000)
+        setRun(fresh ?? null)
+      })
+      .catch(() => {})
+  }, [])
+  if (!run?.prospect_leads) return null
+  const dismiss = () => {
+    saveJSON(OVERNIGHT_SEEN_KEY, [...loadJSON<Array<number | string>>(OVERNIGHT_SEEN_KEY, []), run.id].slice(-30))
+    setRun(null)
+  }
+  const { leads, industry, locale } = run.prospect_leads
+  return (
+    <div style={{ margin: '12px 12px 0', padding: '10px 12px', borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}0c`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ flex: 1, minWidth: 180, fontSize: 13, color: TEXT, fontFamily: FONT_BODY }}>
+        🌙 {leads.length} lead{leads.length === 1 ? '' : 's'} found overnight: {industry} in {locale}, no website, busiest first.
+      </span>
+      <button onClick={() => { onShow(run); dismiss() }} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', background: GOLD, color: '#fff', fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Show them</button>
+      <button onClick={dismiss} title="Hide" style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 14 }}>✕</button>
+    </div>
+  )
 }
 
 // ─── ProspectIntakeScreen ─────────────────────────────────────────────────────
@@ -2829,6 +2882,11 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([])
   const [selectedCity, setSelectedCity] = useState<string>('')
   const [selectedArea, setSelectedArea] = useState<string>('')
+  // Ghana keeps its city + neighbourhood chips; other markets offer a few
+  // well-known cities and a box for any town (smaller places are where
+  // businesses are least likely to have a website already).
+  const [country, setCountry] = useState<string>('Ghana')
+  const cityOptions = country === 'Ghana' ? CITIES : marketFor(country).seedCities
 
   const toggleIndustry = (ind: string) => {
     setSelectedIndustries((prev) =>
@@ -2841,11 +2899,11 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
     setSelectedArea('')
   }
 
-  const canSubmit = selectedIndustries.length > 0 && selectedCity !== ''
+  const canSubmit = selectedIndustries.length > 0 && selectedCity.trim() !== ''
 
   const handleSubmit = () => {
     if (!canSubmit || loading) return
-    if (onFind) onFind({ industries: selectedIndustries, city: selectedCity, area: selectedArea })
+    if (onFind) onFind({ industries: selectedIndustries, city: selectedCity.trim(), area: selectedArea, country })
     else onSubmit(buildProspectPrompt(selectedIndustries, selectedCity, selectedArea))
   }
 
@@ -2892,10 +2950,19 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
       {/* Step 2: City */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
-          02 — Which city?
+          02 — Where?
         </div>
+        {onFind && (
+          <select
+            value={country}
+            onChange={e => { setCountry(e.target.value); setSelectedCity(''); setSelectedArea('') }}
+            style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY }}
+          >
+            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {CITIES.map((city) => {
+          {cityOptions.map((city) => {
             const active = selectedCity === city
             return (
               <button
@@ -2915,10 +2982,18 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
             )
           })}
         </div>
+        {onFind && (
+          <input
+            value={cityOptions.includes(selectedCity) ? '' : selectedCity}
+            onChange={e => { setSelectedCity(e.target.value); setSelectedArea('') }}
+            placeholder={`…or type any town in ${country}`}
+            style={{ marginTop: 10, width: '100%', boxSizing: 'border-box', padding: '8px 12px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }}
+          />
+        )}
       </div>
 
       {/* Step 3: Area (only when city selected) */}
-      {selectedCity && (
+      {selectedCity && GHANA_LOCATIONS[selectedCity] && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
             03 — Which area? <span style={{ color: MUTED, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
@@ -8154,12 +8229,13 @@ function ChatInput({ agentShort, onSend, loading, prefill, onClearPrefill }: {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agent, onSend, onFindProspects, onRunBriefing, onHandoff, onOpenImport }: {
+function MessageList({ messages, loading, agent, onSend, onFindProspects, onShowOvernight, onRunBriefing, onHandoff, onOpenImport }: {
   messages: Message[]
   loading: boolean
   agent: Agent
   onSend: (text: string) => void
   onFindProspects?: (search: ProspectSearch) => void
+  onShowOvernight?: (run: OvernightRun) => void
   onRunBriefing: () => void
   onHandoff: (targetAgent: AgentId, prompt: string) => void
   onOpenImport?: (p: ParsedProspect[]) => void
@@ -8172,6 +8248,7 @@ function MessageList({ messages, loading, agent, onSend, onFindProspects, onRunB
 
   return (
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+      {agent.id === 'prospect' && onShowOvernight && <OvernightLeadsBanner onShow={onShowOvernight} />}
       {isEmpty ? (
         agent.id === 'prospect' ? (
           <ProspectIntakeScreen onSubmit={onSend} onFind={onFindProspects} loading={loading} />
@@ -8495,6 +8572,33 @@ export default function Page() {
     } finally { setLoading(false) }
   }, [deals])
 
+  const handleShowOvernight = useCallback(async (run: OvernightRun) => {
+    const batch = run.prospect_leads
+    if (!batch) return
+    const agentId: AgentId = 'prospect'
+    // Drop any imported since the run, and remember the rest as shown.
+    const known = new Set(deals.map(d => prospectKey(d.name, d.phone)))
+    const knownNames = new Set(deals.map(d => prospectKey(d.name).split('|')[0]))
+    const leads = batch.leads.filter(c => !known.has(c.key) && !knownNames.has(c.key.split('|')[0]))
+    const seen = loadJSON<Record<string, number>>(PROSPECT_SEEN_KEY, {})
+    for (const c of leads) seen[c.key] = Date.now()
+    saveJSON(PROSPECT_SEEN_KEY, seen)
+    const text = `Show the leads found overnight (${batch.industry}, ${batch.locale})`
+    setAllChats((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), { role: 'user', content: text }] }))
+    saveMessage(agentId, 'user', text)
+    setLoading(true); setError(null)
+    try {
+      const when = new Date(run.run_at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
+      const reply = leads.length
+        ? await presentProspects(leads, batch.city, marketFor(batch.country), `Found on Google Maps by the overnight run (${when}): ${batch.industry} in ${batch.locale} with no website, busiest first.`)
+        : 'Every lead from the overnight run is already in your pipeline.'
+      setAllChats((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), { role: 'assistant', content: reply }] }))
+      saveMessage(agentId, 'assistant', reply)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally { setLoading(false) }
+  }, [deals])
+
   const handleRunBriefing = useCallback(() => {
     if (agent.dailyPrompt) handleSend(agent.dailyPrompt)
   }, [agent.dailyPrompt, handleSend])
@@ -8563,7 +8667,7 @@ export default function Page() {
       valueGHS: p.valueGHS,
       stage: 'found' as DealStage,
       phone: p.phone,
-      country: countryFromPhone(p.phone),
+      country: (p.country && COUNTRIES.includes(p.country) ? p.country : undefined) ?? countryFromPhone(p.phone),
       followUpAt,
       createdAt: base + i,
       stageChangedAt: base + i,
@@ -8577,6 +8681,26 @@ export default function Page() {
       }).catch(() => {})
     })
     setImportModal(null)
+    // Maps can miss a website the business does have; re-check each new lead
+    // the same way the deal card's Verify button does, one at a time, so the
+    // pipeline shows which ones are confirmed before any call is made. Leads
+    // with no email are picked up by Data Quality's Find Emails panel.
+    void (async () => {
+      for (const deal of newDeals) {
+        try {
+          const res = await fetch('/api/deals/verify-website', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: deal.name, hint: deal.industry }),
+          })
+          const data = await res.json()
+          if (res.ok) {
+            editSeqRef.current++
+            setDeals(prev => prev.map(d => d.id === deal.id ? { ...d, websiteCheck: data.verdict, websiteCheckUrl: data.url } : d))
+          }
+        } catch { /* non-fatal: the card's Verify button still works */ }
+      }
+    })()
   }, [])
 
   const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
@@ -8813,7 +8937,7 @@ export default function Page() {
           {AgentSubheader}
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
           {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
@@ -8895,7 +9019,7 @@ export default function Page() {
         </div>
         <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
         {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>

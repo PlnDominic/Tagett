@@ -64,6 +64,8 @@ create table if not exists agent_runs (
   pitch_drafts     text,
   pipeline_summary text
 );
+-- Structured Google Maps leads from the 3am run, shown in ProspectBot
+alter table agent_runs add column if not exists prospect_leads jsonb;
 
 -- Optional: auto-delete runs older than 30 days to keep the table lean
 -- create extension if not exists pg_cron;

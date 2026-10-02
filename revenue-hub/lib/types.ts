@@ -104,6 +104,8 @@ export interface ParsedProspect {
   servicePitch?: string
   valueGHS: number
   phonePitch?: string
+  /** Market the lead is in, when the list says (Maps-sourced lists do). */
+  country?: string
 }
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────
