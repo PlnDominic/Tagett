@@ -2421,7 +2421,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
     try { await navigator.clipboard.writeText(content) } catch { /* ignore */ }
     setLiCopied(true)
     setTimeout(() => setLiCopied(false), 3000)
-    window.open(linkedInShareUrl(content), '_blank', 'noopener,noreferrer')
+    window.open(LINKEDIN_FEED_URL, '_blank', 'noopener,noreferrer')
   }, [content])
 
   const bufferBtnStyle = (s: PostStatus): React.CSSProperties => ({
@@ -2485,7 +2485,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
           𝕏 Post to X
         </a>
         <button onClick={handleLinkedIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${liCopied ? LI_BLUE : LI_BLUE + '60'}`, background: liCopied ? `${LI_BLUE}18` : `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
-          {liCopied ? '✓ Opened in LinkedIn (text also copied)' : 'in Post to LinkedIn'}
+          {liCopied ? '✓ Copied. Click "Start a post" and paste' : 'in Post to LinkedIn'}
         </button>
         <a href={`https://wa.me/?text=${encodeURIComponent(content.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           ✆ WhatsApp
@@ -5007,14 +5007,13 @@ function refCodeFor(id: string): string {
 }
 
 /**
- * Opens LinkedIn's normal post composer with the text filled in.
- * linkedin.com/post/new/ now redirects to the long-form article editor,
- * which is the wrong tool for a feed post. The text is also copied to the
- * clipboard by the callers, as a fallback if LinkedIn ignores the prefill.
+ * Where "Post to LinkedIn" sends you. LinkedIn has no dependable way to
+ * open a prefilled feed post from a link: /post/new/ and the
+ * ?shareActive=true&text= form both ended up in the long-form article
+ * editor. The feed page always works, and the callers copy the text first,
+ * so it is one click on "Start a post" and a paste.
  */
-function linkedInShareUrl(text: string): string {
-  return `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text.slice(0, 3000))}`
-}
+const LINKEDIN_FEED_URL = 'https://www.linkedin.com/feed/'
 
 function appendTrackedCTA(content: string, id: string): string {
   const refCode = refCodeFor(id)
@@ -5261,7 +5260,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
     try { await navigator.clipboard.writeText(post.content) } catch { /* ignore */ }
     setLiCopiedId(post.id)
     setTimeout(() => setLiCopiedId(null), 3000)
-    window.open(linkedInShareUrl(post.content), '_blank', 'noopener,noreferrer')
+    window.open(LINKEDIN_FEED_URL, '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -5452,7 +5451,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
                       )}
                       {post.platforms.includes('linkedin') && (
                         <button onClick={() => handleLinkedInPost(post)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: liCopiedId === post.id ? `${LI_BLUE}18` : `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
-                          {liCopiedId === post.id ? '✓ Opened in LinkedIn (text also copied)' : 'in Post to LinkedIn'}
+                          {liCopiedId === post.id ? '✓ Copied. Click "Start a post" and paste' : 'in Post to LinkedIn'}
                         </button>
                       )}
                       {profiles.length > 0 && (
