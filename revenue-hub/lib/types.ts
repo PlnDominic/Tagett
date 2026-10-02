@@ -78,6 +78,8 @@ export interface Deal {
   email?: string
   /** Market the business is in (a MARKETS country). Unset on older deals; use dealCountry(). */
   country?: string
+  /** The post or page a lead was found on (SocialScout leads). */
+  sourceUrl?: string
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
@@ -106,6 +108,8 @@ export interface ParsedProspect {
   phonePitch?: string
   /** Market the lead is in, when the list says (Maps-sourced lists do). */
   country?: string
+  /** Link the lead was found at, from a "Source:" line. */
+  sourceUrl?: string
 }
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────

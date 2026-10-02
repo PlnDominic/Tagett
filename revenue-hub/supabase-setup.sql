@@ -26,6 +26,7 @@ alter table deals add column if not exists follow_up_reason text;
 alter table deals add column if not exists sequence_step integer;
 alter table deals add column if not exists email text;
 alter table deals add column if not exists country text;
+alter table deals add column if not exists source_url text;
 
 -- 2. Push notification subscriptions (one row per browser/device)
 create table if not exists push_subscriptions (

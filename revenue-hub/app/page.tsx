@@ -317,42 +317,33 @@ COUNCIL ACCOUNTABILITY: After your response, always include a "— Council Check
     short: 'Content',
     description: 'X posts & client proposals',
     briefingLabel: "Today's Content Pack",
-    dailyPrompt: `Generate today's content package for Ecstasy Technologies (ecstasytechnologies.com). Mix project proof with generic value content. Deliver:
+    dailyPrompt: `Write today's outreach for every deal in OUTREACH QUEUE, most valuable first.
 
-1. ONE PROJECT SHOWCASE POST (X/Twitter, under 280 characters)
-   — Pick a real completed project (e.g. Lavimac Royal Hotel, Nhyiraba HMS, Solani Construction, Royal Ecclesia Church, etc.)
-   — Frame as: what we built + who it's for + what changed for them
-   — End with ecstasytechnologies.com
-   — Specify what screenshot to attach
+For each deal, write the one message it needs now:
+- never contacted: a first message that names their business and one specific thing they lose without a website, with one soft call to action;
+- touch 2 or 3 with no reply: a different angle from the last message shown, shorter;
+- touch 4 or more: a short, friendly last message that leaves the door open.
+Use the channel listed for each deal. If the queue is empty, say so and suggest which deals to add follow-up dates to.`,
+    systemPrompt: `You are ContentBot, the outreach writer for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You write the messages Dominic sends to specific prospects and clients: first contact, follow-ups, replies to objections ("too expensive", "I'll think about it", "I already have a Facebook page"), and payment reminders. Social media posts are ViralBot's job and proposals are ProjectBot's; hand those over rather than writing them.
 
-2. ONE GENERIC VALUE POST (X/Twitter, under 280 characters)
-   — Educational, opinion, or insight about running a business in Ghana
-   — e.g. "3 things every Ghanaian hotel loses by not having an online booking system" or an industry observation
-   — No project mention needed — just value
+OUTREACH QUEUE lists the deals due a message today, with each deal's channel, touch number and the last message sent. Write for that deal's situation, never repeat the last message, and use only facts given about them.
 
-3. ONE WHATSAPP PROSPECT MESSAGE
-   — Reference a specific project as social proof
-   — Confident, brief, one clear CTA
+CHANNEL: WhatsApp-first markets (Ghana, Nigeria, Kenya, Mexico) get short, warm WhatsApp messages. Everywhere else gets a short email with a subject line; a cold WhatsApp reads as spam there.
 
-Keep everything on-brand: premium, confident, no filler phrases. Tagline: "Building software Africa trusts."`,
-    systemPrompt: `You are ContentBot, a content writing AI for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You write two types of content:
+OUTPUT FORMAT: Start each message with a label line on its own, using the deal's exact name: "WhatsApp to [deal name]:" or "Email to [deal name]:". For email, the next line is "Subject: ...". Then only the message itself, signed as Dominic. Put any notes for Dominic after all the messages.
 
-1. PROJECT SHOWCASE POSTS — The primary content format. Every post must reference a REAL project from the Ecstasy Technologies portfolio (ecstasytechnologies.com/projects). Examples of real completed projects: Lavimac Royal Hotel website, Nhyiraba Hotel Management System, Clems Akinaabi Company website, Solani Construction & Engineering, Dynamic Shipping & Logistics, Bubbly Kids Academy, Amor De Dios Drilling, Mankind Foundation Ghana, Aaron Freeman Portfolio, Jokran Hotel, Peravic Lodge, Royal Ecclesia Church Management System, MoldGold School Management System, Building Development Manager, and more. Use the real project name, real client type, and real category (Website / Web Application / Mobile App / Business Software / GIS). ALWAYS specify what screenshot to attach — this is proof to the audience that the work is real.
-
-2. Client proposals and pitches — formal business proposals for Ghanaian clients. Include: executive summary, scope of work, deliverables, timeline, pricing in GHS, and terms. For WhatsApp messages: conversational, brief, one clear CTA that references a similar real project as proof. Every WhatsApp pitch must be anchored to ONE specific, concrete pain point that businesses in the prospect's exact industry actually face because they lack a good website — never generic "get online"/"grow your business" language. Name the pain in plain terms (e.g. a hotel losing bookings to competitors on Google, a boutique stuck taking orders only through Instagram DMs, a clinic losing patients to phone tag, a contractor losing bids with no portfolio to prove past work), then say specifically how a website removes it.
-
-Services offered:
+Services and typical Ghana prices (quote in the deal's own market currency elsewhere):
 - Web design & development: GHS 3,500–4,000
 - Web applications: GHS 8,000–25,000
 - Mobile apps: GHS 10,000–30,000
 - Business software: GHS 15,000–40,000
 - GIS solutions: GHS 3,000–10,000
 
-CONTENT MIX RULE: Aim for roughly half project showcase, half generic value content. Project posts: name the real client, describe what was built, specify what screenshot to post as proof. Generic posts: educational tips, Ghanaian business observations, bold opinions about tech in Africa, or "unpopular opinions" that make people stop scrolling — no project mention needed. Never write hollow filler like "every business needs a website."
+Real projects you can cite as proof: Lavimac Royal Hotel website and hotel system, Mikjan and Nhyiraba hotel systems, Solani Construction, Royal Ecclesia church system, MoldGold school system, Obotan credit union system, Dynamic Shipping & Logistics, Bubbly Montessori, BABMA Municipal Assembly. Never invent results or quotes from them.
 
-Write in a confident, premium tone. Tagline is "Building software Africa trusts." Reference Ghana, Kumasi, Accra, and local industries authentically. Never use AI slop filler phrases.
+Write like a person, not a brochure: short, specific, confident, no filler. Tagline if it fits: "Building software Africa trusts."
 
-PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your content moves GHS deals forward. Always end your response with: "Deal value: GHS [amount] — [X]% of the GHS 12,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
+PIPELINE ROLE: You receive leads from ProspectBot and scopes from ProjectBot. Your messages move GHS deals forward. After all the messages, end with one line: "Deal value in play: GHS [sum] — [X]% of the GHS 12,000 monthly goal." When you write a proposal, suggest sending it via ProjectBot for formal scoping or ViralBot to amplify the project as a case study after delivery.
 
 COUNCIL ACCOUNTABILITY: After your response, always include a "— Council Check —" section with exactly two lines:
 ⊗ Contrarian: [one sentence: what is the most likely reason this content will not land with the prospect?]
@@ -404,13 +395,14 @@ COUNCIL ACCOUNTABILITY: After your response, always include a "— Council Check
     short: 'Revenue',
     description: 'Track earnings vs GHS 12,000/month goal',
     briefingLabel: "Today's Revenue Briefing",
-    dailyPrompt: `Give me my revenue focus briefing for today. My target is GHS 12,000 this month.
+    dailyPrompt: `Give me today's revenue briefing from MONEY TO CHASE and the LIVE PIPELINE. Use real names and amounts only.
 
-Tell me:
-1. Exactly how many projects at each service price point I need to close to hit the goal — show the math clearly.
-2. The fastest path to GHS 12,000 given typical Ghanaian client decision timelines — which service mix closes fastest?
-3. Three specific revenue actions I should take today — be direct and tactical, not generic.
-4. What a realistic week-by-week milestone breakdown looks like to hit GHS 12,000 by month end.`,
+1. Collect: which unpaid or draft invoices to chase today, biggest or most overdue first, with the exact message to send each client.
+2. Follow up: the overdue follow-ups and stuck deals worth a call today, in order of value, with one line on what to say to each.
+3. Forecast: where the month is likely to end from the FORECAST line, and the gap to GHS 12,000.
+4. One move: the single action that closes most of that gap this week, naming the deal or agent to use.
+
+If a section has nothing in it, say so in one line and move on.`,
     systemPrompt: `You are RevenueTracker, the command centre of a 5-agent revenue machine for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). Target: GHS 12,000/month (~$10,000 USD).
 
 When given revenue data, you:
@@ -662,13 +654,21 @@ You are not here to plan. You are here to execute. Every response ends with: "DO
     short: 'Scout',
     description: 'Finds clients via social listening & keyword signals',
     briefingLabel: "Today's Search Strategy",
-    dailyPrompt: `Generate today's social media listening plan for Ecstasy Technologies. I am a software studio in Ghana looking for businesses that need a website or are unhappy with their current online presence.
+    dailyPrompt: `Find me real people and businesses who need a website right now. Run the searches yourself with search_google (several queries: "need a website" or "looking for a web developer" posts, Facebook business pages with no website, reviews that say they can't be found online), for Ghana unless I name another market.
 
-Deliver:
-1. TOP 5 SEARCH QUERIES to run RIGHT NOW — one each for Facebook, Twitter/X, LinkedIn, Google, and WhatsApp groups
-2. 3 PROSPECT SIGNALS to watch for in the results (exact wording patterns that mean "they're ready to buy")
-3. ONE RESPONSE TEMPLATE — a comment or DM reply I can paste immediately when I find someone asking for a developer
-4. TODAY'S FOCUS SECTOR — one Ghanaian industry where the best opportunities are hiding this week, and why`,
+Report up to 5 real results you actually found, best first, each exactly in this format:
+
+1. Business Name — [business or person's name as shown]
+   Industry: [type]
+   Address: [town or area if shown, else "Not shown"]
+   Phone: [only if shown in the result, else "Not shown"]
+   Signal: [what they posted or what shows they need a site, quoted where you can]
+   Intent: [high = asking for a developer now, medium = needs one but hasn't asked]
+   Why they need a website: [one sentence]
+   Phone pitch: "[the reply or message to send them, under 40 words, natural, no hard sell]"
+   Source: [the exact link from the search result]
+
+Never invent a result or a link. If searches come up empty, say which queries you ran and suggest better ones.`,
     systemPrompt: `You are SocialScout, a social media listening and inbound lead generation specialist for Ecstasy Technologies (ecstasytechnologies.com), a software studio in Ghana run by Dominic Kudom (CEO, +233542855399).
 
 Your job is to find Ghanaian businesses and individuals who are actively signalling that they need a website or software developer through posts, comments, reviews, or complaints, so Dominic can reach them before any competitor does.
@@ -1071,9 +1071,18 @@ function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): 
   return parts.join('\n\n')
 }
 
+/** Closed deals counted toward this month's goal: closed since the 1st. */
+function closedThisMonth(deals: Deal[]): Deal[] {
+  const since = startOfMonth()
+  return deals.filter(d => d.stage === 'closed' && (d.stageChangedAt ?? d.createdAt) >= since)
+}
+
 function buildPipelineSnapshot(deals: Deal[], invoices: Invoice[]): string {
   if (!deals.length && !invoices.length) return ''
   const closed = deals.filter(d => d.stage === 'closed')
+  // The goal is monthly. This used to sum every deal ever closed under the
+  // goal, so a few past wins made the month look done when it wasn't.
+  const monthGHS = closedThisMonth(deals).reduce((s, d) => s + d.valueGHS, 0)
   const active = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
   const lost = deals.filter(d => d.stage === 'lost')
   const closedGHS = closed.reduce((s, d) => s + d.valueGHS, 0)
@@ -1087,12 +1096,76 @@ function buildPipelineSnapshot(deals: Deal[], invoices: Invoice[]): string {
     ? deals.map(d => d.name).join(', ')
     : '(no deals in pipeline yet)'
   return `LIVE PIPELINE (real data — this is the ONLY authorized source for client names and revenue figures):
-  Goal: GHS 12,000/month | Closed: GHS ${closedGHS.toLocaleString()} (${Math.round((closedGHS/12000)*100)}%) | Active: GHS ${activeGHS.toLocaleString()} | Lost: ${lost.length}
+  Goal: GHS 12,000/month | Closed this month: GHS ${monthGHS.toLocaleString()} (${Math.round((monthGHS/12000)*100)}%) | Closed all time: GHS ${closedGHS.toLocaleString()} | Active: GHS ${activeGHS.toLocaleString()} | Lost: ${lost.length}
   Invoices: GHS ${paidGHS.toLocaleString()} paid, GHS ${unpaidGHS.toLocaleString()} outstanding
 AUTHORIZED CLIENT NAMES (only reference these — do not invent others):
   ${authorizedNames}
 DEALS (${deals.length} total):
 ${dealLines || '  (none yet)'}`
+}
+
+/**
+ * RevenueTracker's working list: money already earned but not collected,
+ * deals whose follow-up is overdue, deals that stopped moving, and an honest
+ * month-end forecast. These are the actions that turn into cash fastest.
+ */
+function buildMoneyToChase(deals: Deal[], invoices: Invoice[]): string {
+  const now = Date.now()
+  const day = 86400000
+  const fmt = (n: number) => `GHS ${Math.round(n).toLocaleString()}`
+  const parts: string[] = []
+
+  const owed = invoices
+    .filter(i => i.status === 'sent' || i.status === 'partial')
+    .map(i => ({ i, due: i.totalGHS - i.milestones.filter(m => m.paidAt).reduce((s, m) => s + m.amountGHS, 0) }))
+    .filter(x => x.due > 0)
+    .sort((a, b) => ((a.i.dueAt ?? Infinity) - (b.i.dueAt ?? Infinity)) || b.due - a.due)
+  parts.push(owed.length
+    ? `UNPAID INVOICES (earned, not collected; chase these first):\n${owed.map(({ i, due }) => {
+        const late = i.dueAt && i.dueAt < now ? `, ${Math.floor((now - i.dueAt) / day)} days overdue` : i.dueAt ? `, due ${new Date(i.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''
+        return `  - ${i.clientName}: ${fmt(due)} owed of ${fmt(i.totalGHS)}${late}`
+      }).join('\n')}`
+    : 'UNPAID INVOICES: none.')
+
+  const drafts = invoices.filter(i => i.status === 'draft')
+  if (drafts.length) parts.push(`DRAFT INVOICES NOT SENT YET:\n${drafts.map(i => `  - ${i.clientName}: ${fmt(i.totalGHS)}`).join('\n')}`)
+
+  const open = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
+  const overdue = open.filter(d => d.followUpAt && d.followUpAt < now).sort((a, b) => b.valueGHS - a.valueGHS)
+  if (overdue.length) parts.push(`FOLLOW-UPS OVERDUE:\n${overdue.slice(0, 10).map(d => `  - ${d.name} (${STAGE_LABELS[d.stage]}, ${fmt(d.valueGHS)}): ${Math.max(1, Math.floor((now - d.followUpAt!) / day))} days late`).join('\n')}`)
+
+  const stale = open.filter(d => !overdue.includes(d) && STAGE_STALE_MS[d.stage] > 0 && now - (d.stageChangedAt ?? d.createdAt) > STAGE_STALE_MS[d.stage])
+    .sort((a, b) => b.valueGHS - a.valueGHS)
+  if (stale.length) parts.push(`STUCK DEALS (no stage change for longer than usual):\n${stale.slice(0, 10).map(d => `  - ${d.name} (${STAGE_LABELS[d.stage]}, ${fmt(d.valueGHS)}): ${Math.floor((now - (d.stageChangedAt ?? d.createdAt)) / day)} days in this stage`).join('\n')}`)
+
+  const month = closedThisMonth(deals).reduce((s, d) => s + d.valueGHS, 0)
+  const weighted = open.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0)
+  const end = new Date(); end.setMonth(end.getMonth() + 1, 1); end.setHours(0, 0, 0, 0)
+  const daysLeft = Math.ceil((end.getTime() - now) / day)
+  parts.push(`FORECAST: closed this month ${fmt(month)}; open pipeline weighted by stage odds ${fmt(weighted)} (${Object.entries(STAGE_WEIGHT).filter(([k, w]) => w > 0 && k !== 'closed').map(([k, w]) => `${STAGE_LABELS[k as DealStage]} ${Math.round(w * 100)}%`).join(', ')}); likely month end ${fmt(month + weighted)} against the GHS 12,000 goal, ${daysLeft} days left.`)
+
+  return `MONEY TO CHASE (real data):\n${parts.join('\n\n')}`
+}
+
+/** ContentBot's work list: deals due a message today, with what it needs to write one. */
+function buildOutreachQueue(deals: Deal[]): string {
+  const now = Date.now()
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
+  const open = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
+  const due = open.filter(d => (d.followUpAt && d.followUpAt <= endOfToday.getTime()) || (d.stage === 'found' && !d.lastContactedAt))
+    .sort((a, b) => b.valueGHS - a.valueGHS)
+    .slice(0, 8)
+  if (!due.length) return 'OUTREACH QUEUE: empty (no follow-ups due and no uncontacted new leads).'
+  const lines = due.map(d => {
+    const m = marketFor(dealCountry(d))
+    const channel = m.whatsappFirst ? `WhatsApp${d.phone ? ` (${d.phone})` : ' (no phone saved)'}` : `Email${d.email ? ` (${d.email})` : ' (no email saved)'}`
+    const touch = d.lastContactedAt ? `touch ${(d.sequenceStep ?? 1) + 1}` : 'never contacted'
+    const last = d.whatsappHistory?.length ? ` | last message: "${d.whatsappHistory[d.whatsappHistory.length - 1].text.replace(/\s+/g, ' ').slice(0, 160)}"` : ''
+    const replied = d.repliedAt ? ' | they replied' : ''
+    const late = d.followUpAt && d.followUpAt < now ? ` | follow-up ${Math.max(1, Math.floor((now - d.followUpAt) / 86400000))} days late` : ''
+    return `  - ${d.name} | ${d.industry || 'business'} | ${m.country} | ${STAGE_LABELS[d.stage]} | GHS ${d.valueGHS.toLocaleString()} | ${channel} | ${touch}${late}${replied}${last}`
+  })
+  return `OUTREACH QUEUE (deals due a message today):\n${lines.join('\n')}`
 }
 
 const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Owned by Dominic Kudom, CEO. WhatsApp & phone: +233542855399. Shared goal: GHS 12,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.
@@ -1868,6 +1941,8 @@ function parseProspects(text: string): ParsedProspect[] {
       phone,
       whyNeedsWebsite: field('Why they need a website'),
       country: field('Country'),
+      // SocialScout leads carry the post or page they came from.
+      sourceUrl: field('Source')?.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, ''),
       servicePitch: field('Service to pitch'),
       valueGHS,
       phonePitch,
@@ -2347,6 +2422,81 @@ function HandoffChips({ agentId, content, onHandoff }: {
 
 // ─── ProspectActionChips ─────────────────────────────────────────────────────
 
+/**
+ * One button per "WhatsApp to X:" / "Email to X:" message in a ContentBot
+ * reply, matched to the deal by name. Sending through it records the touch on
+ * the deal (waSentUpdates for WhatsApp), so the follow-up sequence and the
+ * outreach queue stay in step with what was actually sent.
+ */
+function OutreachSendChips({ content, deals, onUpdateDeal }: { content: string; deals: Deal[]; onUpdateDeal: (id: string, updates: Partial<Deal>) => void }) {
+  const [sent, setSent] = useState<Set<number>>(new Set())
+  const messages = useMemo(() => {
+    const notesAt = content.search(/^\s*[-—*_ ]*(Council Check|Deal value in play)/im)
+    const body = notesAt >= 0 ? content.slice(0, notesAt) : content
+    const out: Array<{ channel: 'whatsapp' | 'email'; name: string; subject?: string; text: string }> = []
+    let cur: { channel: 'whatsapp' | 'email'; name: string; lines: string[] } | null = null
+    const flush = () => {
+      if (!cur) return
+      let lines = cur.lines
+      let subject: string | undefined
+      const subj = lines.findIndex(l => /^\s*Subject:/i.test(l))
+      if (cur.channel === 'email' && subj >= 0 && lines.slice(0, subj).every(l => !l.trim())) {
+        subject = lines[subj].replace(/^\s*Subject:\s*/i, '').trim()
+        lines = lines.slice(subj + 1)
+      }
+      const text = lines.join('\n').trim()
+      if (text) out.push({ channel: cur.channel, name: cur.name, subject, text })
+    }
+    for (const line of body.split('\n')) {
+      const m = line.replace(/[*_#]/g, '').match(/^\s*(WhatsApp|Email)\s+to\s+(.+?)\s*:\s*$/i)
+      if (m) { flush(); cur = { channel: m[1].toLowerCase() === 'email' ? 'email' : 'whatsapp', name: m[2].trim(), lines: [] } }
+      else if (cur) cur.lines.push(line)
+    }
+    flush()
+    return out
+  }, [content])
+  if (messages.length === 0) return null
+
+  const findDeal = (name: string) => {
+    const n = name.toLowerCase()
+    return deals.find(d => d.name.toLowerCase() === n) ?? deals.find(d => d.name.toLowerCase().includes(n) || n.includes(d.name.toLowerCase()))
+  }
+  return (
+    <div style={{ marginTop: 8, paddingLeft: 34, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {messages.map((msg, i) => {
+        const deal = findDeal(msg.name)
+        const href = msg.channel === 'whatsapp'
+          ? (deal?.phone ? `https://wa.me/${deal.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg.text)}` : null)
+          : (deal?.email ? `mailto:${deal.email}?subject=${encodeURIComponent(msg.subject ?? '')}&body=${encodeURIComponent(msg.text)}` : null)
+        const missing = !deal ? 'no matching deal' : msg.channel === 'whatsapp' ? 'no phone saved' : 'no email saved'
+        const color = msg.channel === 'whatsapp' ? WA_GREEN : GOLD
+        const label = `${msg.channel === 'whatsapp' ? '📱 WhatsApp' : '✉ Email'} ${msg.name}`
+        if (!href) {
+          return <span key={i} title={`Can't send: ${missing}`} style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${BORDER}`, color: MUTED, fontSize: 12, fontFamily: FONT_BODY }}>{label} · {missing}</span>
+        }
+        return (
+          <a
+            key={i}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => {
+              if (!deal) return
+              onUpdateDeal(deal.id, msg.channel === 'whatsapp'
+                ? waSentUpdates(deal, msg.text)
+                : { lastContactedAt: Date.now(), ...(!deal.followUpAt ? { followUpAt: Date.now() + 3 * 86400000, sequenceStep: 1 } : {}) })
+              setSent(prev => new Set(prev).add(i))
+            }}
+            style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${color}60`, background: `${color}10`, color, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}
+          >
+            {sent.has(i) ? `✓ Sent to ${msg.name}` : label}
+          </a>
+        )
+      })}
+    </div>
+  )
+}
+
 function ProspectActionChips({ content, onOpenImport }: { content: string; onOpenImport?: (p: ParsedProspect[]) => void }) {
   const prospects = extractProspects(content)
   const parsed = parseProspects(content)
@@ -2548,10 +2698,12 @@ function ProposalDownload({ content }: { content: string }) {
 
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
-function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport }: {
+function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport, deals, onUpdateDeal }: {
   message: Message
   agentId?: AgentId
   isLast?: boolean
+  deals?: Deal[]
+  onUpdateDeal?: (id: string, updates: Partial<Deal>) => void
   onHandoff?: (targetAgent: AgentId, prompt: string) => void
   onOpenImport?: (p: ParsedProspect[]) => void
 }) {
@@ -2580,10 +2732,11 @@ function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport }: {
           {message.content}
         </div>
       </div>
-      {!isUser && agentId === 'prospect' && (
+      {!isUser && (agentId === 'prospect' || agentId === 'scout') && (
         <ProspectActionChips content={message.content} onOpenImport={onOpenImport} />
       )}
       {!isUser && agentId === 'viral' && <ViralCalendarChip content={message.content} />}
+      {!isUser && agentId === 'content' && deals && onUpdateDeal && <OutreachSendChips content={message.content} deals={deals} onUpdateDeal={onUpdateDeal} />}
       {!isUser && isLast && (agentId === 'content' || agentId === 'viral') && (
         <SocialShareBar content={message.content} schedule={agentId === 'viral'} />
       )}
@@ -4435,6 +4588,9 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: deal.stage === 'lost' ? MUTED : TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.name}</div>
+          {deal.sourceUrl && (
+            <a href={deal.sourceUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="The post or page this lead came from" style={{ fontSize: 11, color: GOLD, fontFamily: FONT_BODY, textDecoration: 'none' }}>↗ Where they were found</a>
+          )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1, minWidth: 0 }}>
             {deal.industry && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.industry} ·</span>}
             {/* Shown even when inferred, so a wrong guess from the phone's
@@ -8229,7 +8385,9 @@ function ChatInput({ agentShort, onSend, loading, prefill, onClearPrefill }: {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agent, onSend, onFindProspects, onShowOvernight, onRunBriefing, onHandoff, onOpenImport }: {
+function MessageList({ messages, loading, agent, onSend, onFindProspects, onShowOvernight, onRunBriefing, onHandoff, onOpenImport, deals, onUpdateDeal }: {
+  deals?: Deal[]
+  onUpdateDeal?: (id: string, updates: Partial<Deal>) => void
   messages: Message[]
   loading: boolean
   agent: Agent
@@ -8272,6 +8430,8 @@ function MessageList({ messages, loading, agent, onSend, onFindProspects, onShow
               isLast={i === lastAssistantIdx && !loading}
               onHandoff={onHandoff}
               onOpenImport={onOpenImport}
+              deals={deals}
+              onUpdateDeal={onUpdateDeal}
             />
           ))}
           {loading && (
@@ -8546,7 +8706,11 @@ export default function Page() {
     saveMessage(activeAgent, 'user', text)
     setLoading(true); setError(null)
     try {
-      const liveWorkspace = { ...workspace, _live: buildPipelineSnapshot(deals, pageInvoices) }
+      const snapshot = buildPipelineSnapshot(deals, pageInvoices)
+      const extra = activeAgent === 'revenue' ? buildMoneyToChase(deals, pageInvoices)
+        : activeAgent === 'content' ? buildOutreachQueue(deals)
+        : ''
+      const liveWorkspace = { ...workspace, _live: [snapshot, extra].filter(Boolean).join('\n\n') }
       const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, liveWorkspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(activeAgent, 'assistant', reply)
@@ -8668,6 +8832,7 @@ export default function Page() {
       stage: 'found' as DealStage,
       phone: p.phone,
       country: (p.country && COUNTRIES.includes(p.country) ? p.country : undefined) ?? countryFromPhone(p.phone),
+      sourceUrl: p.sourceUrl,
       followUpAt,
       createdAt: base + i,
       stageChangedAt: base + i,
@@ -8937,7 +9102,7 @@ export default function Page() {
           {AgentSubheader}
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
           {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
@@ -9019,7 +9184,7 @@ export default function Page() {
         </div>
         <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
         {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
