@@ -8,6 +8,7 @@ import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
 import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
 import { dmSentUpdates, dmTarget } from '@/lib/dm'
+import { labelledPosts, notesStart, plainPostText } from '@/lib/viral-posts'
 import { REQUEST_PHRASES, THREAD_PHRASES, cleanHandle, messageUrl, profileUrl, xReplyUrl, type Commenter, type ListenMode, type ListenPlatform, type Recency } from '@/lib/social-listening'
 import { currencyCodeFor, toGHS, type GhsRates } from '@/lib/fx'
 import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
@@ -1468,33 +1469,17 @@ async function buildViralContext(): Promise<string> {
  */
 function parseViralDrafts(text: string, market: Market = MARKETS[0]): SocialPost[] {
   const platformMap: Record<string, SocialPlatform[]> = {
-    x: ['twitter'], twitter: ['twitter'], linkedin: ['linkedin'], facebook: ['facebook'],
+    x: ['twitter'], linkedin: ['linkedin'], facebook: ['facebook'],
     instagram: ['instagram'], tiktok: ['tiktok', 'instagram'],
   }
-  const notesAt = text.search(/^\s*[-—*_ ]*(Council Check|This content targets:)/im)
-  const body = notesAt >= 0 ? text.slice(0, notesAt) : text
   const base = Date.now()
-  const drafts: SocialPost[] = []
-  let current: { platforms: SocialPlatform[]; category?: string; lines: string[] } | null = null
-  const flush = () => {
-    const content = current?.lines.join('\n').trim()
-    if (!current || !content) return
-    const id = `viral-${base + drafts.length}`
+  return labelledPosts(text).map((post, i) => {
+    const id = `viral-${base + i}`
+    const category = post.type ? POST_TYPE_TO_CATEGORY[post.type] : undefined
     // A reel script is filming notes, not a caption, so it gets no link.
-    const tracked = current.category === 'viral-reel' ? content : trackedCTAFor(content, id, market)
-    drafts.push({ id, content: tracked, platforms: current.platforms, status: 'draft', createdAt: base, category: current.category })
-  }
-  for (const line of body.split('\n')) {
-    const m = line.replace(/[*_#]/g, '').match(/^\s*(X|Twitter|LinkedIn|Facebook|Instagram|TikTok)\s*(?:\((showcase|take|reel|data)\))?\s*:\s*(.*)$/i)
-    if (m) {
-      flush()
-      current = { platforms: platformMap[m[1].toLowerCase()], category: m[2] ? POST_TYPE_TO_CATEGORY[m[2].toLowerCase()] : undefined, lines: m[3] ? [m[3]] : [] }
-    } else if (current) {
-      current.lines.push(line)
-    }
-  }
-  flush()
-  return drafts
+    const content = category === 'viral-reel' ? post.content : trackedCTAFor(post.content, id, market)
+    return { id, content, platforms: platformMap[post.network], status: 'draft' as const, createdAt: base, category }
+  })
 }
 
 function ViralCalendarChip({ content }: { content: string }) {
@@ -2568,7 +2553,18 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
       .catch(() => {})
   }, [])
 
-  const posts = extractXPosts(content)
+  // Each button posts only what was written for its network: a ViralBot
+  // reply holds several labelled posts plus notes for Dominic, and the X
+  // button used to send the first 280 characters of all of it.
+  const labelled = useMemo(() => labelledPosts(content), [content])
+  const xPosts = labelled.filter(p => p.network === 'x').map(p => p.content)
+  const linkedInPost = labelled.find(p => p.network === 'linkedin')?.content
+  const withoutNotes = useMemo(() => {
+    const at = notesStart(content)
+    return plainPostText(at >= 0 ? content.slice(0, at) : content)
+  }, [content])
+  const posts = xPosts.length ? xPosts : extractXPosts(content)
+  const xText = xPosts[0] ?? posts[0] ?? withoutNotes.slice(0, 280)
 
   const postToBuffer = useCallback(async (post: string, idx: number) => {
     setStatuses(prev => ({ ...prev, [idx]: 'posting' }))
@@ -2587,18 +2583,18 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
   }, [profiles, schedule])
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(content)
+    await navigator.clipboard.writeText(withoutNotes)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }, [content])
+  }, [withoutNotes])
 
   const [liCopied, setLiCopied] = useState(false)
   const handleLinkedIn = useCallback(async () => {
-    try { await navigator.clipboard.writeText(content) } catch { /* ignore */ }
+    try { await navigator.clipboard.writeText(linkedInPost ?? withoutNotes) } catch { /* ignore */ }
     setLiCopied(true)
     setTimeout(() => setLiCopied(false), 3000)
     window.open(LINKEDIN_FEED_URL, '_blank', 'noopener,noreferrer')
-  }, [content])
+  }, [linkedInPost, withoutNotes])
 
   const bufferBtnStyle = (s: PostStatus): React.CSSProperties => ({
     display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -2623,7 +2619,8 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
         )}
       </div>
 
-      {posts.length > 0 && (
+      {/* One row per X post, with Buffer; a single post needs no list unless Buffer is connected. */}
+      {(posts.length > 1 || (posts.length === 1 && profiles.length > 0)) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 8 }}>
           {posts.map((post, i) => {
             const s = statuses[i] ?? 'idle'
@@ -2657,13 +2654,13 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
       )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(content.slice(0, 280))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
-          𝕏 Post to X
+        <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(xText)}`} target="_blank" rel="noopener noreferrer" title={xText} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+          𝕏 Post to X{xText.length > 280 ? ` (${xText.length}/280)` : ''}
         </a>
         <button onClick={handleLinkedIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${liCopied ? LI_BLUE : LI_BLUE + '60'}`, background: liCopied ? `${LI_BLUE}18` : `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
           {liCopied ? '✓ Copied. Click "Start a post" and paste' : 'in Post to LinkedIn'}
         </button>
-        <a href={`https://wa.me/?text=${encodeURIComponent(content.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
+        <a href={`https://wa.me/?text=${encodeURIComponent(withoutNotes.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           ✆ WhatsApp
         </a>
         <button onClick={handleCopy} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${copied ? GOLD + '80' : BORDER}`, background: copied ? `${GOLD}18` : SURFACE2, color: copied ? GOLD : MUTED, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500 }}>
