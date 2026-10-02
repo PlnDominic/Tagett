@@ -46,9 +46,11 @@ export async function sendOutreachEmail(msg: { to: string; subject: string; text
   const text = `${msg.text.trim()}\n\n${FOOTER}`
   // Plain, personal-looking HTML: heavy templates read as marketing and are
   // more likely to be filtered as cold email.
-  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">${
+  // A complete document: SpamAssassin's HTML_MIME_NO_HTML_TAG docks points
+  // from an HTML part that is only a fragment (mail-tester showed -0.5).
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(msg.subject)}</title></head><body><div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">${
     esc(msg.text.trim()).replace(/\n/g, '<br>')
-  }<br><br><span style="color:#888;font-size:12px">${esc(FOOTER).replace(/\n/g, '<br>')}</span></div>`
+  }<br><br><span style="color:#888;font-size:12px">${esc(FOOTER).replace(/\n/g, '<br>')}</span></div></body></html>`
   await transport().sendMail({
     from: `"${OUTREACH_NAME}" <${OUTREACH_FROM}>`,
     replyTo: OUTREACH_FROM,

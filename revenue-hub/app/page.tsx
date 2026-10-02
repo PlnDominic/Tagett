@@ -336,6 +336,8 @@ OUTREACH QUEUE lists the deals due a message today, with each deal's channel, to
 
 CHANNEL: WhatsApp-first markets (Ghana, Nigeria, Kenya, Mexico) get short, warm WhatsApp messages. Everywhere else gets a short email with a subject line; a cold WhatsApp reads as spam there.
 
+EMAIL STRUCTURE (first contact, 70 to 120 words): a short scene from their customer's side (searching for a business like theirs online and finding nothing, or only a social page, and going elsewhere); the cost of that moment for them, without invented numbers; a true two-sentence story from the closest real project below; one low-pressure question they can answer in a word. No links, prices or attachments. Subject 2 to 6 words, specific to them, no words like free, offer, guarantee or urgent. Follow-ups: 40 to 70 words, a new angle, say you're following up.
+
 OUTPUT FORMAT: Start each message with a label line on its own, using the deal's exact name: "WhatsApp to [deal name]:" or "Email to [deal name]:". For email, the next line is "Subject: ...". Then only the message itself, signed as Dominic. Put any notes for Dominic after all the messages.
 
 Prices: quote only from the PRICE LIST block, in the deal's own market and currency.
@@ -3538,13 +3540,18 @@ async function writeOutreachEmail(deal: Deal): Promise<{ subject: string; body: 
  * through /api/email/send. Nothing is sent without pressing Send here; the
  * server also enforces the daily limit and the opt-out list.
  */
-function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClose, onSent }: {
+function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClose, onSent, onSkip, progress }: {
   deal?: Deal
   initialTo?: string
   initialSubject?: string
   initialText?: string
   onClose: () => void
+  /** Called after a successful send. In a session this moves to the next deal instead of closing. */
   onSent: (subject: string, text: string) => void
+  /** Outreach session only: move on without sending. */
+  onSkip?: () => void
+  /** Outreach session only, e.g. "2 of 7". */
+  progress?: string
 }) {
   const [to, setTo] = useState(initialTo ?? deal?.email ?? '')
   const [subject, setSubject] = useState(initialSubject ?? '')
@@ -3587,7 +3594,7 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
       const d = await res.json()
       if (!res.ok) { setError(d.error ?? 'Could not send.'); return }
       onSent(subject, text)
-      onClose()
+      if (!onSkip) onClose()
     } catch {
       setError('Network error. Nothing was sent.')
     } finally {
@@ -3611,7 +3618,7 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
       <div onClick={e => e.stopPropagation()} style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: '18px 18px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Send email{deal ? ` to ${deal.name}` : ''}</div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>{progress ? `${progress} · ` : ''}Send email{deal ? ` to ${deal.name}` : ''}</div>
             <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
               From {status?.from ?? 'support@ecstasytechnologies.com'}{status ? ` · ${status.sentToday} of ${status.dailyLimit} sent today` : ''}
             </div>
@@ -3637,8 +3644,13 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
         {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={send} disabled={!canSend} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: canSend ? GOLD : SURFACE2, color: canSend ? '#fff' : MUTED, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: canSend ? 'pointer' : 'not-allowed' }}>
-            {sending ? 'Sending…' : 'Send now'}
+            {sending ? 'Sending…' : onSkip ? 'Send & next' : 'Send now'}
           </button>
+          {onSkip && (
+            <button onClick={onSkip} disabled={sending} style={{ padding: '9px 14px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+              Skip
+            </button>
+          )}
           <button onClick={optOut} disabled={optedOut || !to.trim()} title="They replied stop or asked not to be emailed" style={{ fontSize: 11, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_BODY, textDecoration: 'underline' }}>
             {optedOut ? '✓ Added to the do-not-email list' : 'They asked not to be emailed'}
           </button>
@@ -5041,6 +5053,50 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
 
 // ─── DealPipeline (Kanban) ────────────────────────────────────────────────────
 
+/**
+ * Works through every open deal with an email that is due a message today
+ * (follow-up due, or never contacted): each email is written for that
+ * business, you read it, Send & next or Skip. Nothing sends without a click,
+ * and the daily limit and opt-out list still apply on the server.
+ */
+function OutreachSession({ queue, onUpdate, onClose }: { queue: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void; onClose: () => void }) {
+  const [index, setIndex] = useState(0)
+  const [sent, setSent] = useState(0)
+  const deal = queue[index]
+  if (!deal) {
+    return createPortal(
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+        <div onClick={e => e.stopPropagation()} style={{ background: SURFACE, borderRadius: 16, padding: '22px 22px 18px', maxWidth: 380, width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: 28, marginBottom: 6 }}>✉</div>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Session done</div>
+          <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY, margin: '6px 0 14px' }}>{sent} sent, {queue.length - sent} skipped. Follow-ups are booked on each deal you emailed.</div>
+          <button onClick={onClose} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>Close</button>
+        </div>
+      </div>,
+      document.body,
+    )
+  }
+  return (
+    <EmailComposeModal
+      key={deal.id}
+      deal={deal}
+      progress={`${index + 1} of ${queue.length}`}
+      onClose={onClose}
+      onSent={(subject, text) => { onUpdate(deal.id, emailSentUpdates(deal, subject, text)); setSent(n => n + 1); setIndex(i => i + 1) }}
+      onSkip={() => setIndex(i => i + 1)}
+    />
+  )
+}
+
+/** Open deals with an email that are due a message today. */
+function emailQueue(deals: Deal[]): Deal[] {
+  const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
+  return deals
+    .filter(d => d.email && d.stage !== 'closed' && d.stage !== 'lost')
+    .filter(d => (d.followUpAt && d.followUpAt <= endOfToday.getTime()) || !d.lastContactedAt)
+    .sort((a, b) => b.valueGHS - a.valueGHS)
+}
+
 function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onRetainerAdded }: {
   deals: Deal[]
   onAdd: (d: Omit<Deal, 'id' | 'createdAt'>) => void
@@ -5054,6 +5110,8 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
 }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '', email: '', country: 'Ghana' })
+  // Snapshot taken when the session starts, so sending doesn't reshuffle it.
+  const [sessionQueue, setSessionQueue] = useState<Deal[] | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropStage, setDropStage] = useState<DealStage | null>(null)
   const [waModal, setWaModal] = useState<Deal | null>(null)
@@ -5119,6 +5177,11 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
             </div>
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
+            {emailQueue(deals).length > 0 && (
+              <button onClick={() => setSessionQueue(emailQueue(deals))} title="Write and send today's emails one by one, from support@ecstasytechnologies.com" style={{ padding: '7px 10px', borderRadius: 8, background: `${GOLD}12`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid ${GOLD}50`, cursor: 'pointer' }}>
+                ✉ Email session ({emailQueue(deals).length})
+              </button>
+            )}
             <button onClick={exportDealsCSV} title="Export CSV" style={{ padding: '7px 10px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>
               ↓ CSV
             </button>
@@ -5232,6 +5295,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
       )}
       {retainerModal && (
         <RetainerModal deal={retainerModal} onClose={() => setRetainerModal(null)} onCreated={onRetainerAdded} />
+      )}
+      {sessionQueue && (
+        <OutreachSession queue={sessionQueue} onUpdate={onUpdate} onClose={() => setSessionQueue(null)} />
       )}
       {testimonialModal && (
         <TestimonialModal deal={testimonialModal} onClose={() => setTestimonialModal(null)} />
