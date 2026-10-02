@@ -157,3 +157,28 @@ alter table social_posts add column if not exists image_url text;
 insert into storage.buckets (id, name, public)
 values ('project-images', 'project-images', true)
 on conflict (id) do nothing;
+
+-- 12. Outreach email from support@ecstasytechnologies.com (/api/email/send)
+create table if not exists email_log (
+  id         bigserial primary key,
+  deal_id    text,
+  to_email   text not null,
+  subject    text not null,
+  body       text not null,
+  status     text not null default 'sent',   -- sent | failed
+  error      text,
+  sent_at    timestamptz not null default now()
+);
+create index if not exists email_log_sent_at_idx on email_log (sent_at desc);
+create index if not exists email_log_to_email_idx on email_log (lower(to_email));
+alter table email_log enable row level security;
+
+-- Addresses that asked not to be emailed; /api/email/send refuses them
+create table if not exists email_optouts (
+  email      text primary key,               -- stored lowercased
+  reason     text,
+  created_at timestamptz not null default now()
+);
+alter table email_optouts enable row level security;
+
+alter table deals add column if not exists email_history jsonb default '[]'::jsonb;

@@ -86,6 +86,8 @@ export interface Deal {
   followUpReason?: 'referral'
   lastContactedAt?: number
   whatsappHistory?: Array<{ text: string; sentAt: number }>
+  /** Outreach emails sent from the app (support@ecstasytechnologies.com). */
+  emailHistory?: Array<{ subject: string; text: string; sentAt: number }>
   repliedAt?: number
   callLog?: Array<{ calledAt: number }>
   websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'
