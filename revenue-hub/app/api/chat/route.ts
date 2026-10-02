@@ -5,17 +5,22 @@ import { stripEmDashes } from '@/lib/text'
 // Groq deprecated llama-3.3-70b-versatile for free/developer tiers in June 2026;
 // it now answers every request with a 404 "model does not exist". gpt-oss-120b
 // is the migration target Groq names for it.
-const GROQ_MODEL    = 'openai/gpt-oss-120b'
+// Every model can be overridden with an env var (GROQ_MODEL, GEMINI_MODEL,
+// GEMINI_LITE_MODEL, MISTRAL_MODEL), so the next retirement is a settings
+// change in Vercel rather than a code change and redeploy.
+const GROQ_MODEL    = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
 // gemini-2.0-flash was shut down by Google and now 404s; it was silently the
 // last fallback, so every request that reached it surfaced as "API error 404".
-const GEMINI_MODEL  = 'gemini-2.5-flash'
+const GEMINI_MODEL  = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 // Free-tier Gemini quotas are per model, so Flash-Lite is a separate bucket
 // that still has room when Flash's few requests per minute are spent.
-const GEMINI_LITE_MODEL = 'gemini-2.5-flash-lite'
-const MISTRAL_MODEL = 'mistral-small-latest'
+// gemini-2.5-flash-lite is closed to new users; Google names 3.5 as its successor.
+const GEMINI_LITE_MODEL = process.env.GEMINI_LITE_MODEL || 'gemini-3.5-flash-lite'
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest'
 const MAX_TOOL_ITERATIONS = 5
 // A 429 that asks us to wait only briefly (Mistral's free tier allows about
-// one request a second) is worth one retry; longer waits move to the next provider.
+// one request a second), or a 503 "high demand" overload, is worth one retry;
+// longer waits move to the next provider.
 const MAX_RETRY_WAIT_MS = 5000
 
 const GROQ_URL    = 'https://api.groq.com/openai/v1/chat/completions'
@@ -122,7 +127,7 @@ export async function POST(req: NextRequest) {
 
     for (const provider of chain) {
       let attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
-      if (attempt.status === 429) {
+      if (attempt.status === 429 || attempt.status === 503) {
         const wait = retryWaitMs(await attempt.clone().text().catch(() => ''))
         if (wait <= MAX_RETRY_WAIT_MS) {
           await new Promise(r => setTimeout(r, wait))
