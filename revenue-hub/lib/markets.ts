@@ -162,6 +162,26 @@ export function marketFor(country: string | undefined): Market {
   return MARKETS.find(m => m.country.toLowerCase() === needle) ?? MARKETS[0]
 }
 
+/**
+ * Country a phone number belongs to, from its international dialling code.
+ * Only trusts numbers already in +E.164 form: a bare local number such as
+ * 024... carries no country. +1 is shared by the US and Canada and resolves
+ * to whichever is listed first in MARKETS.
+ */
+export function countryFromPhone(phone: string | undefined): string | undefined {
+  const digits = phone?.trim().replace(/[\s()-]/g, '')
+  if (!digits?.startsWith('+')) return undefined
+  const match = MARKETS
+    .filter(m => digits.startsWith(m.dialCode))
+    .sort((a, b) => b.dialCode.length - a.dialCode.length)[0]
+  return match?.country
+}
+
+/** A deal's market: its stored country, else its phone's, else Ghana. */
+export function dealCountry(d: { country?: string; phone?: string }): string {
+  return d.country ?? countryFromPhone(d.phone) ?? MARKETS[0].country
+}
+
 /** Region code for Google web search; falls back to Ghana. */
 export function glFor(country: string | undefined): string {
   return marketFor(country).gl

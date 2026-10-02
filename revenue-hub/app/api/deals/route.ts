@@ -12,6 +12,7 @@ interface Deal {
   stage: string
   phone?: string
   email?: string
+  country?: string
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
@@ -34,6 +35,7 @@ function toRow(d: Deal) {
     stage: d.stage,
     phone: d.phone ?? null,
     email: d.email ?? null,
+    country: d.country ?? null,
     created_at: d.createdAt,
     stage_changed_at: d.stageChangedAt ?? null,
     follow_up_at: d.followUpAt ?? null,
@@ -57,6 +59,7 @@ function fromRow(r: Record<string, unknown>): Deal {
     stage: (r.stage as string) ?? 'found',
     phone: (r.phone as string | null) ?? undefined,
     email: (r.email as string | null) ?? undefined,
+    country: (r.country as string | null) ?? undefined,
     createdAt: r.created_at as number,
     stageChangedAt: (r.stage_changed_at as number | null) ?? undefined,
     followUpAt: (r.follow_up_at as number | null) ?? undefined,

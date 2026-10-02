@@ -9,8 +9,14 @@ const GROQ_MODEL    = 'openai/gpt-oss-120b'
 // gemini-2.0-flash was shut down by Google and now 404s; it was silently the
 // last fallback, so every request that reached it surfaced as "API error 404".
 const GEMINI_MODEL  = 'gemini-2.5-flash'
+// Free-tier Gemini quotas are per model, so Flash-Lite is a separate bucket
+// that still has room when Flash's few requests per minute are spent.
+const GEMINI_LITE_MODEL = 'gemini-2.5-flash-lite'
 const MISTRAL_MODEL = 'mistral-small-latest'
 const MAX_TOOL_ITERATIONS = 5
+// A 429 that asks us to wait only briefly (Mistral's free tier allows about
+// one request a second) is worth one retry; longer waits move to the next provider.
+const MAX_RETRY_WAIT_MS = 5000
 
 const GROQ_URL    = 'https://api.groq.com/openai/v1/chat/completions'
 const GEMINI_URL  = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
@@ -54,6 +60,13 @@ async function callLLM(
   })
 }
 
+// Providers say how long to back off in the error text ("try again in 1.2s",
+// "Please retry in 11.25s"). With no hint, assume a short per-second limit.
+function retryWaitMs(body: string): number {
+  const m = body.match(/(?:try again|retry) in ([\d.]+)\s*s/i)
+  return m ? Math.ceil(parseFloat(m[1]) * 1000) : 1500
+}
+
 export async function POST(req: NextRequest) {
   const groqKey    = process.env.GROQ_API_KEY
   const geminiKey  = process.env.GEMINI_API_KEY
@@ -79,6 +92,7 @@ export async function POST(req: NextRequest) {
 
   const groq    = groqKey    ? { name: 'Groq', url: GROQ_URL,    key: groqKey,    model: GROQ_MODEL }    : null
   const gemini  = geminiKey  ? { name: 'Gemini', url: GEMINI_URL,  key: geminiKey,  model: GEMINI_MODEL }  : null
+  const geminiLite = geminiKey ? { name: 'Gemini Lite', url: GEMINI_URL, key: geminiKey, model: GEMINI_LITE_MODEL } : null
   const mistral = mistralKey ? { name: 'Mistral', url: MISTRAL_URL, key: mistralKey, model: MISTRAL_MODEL } : null
 
   // Tool-using agents lead with Mistral/Gemini (llama-family tool calls are the
@@ -92,8 +106,8 @@ export async function POST(req: NextRequest) {
   // even though Gemini and Mistral were configured and healthy. Any failure
   // now moves to the next provider.
   const chain = (tools.length > 0
-    ? [mistral, gemini, groq]
-    : [groq, mistral, gemini]
+    ? [mistral, gemini, geminiLite, groq]
+    : [groq, mistral, gemini, geminiLite]
   ).filter((p): p is NonNullable<typeof p> => p !== null)
 
   const chatMessages: ChatMessage[] = [
@@ -107,7 +121,14 @@ export async function POST(req: NextRequest) {
     const failures: string[] = []
 
     for (const provider of chain) {
-      const attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
+      let attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
+      if (attempt.status === 429) {
+        const wait = retryWaitMs(await attempt.clone().text().catch(() => ''))
+        if (wait <= MAX_RETRY_WAIT_MS) {
+          await new Promise(r => setTimeout(r, wait))
+          attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
+        }
+      }
       if (attempt.ok) { res = attempt; break }
 
       // Gemini's OpenAI-compatible endpoint wraps its error body in an array.

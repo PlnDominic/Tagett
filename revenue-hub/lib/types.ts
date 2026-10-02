@@ -76,6 +76,8 @@ export interface Deal {
   stage: DealStage
   phone?: string
   email?: string
+  /** Market the business is in (a MARKETS country). Unset on older deals; use dealCountry(). */
+  country?: string
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
