@@ -338,7 +338,7 @@ CHANNEL: WhatsApp-first markets (Ghana, Nigeria, Kenya, Mexico) get short, warm 
 
 EMAIL STRUCTURE (first contact, 70 to 120 words): a short scene from their customer's side (searching for a business like theirs online and finding nothing, or only a social page, and going elsewhere); the cost of that moment for them, without invented numbers; a true two-sentence story from the closest real project below; one low-pressure question they can answer in a word. No links, prices or attachments. Subject 2 to 6 words, specific to them, no words like free, offer, guarantee or urgent. Follow-ups: 40 to 70 words, a new angle, say you're following up.
 
-OUTPUT FORMAT: Start each message with a label line on its own, using the deal's exact name: "WhatsApp to [deal name]:" or "Email to [deal name]:". For email, the next line is "Subject: ...". Then only the message itself, signed as Dominic. Put any notes for Dominic after all the messages.
+OUTPUT FORMAT: Start each message with a label line on its own, using the deal's exact name: "WhatsApp to [deal name]:" or "Email to [deal name]:". For email, the next line is "Subject: ...". Then only the message itself: sign WhatsApp messages as Dominic, and end emails with "Best regards," on its own line (the full signature is added automatically when sent). Put any notes for Dominic after all the messages.
 
 Prices: quote only from the PRICE LIST block, in the deal's own market and currency.
 
@@ -2497,7 +2497,7 @@ function ProposalPublishChip({ content, deals, onUpdateDeal }: { content: string
           <EmailComposeModal
             deal={deal}
             initialSubject={`Proposal for ${deal.name}`}
-            initialText={`Hi,\n\nThanks for your time. Here is my proposal for ${deal.name}, with the scope, timeline and price:\n${link}\n\nHappy to answer any questions or adjust anything.\n\nDominic`}
+            initialText={`Hi,\n\nThanks for your time. Here is my proposal for ${deal.name}, with the scope, timeline and price:\n${link}\n\nHappy to answer any questions or adjust anything.\n\nBest regards,`}
             onClose={() => setComposing(false)}
             onSent={(subject, body) => onUpdateDeal(deal.id, emailSentUpdates(deal, subject, body))}
           />
@@ -3491,7 +3491,7 @@ If PREVIOUS MESSAGES exist, this is a follow-up: don't repeat them, take a new a
 
 Subject: 2 to 6 words, specific to them, lowercase except names, no clickbait, no exclamation marks, no words like free, offer, guarantee, urgent, spam.
 
-Write in plain, warm, confident English for their market. Sign off as "Dominic". No markdown.
+Write in plain, warm, confident English for their market. End with "Best regards," on its own line and nothing after it: the full signature (name, title, company, email, phone) is added automatically when sent. No markdown.
 Return only JSON: {"subject": "...", "body": "..."}`
 
 /**
@@ -3640,7 +3640,7 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
         )}
         <input value={subject} onChange={e => setSubject(e.target.value)} placeholder={writing ? 'Writing the subject…' : 'Subject'} disabled={writing} style={field} />
         <textarea value={text} onChange={e => setText(e.target.value)} rows={9} placeholder={writing ? 'Writing the message for this business…' : 'Message'} disabled={writing} style={{ ...field, resize: 'vertical', lineHeight: 1.6 }} />
-        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>A footer with your business address and a &quot;reply stop to opt out&quot; line is added automatically.</div>
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>Your signature (in italics) and a footer with your business address and a &quot;reply stop to opt out&quot; line are added automatically.</div>
         {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={send} disabled={!canSend} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: canSend ? GOLD : SURFACE2, color: canSend ? '#fff' : MUTED, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: canSend ? 'pointer' : 'not-allowed' }}>
