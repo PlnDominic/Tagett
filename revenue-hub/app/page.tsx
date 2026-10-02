@@ -5074,6 +5074,119 @@ function dealCompleteness(d: Deal): number {
   return s
 }
 
+interface EmailFinderResult {
+  dealId: string
+  name: string
+  email?: string
+  confidence?: 'high' | 'low'
+  reason?: string
+  source?: string
+  facebookUrl?: string
+  error?: boolean
+  status: 'review' | 'saved' | 'skipped'
+}
+
+// Runs the per-deal Find Email search across every open lead that has no
+// email and no known website. Results land in a review list, never straight
+// on the deal, for the same reason the single-deal button never auto-saves:
+// a snippet can carry a different business's address.
+function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
+  const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState(0)
+  const [results, setResults] = useState<EmailFinderResult[]>([])
+  const stopRef = useRef(false)
+
+  const targets = deals.filter(d => !d.email && d.websiteCheck !== 'found_site' && d.stage !== 'closed' && d.stage !== 'lost')
+
+  const run = async () => {
+    const queue = targets.filter(d => !results.some(r => r.dealId === d.id))
+    stopRef.current = false
+    setRunning(true)
+    setProgress(0)
+    for (let i = 0; i < queue.length && !stopRef.current; i++) {
+      const d = queue[i]
+      let result: EmailFinderResult = { dealId: d.id, name: d.name, status: 'review' }
+      try {
+        const res = await fetch('/api/deals/find-email', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ name: d.name, hint: d.industry, websiteUrl: d.websiteCheckUrl }),
+        })
+        const data = await res.json()
+        if (res.ok) result = { ...result, email: data.email ?? undefined, confidence: data.confidence, reason: data.reason, source: data.source, facebookUrl: data.facebookUrl }
+        else result.error = true
+      } catch {
+        result.error = true
+      }
+      setResults(prev => [...prev, result])
+      setProgress(i + 1)
+    }
+    setRunning(false)
+  }
+
+  const save = (r: EmailFinderResult) => {
+    if (!r.email) return
+    onUpdate(r.dealId, { email: r.email })
+    setResults(prev => prev.map(x => x.dealId === r.dealId ? { ...x, status: 'saved' } : x))
+  }
+  const skip = (r: EmailFinderResult) => setResults(prev => prev.map(x => x.dealId === r.dealId ? { ...x, status: 'skipped' } : x))
+
+  const found = results.filter(r => r.email)
+  const remaining = targets.filter(d => !results.some(r => r.dealId === d.id)).length
+  const linkStyle = { fontSize: 11, color: MUTED, fontFamily: FONT_BODY, textDecoration: 'underline' } as const
+
+  return (
+    <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+      <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>Find Emails for No-Website Leads</div>
+      <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>
+        {targets.length} open lead{targets.length === 1 ? '' : 's'} with no email and no known website. Searches Google, then their Facebook Page (up to 2 SerpAPI searches each). Nothing is saved until you approve it.
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: results.length ? 12 : 0 }}>
+        {running ? (
+          <button onClick={() => { stopRef.current = true }} style={{ padding: '6px 14px', background: SURFACE2, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Stop</button>
+        ) : (
+          <button onClick={run} disabled={remaining === 0} style={{ padding: '6px 14px', background: GOLD, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: remaining === 0 ? 'default' : 'pointer', opacity: remaining === 0 ? 0.5 : 1 }}>
+            {results.length ? `Search remaining (${remaining})` : `Find emails (${remaining})`}
+          </button>
+        )}
+        {(running || results.length > 0) && (
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
+            {running ? `Searching ${progress}/${remaining + progress}… ` : ''}{found.length} found of {results.length} checked
+          </span>
+        )}
+      </div>
+      {results.map(r => (
+        <div key={r.dealId} style={{ padding: '8px 0', borderTop: `1px solid ${BORDER}`, opacity: r.status === 'skipped' ? 0.5 : 1 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, color: TEXT }}>{r.name}</div>
+              {r.email ? (
+                <div style={{ fontSize: 12, fontFamily: FONT_BODY, color: r.confidence === 'high' ? '#10B981' : '#F59E0B', wordBreak: 'break-all' }}>
+                  {r.email} <span style={{ color: MUTED }}>· {r.confidence === 'high' ? 'likely theirs' : 'verify first'}</span>
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, fontFamily: FONT_BODY, color: MUTED }}>{r.error ? 'Search failed' : 'No email found'}</div>
+              )}
+              {r.reason && <div style={{ fontSize: 11, fontFamily: FONT_BODY, color: MUTED }}>{r.reason}</div>}
+              <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
+                {r.source && r.source.startsWith('http') && <a href={r.source} target="_blank" rel="noopener noreferrer" style={linkStyle}>source</a>}
+                {r.facebookUrl && r.facebookUrl !== r.source && <a href={r.facebookUrl} target="_blank" rel="noopener noreferrer" style={linkStyle}>Facebook Page</a>}
+              </div>
+            </div>
+            {r.email && r.status === 'review' && (
+              <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button onClick={() => save(r)} style={{ fontSize: 11, padding: '4px 10px', background: GOLD, color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: FONT_BODY }}>Save</button>
+                <button onClick={() => skip(r)} style={{ fontSize: 11, padding: '4px 10px', background: 'none', border: `1px solid ${BORDER}`, borderRadius: 6, color: MUTED, cursor: 'pointer', fontFamily: FONT_BODY }}>Skip</button>
+              </div>
+            )}
+            {r.status === 'saved' && <span style={{ fontSize: 11, color: '#10B981', fontFamily: FONT_BODY, flexShrink: 0 }}>✓ Saved</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function DataQualityView({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
   const [tab, setTab] = useState<'health' | 'duplicates' | 'issues'>('health')
   const [clients, setClients] = useState<Client[]>([])
@@ -5239,10 +5352,13 @@ function DataQualityView({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
             <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
               <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 12 }}>Deal Pipeline ({deals.length} deals)</div>
               <StatBar label="Has phone number" count={withPhone} total={deals.length} />
+              <StatBar label="Has email" count={deals.filter(d => !!d.email).length} total={deals.length} />
               <StatBar label="Has deal value set" count={withValue} total={deals.length} />
               <StatBar label="Has industry" count={withIndustry} total={deals.length} />
               <StatBar label="Has follow-up / resolved" count={withFollowUp} total={deals.length} />
             </div>
+
+            <BulkEmailFinder deals={deals} onUpdate={onUpdate} />
 
             {needsNorm.length > 0 && (
               <div style={{ background: `${GOLD}0A`, border: `1px solid ${GOLD}35`, borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>

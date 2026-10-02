@@ -144,8 +144,43 @@ export async function POST(req: Request) {
       }
     }
 
+    // 3. Businesses without a website usually have a Facebook Page instead, and
+    // Google's snippet of that page often carries the email from its About
+    // section. A snippet from the business's own Page is far more trustworthy
+    // than one from a post, group or event that merely mentions them.
+    let facebookUrl: string | undefined
+    if (!candidates.some(c => c.confidence === 'high') && tokens.length > 0) {
+      // No industry hint here: the quoted name already narrows it, and a Page
+      // rarely repeats the category words we stored, so they only lose matches.
+      const q = `site:facebook.com "${name}"`
+      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: 'gh', num: '10', api_key: key })
+      const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
+      if (res.ok) {
+        const data = await res.json() as { organic_results?: Array<{ link?: string; title?: string; snippet?: string }> }
+        for (const r of data.organic_results ?? []) {
+          const link = r.link ?? ''
+          if (!/(^|\.)facebook\.com$/.test(extractDomain(link))) continue
+          const title = (r.title ?? '').toLowerCase()
+          if (!tokens.every(t => title.includes(t))) continue
+
+          const isOwnPage = !/\/(posts|groups|events|photos|videos|story|permalink|share)/i.test(link)
+          if (isOwnPage && !facebookUrl) facebookUrl = link
+          extractEmails(`${r.title ?? ''} ${r.snippet ?? ''}`).forEach(email => {
+            candidates.push({
+              email,
+              source: link,
+              confidence: isOwnPage ? 'high' : 'low',
+              reason: isOwnPage
+                ? 'listed on their Facebook Page'
+                : `found in a Facebook post mentioning "${name}", may not be their own address, verify before using`,
+            })
+          })
+        }
+      }
+    }
+
     if (candidates.length === 0) {
-      return NextResponse.json({ email: null, checkedAt: Date.now() })
+      return NextResponse.json({ email: null, facebookUrl, checkedAt: Date.now() })
     }
 
     // Prefer a high-confidence match; among ties, prefer one whose domain
@@ -159,6 +194,7 @@ export async function POST(req: Request) {
       source: best.source,
       confidence: best.confidence,
       reason: best.reason,
+      facebookUrl,
       checkedAt: Date.now(),
     })
   } catch (err) {
