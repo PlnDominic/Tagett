@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 import { stripEmDashes } from '@/lib/text'
+import { messagesForProvider, portableToolCallId, type ChatMessage, type ToolCall } from '@/lib/llm-messages'
+
+// Room for one wait on a rate limit that clears within MAX_LAST_RESORT_WAIT_MS.
+export const maxDuration = 60
 
 // Groq deprecated llama-3.3-70b-versatile for free/developer tiers in June 2026;
 // it now answers every request with a 404 "model does not exist". gpt-oss-120b
 // is the migration target Groq names for it.
-// Every model can be overridden with an env var (GROQ_MODEL, GEMINI_MODEL,
-// GEMINI_LITE_MODEL, MISTRAL_MODEL), so the next retirement is a settings
+// Every model can be overridden with an env var (GROQ_MODEL, GROQ_BACKUP_MODEL, GEMINI_MODEL,
+// GEMINI_LITE_MODEL, MISTRAL_MODEL, CEREBRAS_MODEL), so the next retirement is a settings
 // change in Vercel rather than a code change and redeploy.
 const GROQ_MODEL    = process.env.GROQ_MODEL || 'openai/gpt-oss-120b'
 // gemini-2.0-flash was shut down by Google and now 404s; it was silently the
@@ -17,15 +21,26 @@ const GEMINI_MODEL  = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
 // gemini-2.5-flash-lite is closed to new users; Google names 3.5 as its successor.
 const GEMINI_LITE_MODEL = process.env.GEMINI_LITE_MODEL || 'gemini-3.5-flash-lite'
 const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'mistral-small-latest'
+// Groq limits tokens per minute per model, so a second model is a fresh
+// bucket when gpt-oss-120b's 8,000 a minute are spent.
+const GROQ_BACKUP_MODEL = process.env.GROQ_BACKUP_MODEL || 'openai/gpt-oss-20b'
+// Cerebras (optional, CEREBRAS_API_KEY): a free tier with far higher daily
+// limits than the others, serving the same gpt-oss-120b.
+const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL || 'gpt-oss-120b'
 const MAX_TOOL_ITERATIONS = 5
 // A 429 that asks us to wait only briefly (Mistral's free tier allows about
 // one request a second), or a 503 "high demand" overload, is worth one retry;
 // longer waits move to the next provider.
 const MAX_RETRY_WAIT_MS = 5000
+// When every provider is rate limited, the one that clears soonest is waited
+// for once if that's under this, rather than failing a request that would
+// work in half a minute (Groq's per-minute limits).
+const MAX_LAST_RESORT_WAIT_MS = 30000
 
 const GROQ_URL    = 'https://api.groq.com/openai/v1/chat/completions'
 const GEMINI_URL  = 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions'
 const MISTRAL_URL = 'https://api.mistral.ai/v1/chat/completions'
+const CEREBRAS_URL = 'https://api.cerebras.ai/v1/chat/completions'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -38,29 +53,17 @@ interface ChatRequest {
   agentId?: string
 }
 
-interface ToolCall {
-  id: string
-  type: 'function'
-  function: { name: string; arguments: string }
-}
+interface Provider { name: string; url: string; key: string; model: string }
 
-type ChatMessage =
-  | { role: 'system' | 'user' | 'assistant'; content: string }
-  | { role: 'assistant'; content: null; tool_calls: ToolCall[] }
-  | { role: 'tool'; tool_call_id: string; content: string }
-
-async function callLLM(
-  url: string,
-  authKey: string,
-  model: string,
-  messages: ChatMessage[],
-  tools: ToolDefinition[]
-): Promise<Response> {
-  const body: Record<string, unknown> = { model, max_tokens: 2000, temperature: 0.3, messages }
+async function callLLM(provider: Provider, messages: ChatMessage[], tools: ToolDefinition[]): Promise<Response> {
+  const body: Record<string, unknown> = {
+    model: provider.model, max_tokens: 2000, temperature: 0.3,
+    messages: messagesForProvider(messages, provider.url === GEMINI_URL),
+  }
   if (tools.length > 0) body.tools = tools
-  return fetch(url, {
+  return fetch(provider.url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${authKey}`, 'content-type': 'application/json' },
+    headers: { Authorization: `Bearer ${provider.key}`, 'content-type': 'application/json' },
     body: JSON.stringify(body),
   })
 }
@@ -76,9 +79,10 @@ export async function POST(req: NextRequest) {
   const groqKey    = process.env.GROQ_API_KEY
   const geminiKey  = process.env.GEMINI_API_KEY
   const mistralKey = process.env.MISTRAL_API_KEY
+  const cerebrasKey = process.env.CEREBRAS_API_KEY
 
-  if (!groqKey && !geminiKey && !mistralKey) {
-    return NextResponse.json({ error: 'No LLM provider configured (set GROQ_API_KEY, GEMINI_API_KEY or MISTRAL_API_KEY)' }, { status: 500 })
+  if (!groqKey && !geminiKey && !mistralKey && !cerebrasKey) {
+    return NextResponse.json({ error: 'No LLM provider configured (set GROQ_API_KEY, GEMINI_API_KEY, MISTRAL_API_KEY or CEREBRAS_API_KEY)' }, { status: 500 })
   }
 
   let body: ChatRequest
@@ -99,6 +103,8 @@ export async function POST(req: NextRequest) {
   const gemini  = geminiKey  ? { name: 'Gemini', url: GEMINI_URL,  key: geminiKey,  model: GEMINI_MODEL }  : null
   const geminiLite = geminiKey ? { name: 'Gemini Lite', url: GEMINI_URL, key: geminiKey, model: GEMINI_LITE_MODEL } : null
   const mistral = mistralKey ? { name: 'Mistral', url: MISTRAL_URL, key: mistralKey, model: MISTRAL_MODEL } : null
+  const groqBackup = groqKey && GROQ_BACKUP_MODEL !== GROQ_MODEL ? { name: 'Groq backup', url: GROQ_URL, key: groqKey, model: GROQ_BACKUP_MODEL } : null
+  const cerebras = cerebrasKey ? { name: 'Cerebras', url: CEREBRAS_URL, key: cerebrasKey, model: CEREBRAS_MODEL } : null
 
   // Tool-using agents lead with Mistral/Gemini (llama-family tool calls are the
   // least reliable); plain chat leads with Groq for latency. Every configured
@@ -111,9 +117,9 @@ export async function POST(req: NextRequest) {
   // even though Gemini and Mistral were configured and healthy. Any failure
   // now moves to the next provider.
   const chain = (tools.length > 0
-    ? [mistral, gemini, geminiLite, groq]
-    : [groq, mistral, gemini, geminiLite]
-  ).filter((p): p is NonNullable<typeof p> => p !== null)
+    ? [mistral, cerebras, gemini, geminiLite, groq, groqBackup]
+    : [groq, cerebras, mistral, gemini, geminiLite, groqBackup]
+  ).filter((p): p is Provider => p !== null)
 
   const chatMessages: ChatMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -124,14 +130,17 @@ export async function POST(req: NextRequest) {
     let res: Response | null = null
     let lastStatus = 502
     const failures: string[] = []
+    let soonest: { provider: Provider; wait: number } | null = null
 
     for (const provider of chain) {
-      let attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
+      let attempt = await callLLM(provider, chatMessages, tools)
       if (attempt.status === 429 || attempt.status === 503) {
         const wait = retryWaitMs(await attempt.clone().text().catch(() => ''))
         if (wait <= MAX_RETRY_WAIT_MS) {
           await new Promise(r => setTimeout(r, wait))
-          attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
+          attempt = await callLLM(provider, chatMessages, tools)
+        } else if (!soonest || wait < soonest.wait) {
+          soonest = { provider, wait }
         }
       }
       if (attempt.ok) { res = attempt; break }
@@ -146,12 +155,18 @@ export async function POST(req: NextRequest) {
       // Malformed tool calls are a quirk of the model, not the provider —
       // retrying the same one without tools usually succeeds.
       if (tools.length > 0 && lastError.includes('tool call validation failed')) {
-        const retry = await callLLM(provider.url, provider.key, provider.model, chatMessages, [])
+        const retry = await callLLM(provider, chatMessages, [])
         if (retry.ok) {
           const fd = await retry.json()
           return NextResponse.json({ text: stripEmDashes((fd.choices?.[0]?.message?.content as string) ?? '') })
         }
       }
+    }
+
+    if (!res && soonest && soonest.wait <= MAX_LAST_RESORT_WAIT_MS) {
+      await new Promise(r => setTimeout(r, soonest!.wait + 500))
+      const attempt = await callLLM(soonest.provider, chatMessages, tools)
+      if (attempt.ok) res = attempt
     }
 
     if (!res) {
@@ -171,9 +186,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ text: stripEmDashes((msg?.content as string) ?? '') })
     }
 
-    chatMessages.push({ role: 'assistant', content: null, tool_calls: msg.tool_calls as ToolCall[] })
+    // Ids every provider accepts, so a later step can fall back to any of them.
+    const calls = (msg.tool_calls as ToolCall[]).map(tc => ({ ...tc, id: portableToolCallId() }))
+    chatMessages.push({ role: 'assistant', content: null, tool_calls: calls })
 
-    for (const tc of msg.tool_calls as ToolCall[]) {
+    for (const tc of calls) {
       let args: Record<string, string> = {}
       try { args = JSON.parse(tc.function.arguments) } catch { /* ignore */ }
       const result = await executeTool(tc.function.name, args)
