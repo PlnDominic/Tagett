@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
-import { COUNTRIES, marketFor, toE164 } from '@/lib/markets'
+import { COUNTRIES, marketFor, toE164, countryFromPhone, dealCountry } from '@/lib/markets'
 import type {
   Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
   DealStage, Deal, ParsedProspect, InvoiceMilestone, Invoice, Retainer,
@@ -2361,7 +2361,7 @@ For each business provide exactly in this format:
    Estimated value: GHS [amount]
    Phone pitch: "[one sentence I say when they answer the phone]"
 
-Be specific — use real-sounding Ghanaian business names, actual street names in ${locationStr}, and valid +233 phone number formats. Make every entry immediately actionable for a cold call today.`
+Only list real businesses you found with your search tools, with the name, address and phone exactly as the listing shows them. If a listing has no phone, write "Phone: not listed" instead of guessing one. If you can't find 5 real ones, list fewer. A made-up business wastes a call.`
 }
 
 function ProspectIntakeScreen({ onSubmit, loading }: {
@@ -3846,7 +3846,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       const res = await fetch('/api/deals/find-email', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: deal.name, hint: deal.industry, websiteUrl: deal.websiteCheckUrl }),
+        body: JSON.stringify({ name: deal.name, hint: deal.industry, websiteUrl: deal.websiteCheckUrl, country: dealCountry(deal) }),
       })
       const data = await res.json()
       if (res.ok && data.email) {
@@ -3901,7 +3901,21 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: deal.stage === 'lost' ? MUTED : TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.name}</div>
-          {deal.industry && <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{deal.industry}</div>}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 1, minWidth: 0 }}>
+            {deal.industry && <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.industry} ·</span>}
+            {/* Shown even when inferred, so a wrong guess from the phone's
+                dialling code can be corrected; the email search uses it. */}
+            <select
+              value={dealCountry(deal)}
+              onChange={e => onUpdate(deal.id, { country: e.target.value })}
+              onClick={e => e.stopPropagation()}
+              onMouseDown={e => e.stopPropagation()}
+              title="Country the business is in"
+              style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', maxWidth: 120 }}
+            >
+              {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <div style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, color: deal.stage === 'closed' ? GOLD : deal.stage === 'lost' ? MUTED : TEXT, marginTop: 3 }}>
             GHS {deal.valueGHS.toLocaleString()}
           </div>
@@ -4101,7 +4115,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   onRetainerAdded: () => void
 }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '', email: '' })
+  const [form, setForm] = useState({ name: '', industry: '', valueGHS: '', phone: '', email: '', country: 'Ghana' })
   const [dragId, setDragId] = useState<string | null>(null)
   const [dropStage, setDropStage] = useState<DealStage | null>(null)
   const [waModal, setWaModal] = useState<Deal | null>(null)
@@ -4113,8 +4127,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
 
   const handleSubmit = () => {
     if (!form.name) return
-    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone || undefined, email: form.email || undefined })
-    setForm({ name: '', industry: '', valueGHS: '', phone: '', email: '' })
+    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone || undefined, email: form.email || undefined, country: form.country })
+    // Keep the country: leads are usually added in batches from one market.
+    setForm(p => ({ name: '', industry: '', valueGHS: '', phone: '', email: '', country: p.country }))
     setShowForm(false)
   }
 
@@ -4180,6 +4195,9 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
             <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder="Value (GHS)" type="number" style={inputStyle} />
             <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone (+233…)" style={inputStyle} />
             <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="Email (for international leads)" type="email" style={inputStyle} />
+            <select value={form.country} onChange={e => setForm(p => ({ ...p, country: e.target.value }))} title="Country the business is in" style={inputStyle}>
+              {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={handleSubmit} style={{ flex: 1, padding: '9px', borderRadius: 8, background: GOLD, color: '#fff', fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, border: 'none', cursor: 'pointer' }}>Add</button>
               <button onClick={() => setShowForm(false)} style={{ padding: '9px 14px', borderRadius: 8, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY, fontSize: 13, border: `1px solid ${BORDER}`, cursor: 'pointer' }}>Cancel</button>
@@ -5110,7 +5128,7 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
         const res = await fetch('/api/deals/find-email', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: d.name, hint: d.industry, websiteUrl: d.websiteCheckUrl }),
+          body: JSON.stringify({ name: d.name, hint: d.industry, websiteUrl: d.websiteCheckUrl, country: dealCountry(d) }),
         })
         const data = await res.json()
         if (res.ok) result = { ...result, email: data.email ?? undefined, confidence: data.confidence, reason: data.reason, source: data.source, facebookUrl: data.facebookUrl }
@@ -6948,6 +6966,7 @@ function ProspectMapView({ onAdd }: { onAdd: (d: Omit<Deal, 'id' | 'createdAt'>)
       stage: 'found',
       phone: toE164(p.phone, market),
       email: p.email,
+      country,
     })
     setAdded(prev => new Set([...prev, p.id]))
   }
@@ -8009,6 +8028,7 @@ export default function Page() {
       valueGHS: p.valueGHS,
       stage: 'found' as DealStage,
       phone: p.phone,
+      country: countryFromPhone(p.phone),
       followUpAt,
       createdAt: base + i,
       stageChangedAt: base + i,

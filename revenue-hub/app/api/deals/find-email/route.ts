@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { marketFor } from '@/lib/markets'
 
 // Addresses that show up in search results / page HTML but are never the
 // business's own contact — platform noreply addresses, template/demo
@@ -83,8 +84,11 @@ export async function POST(req: Request) {
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
 
   try {
-    const { name, hint, websiteUrl } = await req.json() as { name?: string; hint?: string; websiteUrl?: string }
+    const { name, hint, websiteUrl, country } = await req.json() as { name?: string; hint?: string; websiteUrl?: string; country?: string }
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
+    // Searching Google Ghana for a Manchester plumber mostly returns nothing,
+    // so both the query and the result region follow the deal's market.
+    const market = marketFor(country)
 
     const tokens = nameTokens(name)
     const candidates: Candidate[] = []
@@ -112,8 +116,8 @@ export async function POST(req: Request) {
     // anywhere in the snippet could belong to an unrelated business or the page
     // author, not our prospect.
     if (candidates.length === 0 && tokens.length > 0) {
-      const q = [`"${name}"`, hint, 'Ghana', 'email OR contact'].filter(Boolean).join(' ')
-      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: 'gh', num: '10', api_key: key })
+      const q = [`"${name}"`, hint, market.country, 'email OR contact'].filter(Boolean).join(' ')
+      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: key })
       const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
       if (res.ok) {
         const data = await res.json() as { organic_results?: Array<{ link?: string; title?: string; snippet?: string }> }
@@ -153,7 +157,7 @@ export async function POST(req: Request) {
       // No industry hint here: the quoted name already narrows it, and a Page
       // rarely repeats the category words we stored, so they only lose matches.
       const q = `site:facebook.com "${name}"`
-      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: 'gh', num: '10', api_key: key })
+      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: key })
       const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
       if (res.ok) {
         const data = await res.json() as { organic_results?: Array<{ link?: string; title?: string; snippet?: string }> }
