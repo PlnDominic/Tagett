@@ -12,7 +12,14 @@ interface Proposal {
   industry: string | null
   scope: string
   priceGHS: number
+  currency?: string
   status: string
+}
+
+function priceText(p: Proposal): string {
+  const c = p.currency ?? 'GHS'
+  const n = p.priceGHS.toLocaleString()
+  return /^\p{L}+$/u.test(c) ? `${c} ${n}` : `${c}${n}`
 }
 
 export default function ProposalPage({ params }: { params: { id: string } }) {
@@ -31,7 +38,7 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
 
   const acceptUrl = proposal
     ? `https://wa.me/${DOMINIC_PHONE}?text=${encodeURIComponent(
-        `Hi Dominic, I'd like to go ahead with the ${proposal.businessName} project at GHS ${proposal.priceGHS.toLocaleString()}.`
+        `Hi Dominic, I'd like to go ahead with the ${proposal.businessName} project at ${priceText(proposal)}.`
       )}`
     : '#'
 
@@ -121,7 +128,7 @@ export default function ProposalPage({ params }: { params: { id: string } }) {
             }}>
               <span style={{ fontSize: 12.5, color: '#7a7880', letterSpacing: '0.02em' }}>Investment</span>
               <span style={{ fontSize: 26, fontWeight: 800, color: '#F5F3F0', letterSpacing: '-0.02em' }}>
-                GHS {proposal.priceGHS.toLocaleString()}
+                {priceText(proposal)}
               </span>
             </div>
 

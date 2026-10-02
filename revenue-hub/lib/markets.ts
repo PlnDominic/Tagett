@@ -52,7 +52,7 @@ export interface Market {
 
 export const MARKETS: Market[] = [
   {
-    country: 'Ghana', gl: 'gh', iso2: 'GH', dialCode: '+233', region: 'Ghana', whatsappFirst: true, currency: 'GHS', budget: '3,500–6,000',
+    country: 'Ghana', gl: 'gh', iso2: 'GH', dialCode: '+233', region: 'Ghana', whatsappFirst: true, currency: 'GHS', budget: '3,500–4,000',
     seedCities: ['Accra', 'Kumasi', 'Takoradi', 'Tamale', 'Cape Coast', 'Ho', 'Koforidua',
              'Sunyani', 'Techiman', 'Bolgatanga', 'Wa', 'Tema', 'Kasoa', 'Obuasi',
              'Ejisu', 'Nsawam', 'Winneba', 'Agona Swedru'],

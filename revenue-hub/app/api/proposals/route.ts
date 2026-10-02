@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase, writeToleratingSchemaDrift } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -26,7 +26,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const body = await req.json()
-    const { dealId, businessName, industry, scope, priceGHS } = body
+    const { dealId, businessName, industry, scope, priceGHS, currency } = body
     if (!businessName) return NextResponse.json({ error: 'businessName required' }, { status: 400 })
 
     // 16 bytes (128 bits): this id is a permanent, unauthenticated capability
@@ -34,7 +34,9 @@ export async function POST(req: Request) {
     // at scale by anyone enumerating /p/<id>.
     const id = randomBytes(16).toString('base64url')
     const sb = getSupabase()
-    const { error } = await sb.from('proposals').insert({
+    // currency is newer than the table; saved without it (as GHS) until the
+    // column exists, rather than failing the proposal.
+    const { error } = await writeToleratingSchemaDrift([{
       id,
       deal_id: dealId ?? null,
       business_name: businessName,
@@ -43,7 +45,8 @@ export async function POST(req: Request) {
       price_ghs: priceGHS ?? 0,
       status: 'sent',
       created_at: Date.now(),
-    })
+      currency: typeof currency === 'string' && currency.length <= 4 ? currency : 'GHS',
+    }], rows => sb.from('proposals').insert(rows))
     if (error) throw error
 
     return NextResponse.json({ ok: true, id, path: `/p/${id}` })

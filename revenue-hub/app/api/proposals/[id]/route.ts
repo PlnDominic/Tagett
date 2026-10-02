@@ -33,7 +33,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       // never actually arrived.
       await sendPush({
         title: isFirstView ? `👀 ${data.business_name} opened your proposal` : `👀 ${data.business_name} viewed your proposal again`,
-        body: `GHS ${Number(data.price_ghs).toLocaleString()} · ${nextViewCount} view${nextViewCount === 1 ? '' : 's'} total`,
+        body: `${data.currency ?? 'GHS'} ${Number(data.price_ghs).toLocaleString()} · ${nextViewCount} view${nextViewCount === 1 ? '' : 's'} total`,
       }).catch(() => {})
     }
 
@@ -43,6 +43,8 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       industry: data.industry,
       scope: data.scope,
       priceGHS: data.price_ghs,
+      // The amount is in this currency (GHS for proposals made before it existed).
+      currency: data.currency ?? 'GHS',
       status: data.status,
     })
   } catch (err) {
