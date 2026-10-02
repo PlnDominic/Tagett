@@ -9,6 +9,7 @@ import { refCodeFor } from '@/lib/refcode'
 import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
 import { dmSentUpdates, dmTarget } from '@/lib/dm'
 import { labelledPosts, notesStart, plainPostText } from '@/lib/viral-posts'
+import { CHAR_LIMITS, NETWORK_NAMES, PLATFORM_LIMITS_PROMPT, checkLength, postLength, splitThread, type LimitNetwork } from '@/lib/platform-limits'
 import { REQUEST_PHRASES, THREAD_PHRASES, cleanHandle, messageUrl, profileUrl, xReplyUrl, type Commenter, type ListenMode, type ListenPlatform, type Recency } from '@/lib/social-listening'
 import { currencyCodeFor, toGHS, type GhsRates } from '@/lib/fx'
 import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
@@ -444,19 +445,19 @@ Start with one line headed "Last results:" saying what WHAT HAS WORKED tells you
 Deliver these three, each starting with its label on its own line exactly as shown:
 
 X (showcase):
-A 6-tweet project reveal thread, tweets numbered 1/6 to 6/6.
+A 6-tweet project reveal thread, tweets numbered 1/6 to 6/6, each tweet at most 240 characters.
 1/6 hooks with the real project ("We just built [X] for a [client type] 🇬🇭"); 2/6 to 4/6 walk through what was built and what it solved; 5/6 says which screenshot to attach; 6/6 is the CTA.
 
 LinkedIn (take):
-A bold opinion, hot take, or insight about tech/business in Ghana/Africa that makes people argue in the comments. No project needed.
+A bold opinion, hot take, or insight about tech/business in Ghana/Africa that makes people argue in the comments, at most 1,300 characters with the hook in the first 200. No project needed.
 
 TikTok (reel):
-A 60-second script, shot by shot: either a screen-recording walkthrough of a real project or a talking-head "here's what I learned building software in Ghana".
+A 60-second script, shot by shot: either a screen-recording walkthrough of a real project or a talking-head "here's what I learned building software in Ghana". End with a "Caption:" line of at most 150 characters.
 
 Only if YOUR DATA has a figure with a sample of 20 or more, add a fourth:
 
 X (data):
-One post built on a single real number from YOUR DATA, stating the sample size (e.g. "We checked 64 Kumasi pharmacies: 41 had no website."). Never round up, never generalise beyond the sample.
+One post of at most 240 characters built on a single real number from YOUR DATA, stating the sample size (e.g. "We checked 64 Kumasi pharmacies: 41 had no website."). Never round up, never generalise beyond the sample.
 
 Write for the AUDIENCE TODAY market, not automatically for Ghana.
 
@@ -508,6 +509,8 @@ Instagram/TikTok: screen recording walkthrough script (shot by shot)
 GHANA CONTEXT (when AUDIENCE TODAY is Ghana): Ground everything in real Ghanaian business realities — mobile money payments, WhatsApp-first clients, unreliable internet, the pride of seeing your business go digital.
 
 Always write as Dominic Kudom. Immediately postable: no placeholders, and no invented facts. If a detail isn't known, write around it.
+
+${PLATFORM_LIMITS_PROMPT}
 
 OUTPUT FORMAT: Start every postable piece with a label line on its own: the platform (X, LinkedIn, Instagram, Facebook or TikTok) followed by its type in brackets, (showcase), (take), (reel) or (data), then a colon. Example: "LinkedIn (showcase):". Put nothing but the post itself under each label, so each piece can go straight into the Social Calendar. The pipeline and Council lines below come after all posts.
 
@@ -2536,6 +2539,55 @@ function ProspectActionChips({ content, onOpenImport }: { content: string; onOpe
   )
 }
 
+// ─── Character limits ─────────────────────────────────────────────────────────
+
+/**
+ * Rewrites a post to fit its network: only the over-limit posts of an X
+ * thread, keeping a trailing tracking link as it is. Tries once more,
+ * tighter, if the first rewrite still runs over.
+ */
+async function shortenForNetwork(network: LimitNetwork, text: string): Promise<string> {
+  const check = checkLength(network, text)
+  const out: string[] = []
+  for (const part of check.parts) {
+    if (!part.over) { out.push(part.text); continue }
+    const tail = part.text.match(/\s*(?:WhatsApp:\s*)?https?:\/\/\S+\s*$/)?.[0] ?? ''
+    const body = tail ? part.text.slice(0, -tail.length) : part.text
+    const budget = check.limit - postLength(network, tail)
+    let next = body
+    for (let attempt = 0; attempt < 2 && postLength(network, next) > budget; attempt++) {
+      const target = Math.floor(budget * (attempt ? 0.8 : 0.92))
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          systemPrompt: `Rewrite this ${NETWORK_NAMES[network]} post to at most ${target} characters${network === 'x' ? ' (emoji count as 2)' : ''}. Keep the hook, every fact, any names, any "n/N" numbering at the start, and the call to action; cut filler words. Never add a fact. No markdown. Return only the rewritten post.`,
+          messages: [{ role: 'user', content: body }],
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Could not shorten this right now.')
+      next = plainPostText(String(data.text ?? '')).replace(/^"|"$/g, '') || next
+    }
+    out.push(next + tail)
+  }
+  return out.join('\n\n')
+}
+
+/** "238/280", red with what's over when a post (or one post of a thread) is too long. */
+function LengthNote({ network, text }: { network: LimitNetwork; text: string }) {
+  const check = checkLength(network, text)
+  const longest = Math.max(...check.parts.map(p => p.length))
+  const overParts = check.parts.flatMap((p, i) => p.over ? [i + 1] : [])
+  return (
+    <span title={`${NETWORK_NAMES[network]} allows ${check.limit.toLocaleString()} characters${check.parts.length > 1 ? ' per post' : ''}`} style={{ fontSize: 10, fontFamily: FONT_BODY, color: check.over ? '#e05c5c' : MUTED, whiteSpace: 'nowrap' }}>
+      {check.over ? '⚠ ' : ''}{NETWORK_NAMES[network]} {check.parts.length > 1
+        ? `${check.parts.length}-post thread${check.over ? `, post ${overParts.join(', ')} over ${check.limit}` : `, longest ${longest}/${check.limit}`}`
+        : `${longest.toLocaleString()}/${check.limit.toLocaleString()}`}
+    </span>
+  )
+}
+
 // ─── SocialShareBar ───────────────────────────────────────────────────────────
 
 type PostStatus = 'idle' | 'posting' | 'done' | 'error'
@@ -2557,14 +2609,41 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
   // reply holds several labelled posts plus notes for Dominic, and the X
   // button used to send the first 280 characters of all of it.
   const labelled = useMemo(() => labelledPosts(content), [content])
-  const xPosts = labelled.filter(p => p.network === 'x').map(p => p.content)
-  const linkedInPost = labelled.find(p => p.network === 'linkedin')?.content
+  // Shortened versions replace the originals for every button below.
+  const [shortened, setShortened] = useState<Record<string, string>>({})
+  const [shortening, setShortening] = useState<string | null>(null)
+  const [shortenError, setShortenError] = useState('')
+  const fitted = (t: string) => shortened[t] ?? t
+  const shorten = async (network: LimitNetwork, original: string) => {
+    setShortening(original); setShortenError('')
+    try {
+      const next = await shortenForNetwork(network, fitted(original))
+      setShortened(prev => ({ ...prev, [original]: next }))
+    } catch (err) {
+      setShortenError(err instanceof Error ? err.message : 'Could not shorten this right now.')
+    } finally {
+      setShortening(null)
+    }
+  }
+  const xOriginal = labelled.find(p => p.network === 'x')?.content
+  const xPosts = labelled.filter(p => p.network === 'x').map(p => fitted(p.content))
+  const linkedInOriginal = labelled.find(p => p.network === 'linkedin')?.content
+  const linkedInPost = linkedInOriginal ? fitted(linkedInOriginal) : undefined
   const withoutNotes = useMemo(() => {
     const at = notesStart(content)
     return plainPostText(at >= 0 ? content.slice(0, at) : content)
   }, [content])
-  const posts = xPosts.length ? xPosts : extractXPosts(content)
-  const xText = xPosts[0] ?? posts[0] ?? withoutNotes.slice(0, 280)
+  // A thread is posted one tweet at a time: the first opens X, the rest are
+  // copied and added with X's + button.
+  const thread = xPosts.length ? splitThread(xPosts[0]) : []
+  const posts = thread.length > 1 ? thread : xPosts.length ? xPosts : extractXPosts(content)
+  const xText = posts[0] ?? withoutNotes.slice(0, 280)
+  const [copiedTweet, setCopiedTweet] = useState<number | null>(null)
+  const copyTweet = async (i: number) => {
+    try { await navigator.clipboard.writeText(posts[i]) } catch { /* ignore */ }
+    setCopiedTweet(i)
+    setTimeout(() => setCopiedTweet(null), 2500)
+  }
 
   const postToBuffer = useCallback(async (post: string, idx: number) => {
     setStatuses(prev => ({ ...prev, [idx]: 'posting' }))
@@ -2627,14 +2706,22 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, minWidth: 12 }}>{i + 1}</span>
-                <a
-                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}
-                >
-                  𝕏 Tweet
-                </a>
+                {thread.length > 1 && i > 0 ? (
+                  <button onClick={() => copyTweet(i)} title={post} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: copiedTweet === i ? `${X_BLUE}18` : `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
+                    {copiedTweet === i ? '✓ Copied: tap + in X and paste' : `Copy tweet ${i + 1}`}
+                  </button>
+                ) : (
+                  <a
+                    href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={post}
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}
+                  >
+                    {thread.length > 1 ? '𝕏 Start thread' : '𝕏 Tweet'}
+                  </a>
+                )}
+                <LengthNote network="x" text={post} />
                 {profiles.length > 0 && (
                   <button
                     onClick={() => postToBuffer(post, i)}
@@ -2655,7 +2742,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(xText)}`} target="_blank" rel="noopener noreferrer" title={xText} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${X_BLUE}40`, background: `${X_BLUE}08`, color: X_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
-          𝕏 Post to X{xText.length > 280 ? ` (${xText.length}/280)` : ''}
+          𝕏 Post to X{thread.length > 1 ? ` (1/${thread.length})` : ''}
         </a>
         <button onClick={handleLinkedIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${liCopied ? LI_BLUE : LI_BLUE + '60'}`, background: liCopied ? `${LI_BLUE}18` : `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
           {liCopied ? '✓ Copied. Click "Start a post" and paste' : 'in Post to LinkedIn'}
@@ -2667,6 +2754,28 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
           {copied ? '✓ Copied' : '📋 Copy'}
         </button>
       </div>
+
+      {(xOriginal || linkedInOriginal) && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginTop: 8 }}>
+          {([['x', xOriginal], ['linkedin', linkedInOriginal]] as Array<[LimitNetwork, string | undefined]>).map(([network, original]) => original && (
+            <span key={network} style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+              <LengthNote network={network} text={fitted(original)} />
+              {checkLength(network, fitted(original)).over && (
+                <button onClick={() => shorten(network, original)} disabled={!!shortening} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 12, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_HEADING, fontWeight: 600, cursor: shortening ? 'wait' : 'pointer' }}>
+                  {shortening === original ? 'Shortening…' : `✂ Shorten for ${NETWORK_NAMES[network]}`}
+                </button>
+              )}
+              {shortened[original] && !checkLength(network, shortened[original]).over && <span style={{ fontSize: 10, color: '#10B981', fontFamily: FONT_BODY }}>✓ shortened</span>}
+            </span>
+          ))}
+          {shortenError && <span style={{ fontSize: 11, color: '#e05c5c', fontFamily: FONT_BODY }}>{shortenError}</span>}
+        </div>
+      )}
+      {thread.length > 1 && (
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 6 }}>
+          X can&apos;t open a whole thread from a link: post tweet 1, then copy each next tweet and add it with the + button before posting.
+        </div>
+      )}
     </div>
   )
 }
@@ -5971,7 +6080,26 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
     p.status === 'posted'
   )
 
-  const tweetUrl = (text: string) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text.slice(0, 280))}`
+  // The first post of a thread; never cut mid-sentence (the card warns when it's too long).
+  const tweetUrl = (text: string) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(splitThread(text)[0])}`
+  const PLATFORM_NETWORK: Partial<Record<SocialPlatform, LimitNetwork>> = { twitter: 'x', linkedin: 'linkedin', instagram: 'instagram', facebook: 'facebook', tiktok: 'tiktok', status: 'status' }
+  const networksOf = (post: SocialPost) => post.platforms.flatMap(p => PLATFORM_NETWORK[p] ? [PLATFORM_NETWORK[p]!] : [])
+  const [shorteningId, setShorteningId] = useState<string | null>(null)
+  const [shortenFailed, setShortenFailed] = useState<string | null>(null)
+  // A post going to several networks is fitted to the strictest of them.
+  const shortenPost = async (post: SocialPost) => {
+    const network = networksOf(post).filter(n => checkLength(n, post.content).over).sort((a, b) => CHAR_LIMITS[a] - CHAR_LIMITS[b])[0]
+    if (!network) return
+    setShorteningId(post.id); setShortenFailed(null)
+    try {
+      const content = await shortenForNetwork(network, post.content)
+      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, content } : p))
+    } catch {
+      setShortenFailed(post.id)
+    } finally {
+      setShorteningId(null)
+    }
+  }
   const [liCopiedId, setLiCopiedId] = useState<string | null>(null)
   const handleLinkedInPost = async (post: SocialPost) => {
     try { await navigator.clipboard.writeText(post.content) } catch { /* ignore */ }
@@ -6103,6 +6231,16 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
               ) : (
                 <div style={{ fontSize: 14, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
                   {post.content}
+                </div>
+              )}
+              {networksOf(post).length > 0 && (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+                  {networksOf(post).map(n => <LengthNote key={n} network={n} text={isEditing ? editContent : post.content} />)}
+                  {!isEditing && post.status === 'draft' && networksOf(post).some(n => checkLength(n, post.content).over) && (
+                    <button onClick={() => shortenPost(post)} disabled={shorteningId === post.id} style={{ fontSize: 11, padding: '2px 9px', borderRadius: 12, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: shortenFailed === post.id ? '#e05c5c' : GOLD, fontFamily: FONT_HEADING, fontWeight: 600, cursor: shorteningId === post.id ? 'wait' : 'pointer' }}>
+                      {shorteningId === post.id ? 'Shortening…' : shortenFailed === post.id ? 'Could not shorten · retry' : '✂ Shorten to fit'}
+                    </button>
+                  )}
                 </div>
               )}
 
