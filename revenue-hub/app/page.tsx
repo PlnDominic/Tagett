@@ -1042,6 +1042,7 @@ function clearMessages(agentId: string) {
 const TEAM_LABELS: Record<string, string> = {
   prospect: 'ProspectBot', content: 'ContentBot', scope: 'ProjectBot',
   revenue: 'RevenueBot', viral: 'ViralBot', scout: 'SocialScout',
+  council: 'The Council (latest decision)',
 }
 
 function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): string {
@@ -1177,7 +1178,9 @@ function buildOutreachQueue(deals: Deal[]): string {
   return `OUTREACH QUEUE (deals due a message today):\n${lines.join('\n')}`
 }
 
-const TEAM_MISSION_HEADER = `TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Owned by Dominic Kudom, CEO. WhatsApp & phone: +233542855399. Shared goal: GHS 12,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.
+const TEAM_MISSION_HEADER = `COUNCIL: If TEAM INTEL contains [The Council (latest decision)], that is what Dominic's advisory Council decided most recently. Act in line with it and your part in it, unless the live data shows it no longer fits; if so, say why in one line.
+
+TEAM: You are part of Ecstasy Technologies' 6-agent revenue team. Owned by Dominic Kudom, CEO. WhatsApp & phone: +233542855399. Shared goal: GHS 12,000 in new deals per month. Pipeline: SocialScout → ProspectBot → ContentBot → ProjectBot → RevenueBot → ViralBot. When TEAM INTEL is present below, build directly on your teammates' work — don't start from scratch.
 
 WRITING RULES — follow these in every single response, no exceptions:
 - Write like a smart human, not a consultant. Use simple, direct words. Short sentences.
@@ -2776,7 +2779,8 @@ function ProposalDownload({ content }: { content: string }) {
 
 // ─── ChatMessage ──────────────────────────────────────────────────────────────
 
-function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport, deals, onUpdateDeal }: {
+function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport, deals, onUpdateDeal, onAskCouncil }: {
+  onAskCouncil?: (topic: string) => void
   message: Message
   agentId?: AgentId
   isLast?: boolean
@@ -2824,6 +2828,17 @@ function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport, deals,
       )}
       {!isUser && isLast && agentId && onHandoff && (
         <HandoffChips agentId={agentId} content={message.content} onHandoff={onHandoff} />
+      )}
+      {!isUser && isLast && agentId && onAskCouncil && MAIN_AGENT_IDS.includes(agentId) && (
+        <div style={{ paddingLeft: 34, marginTop: 6 }}>
+          <button
+            onClick={() => onAskCouncil(`${TEAM_LABELS[agentId] ?? agentId} came back with this. Should I act on it, and how?\n\n${message.content.slice(0, 1500)}`)}
+            title="Five advisors weigh this, then the Chair decides and hands work to the bots"
+            style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 12, fontFamily: FONT_BODY, cursor: 'pointer' }}
+          >
+            ⊙ Ask the Council
+          </button>
+        </div>
       )}
     </div>
   )
@@ -7033,85 +7048,80 @@ function MobileHeader({ agent, earnedGHS, theme, onToggleTheme, notifToggle, onO
 
 // ─── CouncilChamber ──────────────────────────────────────────────────────────
 
-function CouncilChamber({ pinnedNotes, workspace }: { pinnedNotes?: string; workspace?: Record<string, string> }) {
+const COUNCIL_BOT_NAMES: Record<string, AgentId> = {
+  prospectbot: 'prospect', contentbot: 'content', projectbot: 'scope',
+  revenuetracker: 'revenue', revenuebot: 'revenue', viralbot: 'viral', socialscout: 'scout',
+}
+
+const COUNCIL_CHAIR_PROMPT = `You chair Dominic Kudom's advisory Council for Ecstasy Technologies (web and software studio, goal GHS 12,000/month). Five advisors have answered his question: the Contrarian, the First Principles thinker, the Expansionist, the Outsider and the Executor. Weigh them against the live data and turn them into one decision his bots can act on today.
+
+Reply in exactly this format:
+DECISION: [one or two sentences: what Dominic should do]
+WHY: [one or two sentences: which advisors' points decided it, and the main risk to watch]
+ACTIONS:
+→ [Bot name]: [one specific instruction that bot can act on now, naming real deals or numbers where the data has them]
+
+Use only these bots, and only the ones with real work to do (two to four): ProspectBot (finds leads), SocialScout (finds people asking for a website online), ContentBot (writes messages to specific deals), ProjectBot (proposals for interested deals), RevenueTracker (invoices, follow-ups, forecast), ViralBot (social posts). Never invent deals, clients or numbers. Plain text, no markdown.`
+
+interface CouncilVerdict { decision: string; why: string; actions: Array<{ agentId: AgentId; name: string; instruction: string }> }
+
+function parseCouncilVerdict(text: string): CouncilVerdict {
+  const decision = text.match(/DECISION:\s*([\s\S]*?)(?=\n\s*WHY:|\n\s*ACTIONS:|$)/i)?.[1].trim() ?? text.trim()
+  const why = text.match(/WHY:\s*([\s\S]*?)(?=\n\s*ACTIONS:|$)/i)?.[1].trim() ?? ''
+  const actions: CouncilVerdict['actions'] = []
+  for (const line of text.split('\n')) {
+    const m = line.replace(/\*\*/g, '').match(/^\s*(?:→|->|-|•)?\s*([A-Za-z]+)\s*:\s*(.+)$/)
+    const agentId = m && COUNCIL_BOT_NAMES[m[1].toLowerCase()]
+    if (agentId) actions.push({ agentId, name: AGENTS[agentId].label.replace(/^\d+\s*/, ''), instruction: m![2].trim() })
+  }
+  return { decision, why, actions }
+}
+
+function CouncilChamber({ pinnedNotes, workspace, liveContext, onHandoff, onVerdict, incomingTopic, onIncomingConsumed }: {
+  pinnedNotes?: string
+  workspace?: Record<string, string>
+  /** Same live data the bots get (pipeline, money to chase, outreach queue, prices). */
+  liveContext: (agentId: 'council') => Promise<string>
+  onHandoff: (targetAgent: AgentId, prompt: string) => void
+  /** Saves the decision where every bot's TEAM INTEL reads it. */
+  onVerdict: (summary: string) => void
+  /** A bot's reply sent here with "Ask the Council"; convenes on arrival. */
+  incomingTopic?: string | null
+  onIncomingConsumed?: () => void
+}) {
   const [input, setInput] = useState('')
   const [topic, setTopic] = useState('')
   const [responses, setResponses] = useState<Partial<Record<AgentId, string>>>({})
   const [loading, setLoading] = useState<Partial<Record<AgentId, boolean>>>({})
+  const [verdict, setVerdict] = useState<CouncilVerdict | null>(null)
+  const [verdictLoading, setVerdictLoading] = useState(false)
+  const [verdictError, setVerdictError] = useState('')
+  const [sentTo, setSentTo] = useState<Set<AgentId>>(new Set())
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const anyLoading = Object.values(loading).some(Boolean)
+  const anyLoading = Object.values(loading).some(Boolean) || verdictLoading
 
-  const convene = async () => {
-    const q = input.trim()
+  const convene = async (asked?: string) => {
+    const q = (asked ?? input).trim()
     if (!q || anyLoading) return
     setTopic(q)
     setInput('')
     setResponses({})
+    setVerdict(null)
+    setVerdictError('')
+    setSentTo(new Set())
     const init: Partial<Record<AgentId, boolean>> = {}
     COUNCIL_AGENT_IDS.forEach(id => { init[id] = true })
     setLoading(init)
 
-    // Fetch live project data so advisors respond about REAL context
+    // The same live data the bots work from. This used to be a separate
+    // summary built here, which counted every deal ever closed against the
+    // monthly goal.
     let liveSnapshot = ''
     try {
-      const [rawDeals, rawClients, rawInvoices] = await Promise.all([
-        fetchAuthed('/api/deals').then(r => r.ok ? r.json() : []).catch(() => []),
-        fetchAuthed('/api/clients').then(r => r.ok ? r.json() : []).catch(() => []),
-        fetchAuthed('/api/invoices').then(r => r.ok ? r.json() : []).catch(() => []),
-      ])
-
-      const deals: Deal[] = Array.isArray(rawDeals) ? rawDeals.map((d: Record<string, unknown>) => ({
-        id: String(d.id ?? ''),
-        name: String(d.name ?? ''),
-        industry: String(d.industry ?? ''),
-        createdAt: Number(d.createdAt ?? d.created_at ?? 0),
-        phone: d.phone as string | undefined,
-        valueGHS: Number(d.value_ghs ?? d.valueGHS ?? 0),
-        stage: (STAGE_MIGRATE[d.stage as string] ?? d.stage) as DealStage,
-      })) : []
-      const clients: Client[] = Array.isArray(rawClients) ? rawClients : []
-      const invoices: Invoice[] = Array.isArray(rawInvoices) ? rawInvoices : []
-
-      const closedDeals = deals.filter(d => d.stage === 'closed')
-      const activeDeals = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
-      const lostDeals = deals.filter(d => d.stage === 'lost')
-      const closedGHS = closedDeals.reduce((s, d) => s + d.valueGHS, 0)
-      const activeGHS = activeDeals.reduce((s, d) => s + d.valueGHS, 0)
-      const paidGHS = invoices.filter(i => i.status === 'paid').reduce((s, i) => s + i.totalGHS, 0)
-      const outstandingGHS = invoices.filter(i => i.status !== 'paid').reduce((s, i) => s + i.totalGHS, 0)
-
-      const dealLines = deals.length > 0
-        ? deals.slice(0, 25).map(d =>
-            `  - ${d.name} | ${STAGE_LABELS[d.stage]} | GHS ${d.valueGHS.toLocaleString()} | ${d.industry}${d.phone ? ` | ${d.phone}` : ''}`
-          ).join('\n')
-        : '  (no deals in pipeline yet)'
-
-      const clientLines = clients.length > 0
-        ? clients.slice(0, 15).map(c =>
-            `  - ${c.name}${c.industry ? ` | ${c.industry}` : ''}${c.phone ? ` | ${c.phone}` : ''}${c.website ? ` | ${c.website}` : ''}`
-          ).join('\n')
-        : '  (no clients yet)'
-
-      liveSnapshot = `
-— LIVE PROJECT DATA (real data, pulled right now) —
-Company: Ecstasy Technologies | Owner: Dominic Kudom | Goal: GHS 12,000/month
-
-PIPELINE SUMMARY:
-  Closed/Won: ${closedDeals.length} deals — GHS ${closedGHS.toLocaleString()} (${Math.round((closedGHS / 12000) * 100)}% of monthly goal)
-  Active: ${activeDeals.length} deals — GHS ${activeGHS.toLocaleString()} potential
-  Lost: ${lostDeals.length} deals
-
-ALL PIPELINE DEALS (${deals.length} total):
-${dealLines}
-
-CLIENTS ON RECORD (${clients.length} total):
-${clientLines}
-
-INVOICES:
-  Paid: GHS ${paidGHS.toLocaleString()} | Outstanding: GHS ${outstandingGHS.toLocaleString()} across ${invoices.filter(i => i.status !== 'paid').length} invoice(s)
-— END LIVE DATA —`
+      liveSnapshot = `— LIVE DATA (real, pulled right now) —\n${await liveContext('council')}\n— END LIVE DATA —`
     } catch { /* non-fatal — advisors proceed without live data */ }
+    const answers: Partial<Record<AgentId, string>> = {}
 
     await Promise.allSettled(
       COUNCIL_AGENT_IDS.map(async (agentId, i) => {
@@ -7121,6 +7131,7 @@ INVOICES:
           await new Promise(r => setTimeout(r, i * 1200))
           const enrichedQ = liveSnapshot ? `${q}\n\n${liveSnapshot}` : q
           const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: enrichedQ }], pinnedNotes, agentId, workspace)
+          answers[agentId] = text
           setResponses(prev => ({ ...prev, [agentId]: text }))
         } catch (err) {
           setResponses(prev => ({ ...prev, [agentId]: `Error: ${err instanceof Error ? err.message : 'Failed'}` }))
@@ -7129,13 +7140,42 @@ INVOICES:
         }
       })
     )
+
+    // The Chair turns five opinions into one decision with work for the bots.
+    const heard = COUNCIL_AGENT_IDS.filter(id => answers[id])
+    if (heard.length === 0) return
+    setVerdictLoading(true)
+    try {
+      const minutes = heard.map(id => `[${AGENTS[id].label.replace(/^\d+\s*/, '')}]\n${answers[id]!.slice(0, 1200)}`).join('\n\n')
+      const text = await callChat(COUNCIL_CHAIR_PROMPT, [{ role: 'user', content: `QUESTION: ${q}\n\nADVISORS:\n${minutes}\n\n${liveSnapshot}` }], pinnedNotes, undefined, workspace)
+      const v = parseCouncilVerdict(text)
+      setVerdict(v)
+      onVerdict(`Asked: ${q.slice(0, 160)}\nDecided: ${v.decision}\n${v.actions.map(a => `${a.name}: ${a.instruction}`).join('\n')}`)
+    } catch (err) {
+      setVerdictError(err instanceof Error ? err.message : 'The Chair could not reach a decision')
+    } finally {
+      setVerdictLoading(false)
+    }
+  }
+
+  // "Ask the Council" from a bot: convene on it as soon as the Chamber opens.
+  useEffect(() => {
+    if (!incomingTopic || anyLoading) return
+    onIncomingConsumed?.()
+    void convene(incomingTopic)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingTopic])
+
+  const sendAction = (a: CouncilVerdict['actions'][number]) => {
+    setSentTo(prev => new Set(prev).add(a.agentId))
+    onHandoff(a.agentId, `The Council decided: ${verdict?.decision ?? ''}\n\nYour part: ${a.instruction}`)
   }
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       <div style={{ padding: '14px 16px 10px', borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Council Chamber</div>
-        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>All five advisors respond simultaneously. Bring a decision, idea, or dilemma.</div>
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Five advisors answer, then the Chair decides and hands the work to your bots.</div>
       </div>
 
       {topic && (
@@ -7155,6 +7195,37 @@ INVOICES:
             </div>
           </div>
         ) : (
+          <>
+          {(verdictLoading || verdict || verdictError) && (
+            <div style={{ marginBottom: 12, padding: '14px 16px', borderRadius: 12, border: `1px solid ${GOLD}50`, background: `${GOLD}0a` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 16 }}>⊙</span>
+                <span style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 12, color: GOLD, letterSpacing: '0.06em', textTransform: 'uppercase' }}>The Council&apos;s decision</span>
+                {verdictLoading && <ThinkingDots />}
+              </div>
+              {verdictLoading && <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY }}>The Chair is weighing the five answers…</div>}
+              {verdictError && <div style={{ fontSize: 13, color: '#e05c5c', fontFamily: FONT_BODY }}>No decision: {verdictError}. The advisors&apos; answers are below.</div>}
+              {verdict && (
+                <>
+                  <div style={{ fontSize: 14, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{verdict.decision}</div>
+                  {verdict.why && <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.6, marginTop: 6, whiteSpace: 'pre-wrap' }}>{verdict.why}</div>}
+                  {verdict.actions.length > 0 && (
+                    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {verdict.actions.map((a, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                          <button onClick={() => sendAction(a)} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', background: sentTo.has(a.agentId) ? SURFACE2 : GOLD, color: sentTo.has(a.agentId) ? MUTED : '#fff', fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', flexShrink: 0 }}>
+                            {sentTo.has(a.agentId) ? `✓ Sent to ${a.name}` : `▶ Send to ${a.name}`}
+                          </button>
+                          <span style={{ flex: 1, minWidth: 200, fontSize: 13, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.5 }}>{a.instruction}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 10 }}>Saved to team notes: every bot now works in line with this decision.</div>
+                </>
+              )}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 10 }}>
             {COUNCIL_AGENT_IDS.map(agentId => {
               const a = AGENTS[agentId]
@@ -7181,10 +7252,16 @@ INVOICES:
                   {response && (
                     <div style={{ fontSize: 12, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>{response}</div>
                   )}
+                  {done && response && !response.startsWith('Error:') && (
+                    <div style={{ marginLeft: -34 }}>
+                      <HandoffChips agentId={agentId} content={response} onHandoff={onHandoff} />
+                    </div>
+                  )}
                 </div>
               )
             })}
           </div>
+          </>
         )}
       </div>
 
@@ -7194,13 +7271,13 @@ INVOICES:
             ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); convene() } }}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void convene() } }}
             placeholder="Bring a decision to The Council… (Enter to convene)"
             rows={1}
             style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: TEXT, fontSize: 15, resize: 'none', lineHeight: 1.5, maxHeight: 100, overflowY: 'auto', fontFamily: FONT_BODY }}
             onInput={e => { const t = e.currentTarget; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 100) + 'px' }}
           />
-          <button onClick={convene} disabled={!input.trim() || anyLoading} style={{
+          <button onClick={() => void convene()} disabled={!input.trim() || anyLoading} style={{
             padding: '8px 14px', borderRadius: 8,
             background: input.trim() && !anyLoading ? GOLD : SURFACE2,
             color: input.trim() && !anyLoading ? BG : MUTED,
@@ -8466,7 +8543,8 @@ function ChatInput({ agentShort, onSend, loading, prefill, onClearPrefill }: {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agent, onSend, onFindProspects, onShowOvernight, onRunBriefing, onHandoff, onOpenImport, deals, onUpdateDeal }: {
+function MessageList({ messages, loading, agent, onSend, onFindProspects, onShowOvernight, onRunBriefing, onHandoff, onOpenImport, deals, onUpdateDeal, onAskCouncil }: {
+  onAskCouncil?: (topic: string) => void
   deals?: Deal[]
   onUpdateDeal?: (id: string, updates: Partial<Deal>) => void
   messages: Message[]
@@ -8513,6 +8591,7 @@ function MessageList({ messages, loading, agent, onSend, onFindProspects, onShow
               onOpenImport={onOpenImport}
               deals={deals}
               onUpdateDeal={onUpdateDeal}
+              onAskCouncil={onAskCouncil}
             />
           ))}
           {loading && (
@@ -8779,6 +8858,28 @@ export default function Page() {
   const agent = activeAgent ? AGENTS[activeAgent] : AGENTS.prospect
   const messages: Message[] = activeAgent ? (allChats[activeAgent] ?? []) : []
 
+  /**
+   * The live data block for an agent: the pipeline snapshot for everyone,
+   * plus the working list each one acts on. Shared by typed chat, handoffs
+   * between bots and the Council, so a bot gets the same picture whichever
+   * way the work reaches it (handoffs used to get the snapshot only).
+   */
+  const buildLiveContext = useCallback(async (agentId: AgentId | 'council'): Promise<string> => {
+    const snapshot = buildPipelineSnapshot(deals, pageInvoices)
+    const extra = agentId === 'revenue' ? buildMoneyToChase(deals, pageInvoices)
+      : agentId === 'content' ? buildOutreachQueue(deals)
+      : agentId === 'scope' ? await buildProposalCandidates(deals)
+      // The Council weighs everything, so it sees both working lists.
+      : agentId === 'council' ? [buildMoneyToChase(deals, pageInvoices), buildOutreachQueue(deals)].join('\n\n')
+      : ''
+    // Every bot that quotes a price gets the one shared list, for Ghana plus
+    // each market that has an open deal.
+    const prices = ['content', 'scope', 'revenue', 'council'].includes(agentId)
+      ? buildPriceBlock(deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost').map(d => dealCountry(d)))
+      : ''
+    return [snapshot, extra, prices].filter(Boolean).join('\n\n')
+  }, [deals, pageInvoices])
+
   const handleSend = useCallback(async (text: string) => {
     if (!activeAgent) return
     const userMsg: Message = { role: 'user', content: text }
@@ -8787,17 +8888,7 @@ export default function Page() {
     saveMessage(activeAgent, 'user', text)
     setLoading(true); setError(null)
     try {
-      const snapshot = buildPipelineSnapshot(deals, pageInvoices)
-      const extra = activeAgent === 'revenue' ? buildMoneyToChase(deals, pageInvoices)
-        : activeAgent === 'content' ? buildOutreachQueue(deals)
-        : activeAgent === 'scope' ? await buildProposalCandidates(deals)
-        : ''
-      // Every bot that quotes a price gets the one shared list, for Ghana plus
-      // each market that has an open deal.
-      const prices = ['content', 'scope', 'revenue'].includes(activeAgent)
-        ? buildPriceBlock(deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost').map(d => dealCountry(d)))
-        : ''
-      const liveWorkspace = { ...workspace, _live: [snapshot, extra, prices].filter(Boolean).join('\n\n') }
+      const liveWorkspace = { ...workspace, _live: await buildLiveContext(activeAgent) }
       const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, liveWorkspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(activeAgent, 'assistant', reply)
@@ -8805,7 +8896,7 @@ export default function Page() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [activeAgent, allChats, workspace, pinnedNotes, deals, pageInvoices])
+  }, [activeAgent, allChats, workspace, pinnedNotes, buildLiveContext])
 
   const handleFindProspects = useCallback(async (search: ProspectSearch) => {
     const agentId: AgentId = 'prospect'
@@ -8880,7 +8971,7 @@ export default function Page() {
     saveMessage(targetAgent, 'user', prompt)
     setLoading(true)
     try {
-      const liveWorkspace = { ...workspace, _live: buildPipelineSnapshot(deals, pageInvoices) }
+      const liveWorkspace = { ...workspace, _live: await buildLiveContext(targetAgent) }
       const reply = await callChat(AGENTS[targetAgent].systemPrompt, msgs, pinnedNotes, targetAgent, liveWorkspace)
       setAllChats((prev) => ({ ...prev, [targetAgent]: [...(prev[targetAgent] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(targetAgent, 'assistant', reply)
@@ -8888,7 +8979,18 @@ export default function Page() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
-  }, [pinnedNotes, workspace, deals, pageInvoices])
+  }, [pinnedNotes, workspace, buildLiveContext])
+
+  // A bot's reply taken to the Council: opens the Chamber, which convenes on it.
+  const [councilTopic, setCouncilTopic] = useState<string | null>(null)
+  const handleAskCouncil = useCallback((topic: string) => {
+    setCouncilTopic(topic)
+    setActiveView('council'); setError(null)
+  }, [])
+  const handleCouncilVerdict = useCallback((summary: string) => {
+    // Saved where every bot's TEAM INTEL reads from (synced to /api/workspace).
+    setWorkspace((prev) => ({ ...prev, council: summary.slice(0, 700) }))
+  }, [])
 
   const handleOpenAgent = useCallback((agentId: AgentId, prompt: string) => {
     handleHandoff(agentId, prompt)
@@ -9166,7 +9268,7 @@ export default function Page() {
       <>
         {viewHeader('Council Chamber')}
         {AgentPicker}
-        <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+        <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} liveContext={buildLiveContext} onHandoff={handleHandoff} onVerdict={handleCouncilVerdict} incomingTopic={councilTopic} onIncomingConsumed={() => setCouncilTopic(null)} />
       </>
     )
 
@@ -9189,7 +9291,7 @@ export default function Page() {
           {AgentSubheader}
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onAskCouncil={handleAskCouncil} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
           {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
@@ -9241,7 +9343,7 @@ export default function Page() {
     if (activeView === 'website') return (
       <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />
     )
-    if (activeView === 'council')      return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} />
+    if (activeView === 'council')      return <CouncilChamber pinnedNotes={pinnedNotes} workspace={workspace} liveContext={buildLiveContext} onHandoff={handleHandoff} onVerdict={handleCouncilVerdict} incomingTopic={councilTopic} onIncomingConsumed={() => setCouncilTopic(null)} />
     if (activeView === 'history')      return <AgentRunHistory />
     if (activeView === 'clients')      return <ClientsView onOpenAgent={handleOpenAgent} />
     if (activeView === 'invoices')     return <InvoicesView deals={deals} />
@@ -9271,7 +9373,7 @@ export default function Page() {
         </div>
         <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onAskCouncil={handleAskCouncil} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
         {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
