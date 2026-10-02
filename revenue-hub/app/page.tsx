@@ -1255,8 +1255,9 @@ function stripTrackedCTA(content: string): string {
  * other than the post's (the testimonial flow does), so recomputing it lies.
  */
 function postRefCode(post: SocialPost): string | null {
-  return post.content.match(/wa\.me\/\d+\?text=Ref%20([A-Za-z0-9]+)/)?.[1]
-    ?? post.content.match(/[?&]ref=([A-Za-z0-9]+)/)?.[1]
+  // Hyphen allowed: posts made before refCodeFor carry codes like "87-0".
+  return post.content.match(/wa\.me\/\d+\?text=Ref%20([A-Za-z0-9-]+)/)?.[1]
+    ?? post.content.match(/[?&]ref=([A-Za-z0-9-]+)/)?.[1]
     ?? null
 }
 
@@ -1267,7 +1268,7 @@ function postRefCode(post: SocialPost): string | null {
  */
 function trackedCTAFor(content: string, id: string, market: Market): string {
   if (market.whatsappFirst) return appendTrackedCTA(content, id)
-  return `${content}\n\n${ECSTASY_URL}/contact?ref=${id.slice(-4).toUpperCase()}`
+  return `${content}\n\n${ECSTASY_URL}/contact?ref=${refCodeFor(id)}`
 }
 
 /** Absolute URL for a portfolio image, or null if it can't be fetched by Buffer. */
@@ -1426,7 +1427,6 @@ function parseViralDrafts(text: string, market: Market = MARKETS[0]): SocialPost
   const flush = () => {
     const content = current?.lines.join('\n').trim()
     if (!current || !content) return
-    // Timestamp last: the WhatsApp ref code is the id's final 4 characters.
     const id = `viral-${base + drafts.length}`
     // A reel script is filming notes, not a caption, so it gets no link.
     const tracked = current.category === 'viral-reel' ? content : trackedCTAFor(content, id, market)
@@ -4989,8 +4989,25 @@ const SOCIAL_CATEGORIES = [
 // link on mobile (most social traffic) opens WhatsApp with the message ready.
 // Kept deliberately short (just "Ref XXXX", not a full sentence) so it survives
 // X's 280-char limit alongside the post body.
+/**
+ * Short code an inbound message quotes to say which post it came from. It
+ * used to be the id's last 4 characters, which for ids like "1727…087-0"
+ * gave "87-0": a hyphen, and only two digits of timestamp, so posts made
+ * close together collided. A hash of the whole id gives 4 clean characters
+ * that differ between posts.
+ */
+function refCodeFor(id: string): string {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0
+  // No 0/O or 1/I, so a code read out over the phone isn't misheard.
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let code = ''
+  for (let i = 0; i < 4; i++) { code += alphabet[h % alphabet.length]; h = Math.floor(h / alphabet.length) }
+  return code
+}
+
 function appendTrackedCTA(content: string, id: string): string {
-  const refCode = id.slice(-4).toUpperCase()
+  const refCode = refCodeFor(id)
   const link = `https://wa.me/${DOMINIC_WA_NUMBER}?text=${encodeURIComponent(`Ref ${refCode}`)}`
   return `${content}\n\nWhatsApp: ${link}`
 }
