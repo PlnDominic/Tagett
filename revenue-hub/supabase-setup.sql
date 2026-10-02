@@ -192,3 +192,6 @@ alter table deals add column if not exists socials jsonb;
 
 -- Personal messages sent on social media from Social listening
 alter table deals add column if not exists dm_history jsonb default '[]'::jsonb;
+
+-- Posts asking for a website found by the 3am run, for Social listening
+alter table agent_runs add column if not exists social_posts jsonb;

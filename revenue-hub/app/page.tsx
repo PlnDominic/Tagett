@@ -7,6 +7,7 @@ import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
 import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
+import { dmSentUpdates, dmTarget } from '@/lib/dm'
 import { REQUEST_PHRASES, THREAD_PHRASES, cleanHandle, messageUrl, profileUrl, xReplyUrl, type Commenter, type ListenMode, type ListenPlatform, type Recency } from '@/lib/social-listening'
 import { currencyCodeFor, toGHS, type GhsRates } from '@/lib/fx'
 import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
@@ -3731,6 +3732,7 @@ function buildTodayQueue(deals: Deal[]): QueueItem[] {
 
 function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
   const [waModal, setWaModal] = useState<Deal | null>(null)
+  const [dmModal, setDmModal] = useState<Deal | null>(null)
   const queue = useMemo(() => buildTodayQueue(deals), [deals])
 
   const handleWaSent = (id: string, text: string) => {
@@ -3755,9 +3757,15 @@ function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string,
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.name}</div>
             <div style={{ fontSize: 11, color: urgent ? '#e05c5c' : MUTED, fontFamily: FONT_BODY, marginTop: 1 }}>{reason}</div>
           </div>
-          <button onClick={() => setWaModal(deal)} title="WhatsApp" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${WA_GREEN}50`, background: `${WA_GREEN}12`, color: WA_GREEN, fontSize: 14, cursor: 'pointer' }}>
-            💬
-          </button>
+          {deal.dmHistory?.length && dmTarget(deal) ? (
+            <button onClick={() => setDmModal(deal)} title={`Follow up on ${SOCIAL_LABELS[dmTarget(deal)!.network]}`} style={{ height: 30, padding: '0 8px', flexShrink: 0, borderRadius: 8, border: `1px solid ${GOLD}60`, background: `${GOLD}12`, color: GOLD, fontSize: 11, fontWeight: 700, fontFamily: FONT_HEADING, cursor: 'pointer' }}>
+              {SOCIAL_ICONS[dmTarget(deal)!.network]} DM
+            </button>
+          ) : (
+            <button onClick={() => setWaModal(deal)} title="WhatsApp" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${WA_GREEN}50`, background: `${WA_GREEN}12`, color: WA_GREEN, fontSize: 14, cursor: 'pointer' }}>
+              💬
+            </button>
+          )}
           {deal.phone ? (
             <a href={`tel:+${ghPhoneDigits(deal.phone)}`} onClick={() => onUpdate(deal.id, { callLog: [...(deal.callLog ?? []), { calledAt: Date.now() }] })} title="Call" style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: MUTED, fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
               📞
@@ -3770,6 +3778,9 @@ function TodayQueue({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string,
 
       {waModal && (
         <WhatsAppModal deal={waModal} onClose={() => setWaModal(null)} onSent={handleWaSent} />
+      )}
+      {dmModal && (
+        <DmFollowUpModal deal={dmModal} onClose={() => setDmModal(null)} onSent={(network, text) => onUpdate(dmModal.id, dmSentUpdates(dmModal, network, text))} />
       )}
     </div>
   )
@@ -4997,6 +5008,10 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
         <SocialIcons socials={deal.socials} />
+        {deal.dmHistory?.length ? (() => {
+          const last = deal.dmHistory[deal.dmHistory.length - 1]
+          return <span title={last.text} style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY }}>messaged on {SOCIAL_LABELS[last.network as SocialNetwork] ?? last.network} {new Date(last.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}{deal.dmHistory.length > 1 ? ` (${deal.dmHistory.length}×)` : ''}</span>
+        })() : null}
         <button
           onClick={findSocials}
           disabled={findingSocials}
@@ -8854,20 +8869,74 @@ async function askJsonArray<T>(systemPrompt: string, content: string): Promise<T
   try { return JSON.parse(text.slice(start, end + 1)) as T[] } catch { return [] }
 }
 
-function dmSentUpdates(deal: Deal, network: ListenPlatform, text: string): Partial<Deal> {
-  const updates: Partial<Deal> = {
-    lastContactedAt: Date.now(),
-    dmHistory: [...(deal.dmHistory ?? []), { network, text, sentAt: Date.now() }],
+const DM_FOLLOW_UP_PROMPT = `You write one short follow-up direct message on social media from Dominic Kudom of Ecstasy Technologies (ecstasytechnologies.com, websites and business software) to a small business he messaged before and who hasn't replied. 25 to 45 words. Don't repeat or apologise for the earlier messages; take a new angle: one concrete, useful idea for their kind of business, or a short true example from PROJECTS, then one easy yes-or-no question. No prices, no pressure, no hashtags or emojis. Sign "Dominic". Return only the message.`
+
+/** Write, copy and open a follow-up message on the network the deal was messaged on. */
+function DmFollowUpModal({ deal, onClose, onSent }: { deal: Deal; onClose: () => void; onSent: (network: ListenPlatform, text: string) => void }) {
+  const target = dmTarget(deal)
+  const [text, setText] = useState('')
+  const [writing, setWriting] = useState(true)
+  const [opened, setOpened] = useState(false)
+  const [error, setError] = useState('')
+
+  const write = async () => {
+    setWriting(true); setError('')
+    try {
+      const facts = [
+        `Business: ${deal.name} (${deal.industry || 'small business'})`,
+        `Market: ${outreachNotes(marketFor(dealCountry(deal)))}`,
+        `EARLIER MESSAGES: ${(deal.dmHistory ?? []).slice(-3).map(m => m.text.replace(/\s+/g, ' ').slice(0, 300)).join(' || ') || 'none'}`,
+        `PROJECTS: ${KNOWN_PROJECTS}`,
+      ].join('\n')
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ systemPrompt: DM_FOLLOW_UP_PROMPT, messages: [{ role: 'user', content: facts }] }) })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Could not write the message')
+      setText(String(data.text ?? '').trim().replace(/^"|"$/g, ''))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not write the message')
+    } finally {
+      setWriting(false)
+    }
   }
-  if (deal.stage === 'found') { updates.stage = 'contacted'; updates.stageChangedAt = Date.now() }
-  if (!deal.followUpAt && deal.stage !== 'closed' && deal.stage !== 'lost') {
-    updates.followUpAt = Date.now() + 3 * 86400000
-    updates.sequenceStep = 1
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void write() }, [])
+
+  const open = () => {
+    if (!target) return
+    navigator.clipboard?.writeText(text).catch(() => {})
+    window.open(messageUrl(target.network, target.handle), '_blank', 'noopener,noreferrer')
+    setOpened(true)
   }
-  return updates
+  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none', resize: 'vertical', lineHeight: 1.5 }
+  const button = (primary: boolean): React.CSSProperties => ({ padding: '8px 14px', borderRadius: 8, border: primary ? 'none' : `1px solid ${BORDER}`, background: primary ? GOLD : 'transparent', color: primary ? '#fff' : TEXT, fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, cursor: 'pointer' })
+
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 560, padding: '18px 16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Follow up with {deal.name}</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
+              {target ? `On ${SOCIAL_LABELS[target.network]} @${target.handle}` : 'No social profile saved for this deal.'} · touch {(deal.sequenceStep ?? 1) + 1}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={5} disabled={writing} placeholder={writing ? 'Writing a follow-up…' : 'Message'} style={field} />
+        {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button onClick={open} disabled={!target || !text.trim() || writing} style={{ ...button(true), opacity: !target || !text.trim() || writing ? 0.5 : 1 }}>Copy & open chat</button>
+          {opened && <button onClick={() => { if (target) onSent(target.network, text); onClose() }} style={{ ...button(false), borderColor: '#10B981', color: '#10B981' }}>✓ I sent it</button>}
+          <button onClick={write} disabled={writing} style={button(false)}>{writing ? 'Writing…' : '↻ Rewrite'}</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }
 
 const LISTEN_SKIPPED_KEY = 'tagett.listen.skipped'
+const LISTEN_OVERNIGHT_SEEN_KEY = 'tagett.listen.overnight-seen'
 function readSkipped(): Set<string> {
   try { return new Set(JSON.parse(localStorage.getItem(LISTEN_SKIPPED_KEY) ?? '[]') as string[]) } catch { return new Set() }
 }
@@ -8909,7 +8978,20 @@ function SocialListeningModal({ deals, onAddDeal, onUpdateDeal, onClose }: {
   const [pasted, setPasted] = useState('')
   const [apify, setApify] = useState<boolean | null>(null)
 
+  const [overnight, setOvernight] = useState<{ id: number | string; country: string; platform: ListenPlatform; posts: ListenPost[] } | null>(null)
+
   useEffect(() => { setSkipped(readSkipped()) }, [])
+  // Posts the 3am run found (one platform a night), not yet read here.
+  useEffect(() => {
+    const seen = new Set(loadJSON<Array<number | string>>(LISTEN_OVERNIGHT_SEEN_KEY, []))
+    fetch('/api/agents/history?limit=3', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : { runs: [] })
+      .then((d: { runs?: Array<{ id: number | string; run_at: string; social_posts?: { country: string; platform: ListenPlatform; posts: ListenPost[] } | null }> }) => {
+        const run = (d.runs ?? []).find(r => r.social_posts?.posts?.length && !seen.has(r.id) && Date.now() - new Date(r.run_at).getTime() < 3 * 86400000)
+        if (run?.social_posts) setOvernight({ id: run.id, ...run.social_posts })
+      })
+      .catch(() => {})
+  }, [])
   useEffect(() => { fetch('/api/social/comments').then(r => r.json()).then(d => setApify(!!d.configured)).catch(() => setApify(false)) }, [])
   useEffect(() => { Object.assign(listenCache, { mode, country, recency, posts, leads, threadLeads }) }, [mode, country, recency, posts, leads, threadLeads])
 
@@ -8918,6 +9000,24 @@ function SocialListeningModal({ deals, onAddDeal, onUpdateDeal, onClose }: {
     ? deals.find(d => d.socials?.[l.platform]?.toLowerCase() === profileUrl(l.platform, l.handle!).toLowerCase())
     : deals.find(d => d.sourceUrl === l.postUrl)
   const dmsToday = deals.reduce((n, d) => n + (d.dmHistory ?? []).filter(m => m.sentAt >= new Date().setHours(0, 0, 0, 0)).length, 0)
+
+  // The AI picks out real requests (most hits are developers advertising)
+  // and writes each person a reply. Shared by a search and the overnight posts.
+  const readRequests = async (found: ListenPost[], forCountry: string) => {
+    setBusy(`Reading ${found.length} posts…`)
+    const list = found.map((p, i) => `${i + 1}. [${p.platform}${p.author ? ` @${p.author}` : ''}${p.date ? `, ${p.date}` : ''}] ${p.title} | ${p.snippet}`).join('\n')
+    const rows = await askJsonArray<{ i: number; name?: string; industry?: string; place?: string; need?: string; message?: string }>(READ_REQUESTS_PROMPT(forCountry), list)
+    const next = rows.flatMap(r => {
+      const p = found[Number(r.i) - 1]
+      if (!p || !r.message) return []
+      return [{
+        key: p.url, platform: p.platform, handle: p.author, name: r.name || p.author || 'Unknown', industry: r.industry || 'Unknown',
+        place: r.place || undefined, need: r.need || '', message: r.message, postUrl: p.url, postId: p.postId, country: dealCountryFor(forCountry),
+      }]
+    })
+    setLeads(next)
+    if (!next.length) setError(`Read ${found.length} posts: none were someone needing a website (most were developers advertising). Try another time range.`)
+  }
 
   const search = async () => {
     setBusy('Searching…'); setError('')
@@ -8929,23 +9029,27 @@ function SocialListeningModal({ deals, onAddDeal, onUpdateDeal, onClose }: {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Search failed')
       const found = (data.posts as ListenPost[]).filter(p => !skipped.has(p.url) && !deals.some(d => d.sourceUrl === p.url))
-      if (mode === 'threads') { setPosts(found); setBusy(''); if (!found.length) setError('No new posts found. Try a longer time range or Anywhere.'); return }
-      if (!found.length) { setLeads([]); setBusy(''); setError('No new posts found. Try a longer time range or Anywhere.'); return }
-      setBusy(`Reading ${found.length} posts…`)
-      const list = found.map((p, i) => `${i + 1}. [${p.platform}${p.author ? ` @${p.author}` : ''}${p.date ? `, ${p.date}` : ''}] ${p.title} | ${p.snippet}`).join('\n')
-      const rows = await askJsonArray<{ i: number; name?: string; industry?: string; place?: string; need?: string; message?: string }>(READ_REQUESTS_PROMPT(country), list)
-      const next = rows.flatMap(r => {
-        const p = found[Number(r.i) - 1]
-        if (!p || !r.message) return []
-        return [{
-          key: p.url, platform: p.platform, handle: p.author, name: r.name || p.author || 'Unknown', industry: r.industry || 'Unknown',
-          place: r.place || undefined, need: r.need || '', message: r.message, postUrl: p.url, postId: p.postId, country: dealCountryFor(country),
-        }]
-      })
-      setLeads(next)
-      if (!next.length) setError(`Read ${found.length} posts: none were someone needing a website (most were developers advertising). Try another time range.`)
+      if (mode === 'threads') { setPosts(found); if (!found.length) setError('No new posts found. Try a longer time range or Anywhere.'); return }
+      if (!found.length) { setLeads([]); setError('No new posts found. Try a longer time range or Anywhere.'); return }
+      await readRequests(found, country)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const readOvernight = async () => {
+    if (!overnight) return
+    setMode('requests'); setCountry(overnight.country); setError('')
+    saveJSON(LISTEN_OVERNIGHT_SEEN_KEY, [...loadJSON<Array<number | string>>(LISTEN_OVERNIGHT_SEEN_KEY, []), overnight.id].slice(-30))
+    const found = overnight.posts.filter(p => !skipped.has(p.url) && !deals.some(d => d.sourceUrl === p.url))
+    setOvernight(null)
+    if (!found.length) { setError('Every post from last night is already handled.'); return }
+    try {
+      await readRequests(found, overnight.country)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read the posts')
     } finally {
       setBusy('')
     }
@@ -9100,6 +9204,14 @@ function SocialListeningModal({ deals, onAddDeal, onUpdateDeal, onClose }: {
             ? `Looks for posts saying "${REQUEST_PHRASES.slice(0, 3).join('", "')}" and similar. Developers advertising themselves are left out. Each person gets a message written to what they posted.`
             : `Looks for posts saying "${THREAD_PHRASES.slice(0, 2).join('", "')}" and similar, then reads the comments and writes each business there a personal message.${apify === false ? ' To fetch comments automatically, add APIFY_TOKEN in Vercel; until then, paste them.' : ''}`}
         </div>
+        {overnight && (
+          <div style={{ padding: '9px 12px', borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}0c`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, minWidth: 180, fontSize: 12, color: TEXT, fontFamily: FONT_BODY }}>
+              🌙 {overnight.posts.length} {overnight.platform === 'x' ? 'X' : 'Facebook'} post{overnight.posts.length === 1 ? '' : 's'} from {overnight.country} this past week found overnight.
+            </span>
+            <button onClick={readOvernight} disabled={!!busy} style={btn(true)}>Read them</button>
+          </div>
+        )}
         {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
 
         {mode === 'requests' && visibleLeads.map(renderLead)}
