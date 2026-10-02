@@ -3474,6 +3474,65 @@ function emailSentUpdates(deal: Deal, subject: string, text: string): Partial<De
   return updates
 }
 
+// Fallback proof when the live portfolio can't be read.
+const KNOWN_PROJECTS = 'Lavimac Royal Hotel (website + hotel management system), Mikjan and Nhyiraba hotel systems, Solani Construction & Engineering (website), Royal Ecclesia (church management system), MoldGold (school management system), Bubbly Montessori (school website), Obotan Co-operative Credit Union (finance system), Dynamic Shipping & Logistics (web app), PM Group (property management app), Avenu-15 (events venue website), Mankind Foundation Ghana (NGO website)'
+
+const OUTREACH_EMAIL_PROMPT = `You write one cold email from Dominic Kudom, founder of Ecstasy Technologies (a web and software studio, ecstasytechnologies.com), to one specific small business. It must read like a person wrote it to them alone.
+
+Structure, in this order, in 70 to 120 words:
+1. Open with a short scene from their customer's point of view: the moment a customer looks for a business like theirs online and finds nothing, or finds only a social page, and goes elsewhere. Concrete and visual, one or two sentences. Use only facts given about them.
+2. Name the cost of that moment for a business like theirs (lost bookings, calls that never come, trust they don't get) without exaggerating or inventing numbers.
+3. A two-sentence true story from ONE project in PORTFOLIO (or PROJECTS) that is closest to their industry: what that client had before and what Ecstasy built. Never invent results, figures, quotes or projects; if nothing is close, describe in one sentence what Ecstasy would build for them instead, without a story.
+4. End with one low-pressure question they can answer in a word (e.g. "Would it help if I sent you a quick idea of what that could look like?"). No links, no prices, no attachments, no "hope this finds you well".
+
+If PREVIOUS MESSAGES exist, this is a follow-up: don't repeat them, take a new angle, keep it to 40 to 70 words, and say you're following up.
+
+Subject: 2 to 6 words, specific to them, lowercase except names, no clickbait, no exclamation marks, no words like free, offer, guarantee, urgent, spam.
+
+Write in plain, warm, confident English for their market. Sign off as "Dominic". No markdown.
+Return only JSON: {"subject": "...", "body": "..."}`
+
+/**
+ * Writes a subject and body for one business: its industry, market, how it
+ * was found, whether it has a website, and what it was already sent, with a
+ * true story from the portfolio as proof. Facts come only from the deal.
+ */
+async function writeOutreachEmail(deal: Deal): Promise<{ subject: string; body: string }> {
+  const market = marketFor(dealCountry(deal))
+  const portfolio = await fetchPortfolioBlock()
+  const previous = [
+    ...(deal.emailHistory ?? []).map(e => ({ at: e.sentAt, text: `email "${e.subject}": ${e.text}` })),
+    ...(deal.whatsappHistory ?? []).map(w => ({ at: w.sentAt, text: `WhatsApp: ${w.text}` })),
+  ].sort((a, b) => a.at - b.at).slice(-3)
+  const facts = [
+    `Business: ${deal.name}`,
+    `Industry: ${deal.industry || 'small business'}`,
+    `Country: ${market.country} (${outreachNotes(market)})`,
+    `Website: ${deal.websiteCheck === 'found_site' ? `they have one (${deal.websiteCheckUrl ?? 'url unknown'}), pitch improving it` : deal.websiteCheck === 'confirmed_no_site' ? 'confirmed they have no website' : 'none found'}`,
+    deal.sourceUrl ? `Found via: ${deal.sourceUrl}` : null,
+    deal.repliedAt ? 'They have replied before.' : null,
+    `PREVIOUS MESSAGES: ${previous.length ? previous.map(m => m.text.replace(/\s+/g, ' ').slice(0, 300)).join(' || ') : 'none, this is the first contact'}`,
+    portfolio || `PROJECTS: ${KNOWN_PROJECTS}`,
+  ].filter(Boolean).join('\n')
+
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ systemPrompt: OUTREACH_EMAIL_PROMPT, messages: [{ role: 'user', content: facts }] }),
+  })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.error ?? 'The AI could not write this email right now.')
+  const text = String(data.text ?? '')
+  try {
+    const parsed = JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)) as { subject?: string; body?: string }
+    if (parsed.subject && parsed.body) return { subject: parsed.subject.trim(), body: parsed.body.trim() }
+  } catch { /* fall through to the plain-text reading below */ }
+  const subj = text.match(/subject\s*:\s*(.+)/i)?.[1]?.trim()
+  const body = text.replace(/^.*subject\s*:.*$/im, '').trim()
+  if (!subj || !body) throw new Error('The AI reply was not usable. Try Rewrite.')
+  return { subject: subj, body }
+}
+
 /**
  * Preview, edit and send one email from support@ecstasytechnologies.com
  * through /api/email/send. Nothing is sent without pressing Send here; the
@@ -3494,9 +3553,27 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
   const [optedOut, setOptedOut] = useState(false)
+  const [writing, setWriting] = useState(false)
+
+  const write = async () => {
+    if (!deal) return
+    setWriting(true); setError('')
+    try {
+      const draft = await writeOutreachEmail(deal)
+      setSubject(draft.subject)
+      setText(draft.body)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not write the email.')
+    } finally {
+      setWriting(false)
+    }
+  }
 
   useEffect(() => {
     fetch('/api/email/send', { cache: 'no-store' }).then(r => r.json()).then(setStatus).catch(() => {})
+    // Opened without a draft (e.g. from a deal card): write one straight away.
+    if (deal && !initialSubject && !initialText) void write()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const send = async () => {
@@ -3526,7 +3603,7 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
 
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }
   const atLimit = !!status && status.sentToday >= status.dailyLimit
-  const canSend = !!to.trim() && !!subject.trim() && !!text.trim() && !sending && !atLimit && status?.configured !== false && !optedOut
+  const canSend = !!to.trim() && !!subject.trim() && !!text.trim() && !sending && !writing && !atLimit && status?.configured !== false && !optedOut
   // Rendered at the page root: opened from a draggable deal card, it would
   // otherwise sit inside the card, where selecting text drags the card.
   return createPortal(
@@ -3546,8 +3623,16 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
         )}
         {atLimit && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>Today&apos;s limit is reached. Sending more risks the domain being marked as spam.</div>}
         <input value={to} onChange={e => setTo(e.target.value)} placeholder="To" type="email" style={field} />
-        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" style={field} />
-        <textarea value={text} onChange={e => setText(e.target.value)} rows={9} placeholder="Message" style={{ ...field, resize: 'vertical', lineHeight: 1.6 }} />
+        {deal && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button onClick={write} disabled={writing} title="Written for this business: their situation, the cost to them, and a true story from your portfolio" style={{ padding: '6px 12px', borderRadius: 8, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: writing ? 'wait' : 'pointer' }}>
+              {writing ? 'Writing…' : subject || text ? '↻ Rewrite' : '✨ Write it for me'}
+            </button>
+            <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>Written for {deal.name}. Read it before sending.</span>
+          </div>
+        )}
+        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder={writing ? 'Writing the subject…' : 'Subject'} disabled={writing} style={field} />
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={9} placeholder={writing ? 'Writing the message for this business…' : 'Message'} disabled={writing} style={{ ...field, resize: 'vertical', lineHeight: 1.6 }} />
         <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>A footer with your business address and a &quot;reply stop to opt out&quot; line is added automatically.</div>
         {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
