@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
+import { parseProspects } from '@/lib/leads'
+import { refCodeFor } from '@/lib/refcode'
+import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
 import { buildPriceBlock, money, priceListText, priceRange } from '@/lib/pricing'
 import { COUNTRIES, MARKETS, marketFor, outreachNotes, toE164, countryFromPhone, dealCountry, type Market } from '@/lib/markets'
 import type {
@@ -1058,11 +1061,6 @@ function buildTeamIntel(workspace: Record<string, string>, excludeId?: string): 
   return parts.join('\n\n')
 }
 
-/** Closed deals counted toward this month's goal: closed since the 1st. */
-function closedThisMonth(deals: Deal[]): Deal[] {
-  const since = startOfMonth()
-  return deals.filter(d => d.stage === 'closed' && (d.stageChangedAt ?? d.createdAt) >= since)
-}
 
 function buildPipelineSnapshot(deals: Deal[], invoices: Invoice[]): string {
   if (!deals.length && !invoices.length) return ''
@@ -1091,48 +1089,6 @@ DEALS (${deals.length} total):
 ${dealLines || '  (none yet)'}`
 }
 
-/**
- * RevenueTracker's working list: money already earned but not collected,
- * deals whose follow-up is overdue, deals that stopped moving, and an honest
- * month-end forecast. These are the actions that turn into cash fastest.
- */
-function buildMoneyToChase(deals: Deal[], invoices: Invoice[]): string {
-  const now = Date.now()
-  const day = 86400000
-  const fmt = (n: number) => `GHS ${Math.round(n).toLocaleString()}`
-  const parts: string[] = []
-
-  const owed = invoices
-    .filter(i => i.status === 'sent' || i.status === 'partial')
-    .map(i => ({ i, due: i.totalGHS - i.milestones.filter(m => m.paidAt).reduce((s, m) => s + m.amountGHS, 0) }))
-    .filter(x => x.due > 0)
-    .sort((a, b) => ((a.i.dueAt ?? Infinity) - (b.i.dueAt ?? Infinity)) || b.due - a.due)
-  parts.push(owed.length
-    ? `UNPAID INVOICES (earned, not collected; chase these first):\n${owed.map(({ i, due }) => {
-        const late = i.dueAt && i.dueAt < now ? `, ${Math.floor((now - i.dueAt) / day)} days overdue` : i.dueAt ? `, due ${new Date(i.dueAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''
-        return `  - ${i.clientName}: ${fmt(due)} owed of ${fmt(i.totalGHS)}${late}`
-      }).join('\n')}`
-    : 'UNPAID INVOICES: none.')
-
-  const drafts = invoices.filter(i => i.status === 'draft')
-  if (drafts.length) parts.push(`DRAFT INVOICES NOT SENT YET:\n${drafts.map(i => `  - ${i.clientName}: ${fmt(i.totalGHS)}`).join('\n')}`)
-
-  const open = deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost')
-  const overdue = open.filter(d => d.followUpAt && d.followUpAt < now).sort((a, b) => b.valueGHS - a.valueGHS)
-  if (overdue.length) parts.push(`FOLLOW-UPS OVERDUE:\n${overdue.slice(0, 10).map(d => `  - ${d.name} (${STAGE_LABELS[d.stage]}, ${fmt(d.valueGHS)}): ${Math.max(1, Math.floor((now - d.followUpAt!) / day))} days late`).join('\n')}`)
-
-  const stale = open.filter(d => !overdue.includes(d) && STAGE_STALE_MS[d.stage] > 0 && now - (d.stageChangedAt ?? d.createdAt) > STAGE_STALE_MS[d.stage])
-    .sort((a, b) => b.valueGHS - a.valueGHS)
-  if (stale.length) parts.push(`STUCK DEALS (no stage change for longer than usual):\n${stale.slice(0, 10).map(d => `  - ${d.name} (${STAGE_LABELS[d.stage]}, ${fmt(d.valueGHS)}): ${Math.floor((now - (d.stageChangedAt ?? d.createdAt)) / day)} days in this stage`).join('\n')}`)
-
-  const month = closedThisMonth(deals).reduce((s, d) => s + d.valueGHS, 0)
-  const weighted = open.reduce((s, d) => s + d.valueGHS * STAGE_WEIGHT[d.stage], 0)
-  const end = new Date(); end.setMonth(end.getMonth() + 1, 1); end.setHours(0, 0, 0, 0)
-  const daysLeft = Math.ceil((end.getTime() - now) / day)
-  parts.push(`FORECAST: closed this month ${fmt(month)}; open pipeline weighted by stage odds ${fmt(weighted)} (${Object.entries(STAGE_WEIGHT).filter(([k, w]) => w > 0 && k !== 'closed').map(([k, w]) => `${STAGE_LABELS[k as DealStage]} ${Math.round(w * 100)}%`).join(', ')}); likely month end ${fmt(month + weighted)} against the GHS 12,000 goal, ${daysLeft} days left.`)
-
-  return `MONEY TO CHASE (real data):\n${parts.join('\n\n')}`
-}
 
 /**
  * ProjectBot's work list: deals that said they're interested (or replied)
@@ -1910,63 +1866,6 @@ function extractProspects(text: string): Array<{ phone: string; pitch: string; n
   return results
 }
 
-function parseProspects(text: string): ParsedProspect[] {
-  // Split on numbered prospect blocks (1., 2., 3. …)
-  const blocks = text.split(/(?=\n\s*\d+\.\s+Business Name|\n\s*---|\n\s*\*\*\d+\.)/i)
-  const results: ParsedProspect[] = []
-
-  for (const block of blocks) {
-    const nameMatch = block.match(/Business Name\s*[—–\-]+\s*(.+?)(?:\n|$)/i)
-      || block.match(/^\s*\d+\.\s+\*{0,2}(.+?)\*{0,2}\s*(?:\n|$)/)
-    if (!nameMatch) continue
-    const name = nameMatch[1].replace(/\*+/g, '').trim()
-    if (name.length < 2) continue
-
-    const field = (label: string) => {
-      const m = block.match(new RegExp(label + '\\s*:?\\s*(.+?)(?:\\n|$)', 'i'))
-      return m ? m[1].replace(/\*+/g, '').trim() : undefined
-    }
-
-    const phoneRaw = field('Phone')
-    let phone: string | undefined
-    if (phoneRaw) {
-      const digits = phoneRaw.replace(/\D/g, '')
-      if (digits.startsWith('233') && digits.length === 12) phone = '+' + digits
-      else if (digits.startsWith('0') && digits.length === 10) phone = '+233' + digits.slice(1)
-      else if (digits.length === 9) phone = '+233' + digits
-      else phone = phoneRaw
-    }
-
-    const valueRaw = field('Estimated value')
-    let valueGHS = 0
-    // A value quoted in another currency (£1,500, KSh 30,000) is not GHS; leave
-    // it at 0 to be set after the call rather than store the wrong amount.
-    const foreignCurrency = valueRaw && !/GHS|₵/i.test(valueRaw) && /[£$€₦]|KSh|\bR\s?\d|MX\$|[A-Z]{2,3}\s?\d/.test(valueRaw)
-    if (valueRaw && !foreignCurrency) {
-      const m = valueRaw.match(/GHS\s*([\d,]+)|₵\s*([\d,]+)|([\d,]+)/)
-      if (m) valueGHS = parseInt((m[1] || m[2] || m[3]).replace(/,/g, ''), 10) || 0
-    }
-
-    const pitchRaw = field('Phone pitch')
-    const phonePitch = pitchRaw ? pitchRaw.replace(/^["""'`]|["""'`]$/g, '').trim() : undefined
-
-    results.push({
-      name,
-      industry: field('Industry') ?? 'Unknown',
-      address: field('Address'),
-      phone,
-      whyNeedsWebsite: field('Why they need a website'),
-      country: field('Country'),
-      // SocialScout leads carry the post or page they came from.
-      sourceUrl: field('Source')?.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, ''),
-      servicePitch: field('Service to pitch'),
-      valueGHS,
-      phonePitch,
-    })
-  }
-
-  return results.filter(p => p.name.length > 1)
-}
 
 function extractXPosts(text: string): string[] {
   const posts: string[] = []
@@ -5573,22 +5472,6 @@ const SOCIAL_CATEGORIES = [
 // link on mobile (most social traffic) opens WhatsApp with the message ready.
 // Kept deliberately short (just "Ref XXXX", not a full sentence) so it survives
 // X's 280-char limit alongside the post body.
-/**
- * Short code an inbound message quotes to say which post it came from. It
- * used to be the id's last 4 characters, which for ids like "1727…087-0"
- * gave "87-0": a hyphen, and only two digits of timestamp, so posts made
- * close together collided. A hash of the whole id gives 4 clean characters
- * that differ between posts.
- */
-function refCodeFor(id: string): string {
-  let h = 2166136261
-  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619) >>> 0
-  // No 0/O or 1/I, so a code read out over the phone isn't misheard.
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let code = ''
-  for (let i = 0; i < 4; i++) { code += alphabet[h % alphabet.length]; h = Math.floor(h / alphabet.length) }
-  return code
-}
 
 /**
  * Where "Post to LinkedIn" sends you. LinkedIn has no dependable way to
