@@ -2669,10 +2669,11 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
 
   const [liCopied, setLiCopied] = useState(false)
   const handleLinkedIn = useCallback(async () => {
-    try { await navigator.clipboard.writeText(linkedInPost ?? withoutNotes) } catch { /* ignore */ }
+    const text = linkedInPost ?? withoutNotes
+    try { await navigator.clipboard.writeText(text) } catch { /* ignore */ }
     setLiCopied(true)
     setTimeout(() => setLiCopied(false), 3000)
-    window.open(LINKEDIN_FEED_URL, '_blank', 'noopener,noreferrer')
+    window.open(linkedInComposeUrl(text), '_blank', 'noopener,noreferrer')
   }, [linkedInPost, withoutNotes])
 
   const bufferBtnStyle = (s: PostStatus): React.CSSProperties => ({
@@ -2745,7 +2746,7 @@ function SocialShareBar({ content, schedule = false }: { content: string; schedu
           𝕏 Post to X{thread.length > 1 ? ` (1/${thread.length})` : ''}
         </a>
         <button onClick={handleLinkedIn} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${liCopied ? LI_BLUE : LI_BLUE + '60'}`, background: liCopied ? `${LI_BLUE}18` : `${LI_BLUE}10`, color: LI_BLUE, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
-          {liCopied ? '✓ Copied. Click "Start a post" and paste' : 'in Post to LinkedIn'}
+          {liCopied ? '✓ Opened in LinkedIn (also copied)' : 'in Post to LinkedIn'}
         </button>
         <a href={`https://wa.me/?text=${encodeURIComponent(withoutNotes.slice(0, 1500))}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '5px 12px', borderRadius: 20, border: `1px solid ${WA_GREEN}60`, background: `${WA_GREEN}10`, color: WA_GREEN, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none' }}>
           ✆ WhatsApp
@@ -5833,13 +5834,12 @@ const SOCIAL_CATEGORIES = [
 // X's 280-char limit alongside the post body.
 
 /**
- * Where "Post to LinkedIn" sends you. LinkedIn has no dependable way to
- * open a prefilled feed post from a link: /post/new/ and the
- * ?shareActive=true&text= form both ended up in the long-form article
- * editor. The feed page always works, and the callers copy the text first,
- * so it is one click on "Start a post" and a paste.
+ * Where "Post to LinkedIn" sends you: LinkedIn's share composer, with the
+ * post in its text parameter. (/post/new/ and the feed's ?shareActive=true
+ * form both opened the long-form article editor.) The callers also copy the
+ * post first, so if LinkedIn ever ignores the text it is still one paste.
  */
-const LINKEDIN_FEED_URL = 'https://www.linkedin.com/feed/'
+const linkedInComposeUrl = (text: string) => `https://www.linkedin.com/sharing/compose?text=${encodeURIComponent(text)}`
 
 function appendTrackedCTA(content: string, id: string): string {
   const refCode = refCodeFor(id)
@@ -6105,7 +6105,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
     try { await navigator.clipboard.writeText(post.content) } catch { /* ignore */ }
     setLiCopiedId(post.id)
     setTimeout(() => setLiCopiedId(null), 3000)
-    window.open(LINKEDIN_FEED_URL, '_blank', 'noopener,noreferrer')
+    window.open(linkedInComposeUrl(post.content), '_blank', 'noopener,noreferrer')
   }
 
   return (
@@ -6306,7 +6306,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
                       )}
                       {post.platforms.includes('linkedin') && (
                         <button onClick={() => handleLinkedInPost(post)} style={{ fontSize: 11, padding: '4px 10px', borderRadius: 8, border: `1px solid ${LI_BLUE}40`, background: liCopiedId === post.id ? `${LI_BLUE}18` : `${LI_BLUE}08`, color: LI_BLUE, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
-                          {liCopiedId === post.id ? '✓ Copied. Click "Start a post" and paste' : 'in Post to LinkedIn'}
+                          {liCopiedId === post.id ? '✓ Opened in LinkedIn (also copied)' : 'in Post to LinkedIn'}
                         </button>
                       )}
                       {profiles.length > 0 && (
