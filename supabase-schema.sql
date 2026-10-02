@@ -51,6 +51,7 @@ ALTER TABLE deals ADD COLUMN IF NOT EXISTS follow_up_at      BIGINT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS last_contacted_at BIGINT;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS whatsapp_history  JSONB   DEFAULT '[]'::JSONB;
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS email             TEXT;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS source_url        TEXT;  -- post/page a SocialScout lead was found on
 ALTER TABLE deals ADD COLUMN IF NOT EXISTS country           TEXT;  -- a MARKETS country; NULL = infer from phone, else Ghana
 
 CREATE INDEX IF NOT EXISTS deals_stage_idx        ON deals (stage);

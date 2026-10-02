@@ -152,10 +152,10 @@ export async function GET(req: NextRequest) {
   const outreach = outreachNotes(market)
   const workspace: Record<string, string> = {}
 
-  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null }> = []
+  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null; stage_changed_at?: number | null; created_at?: number | null }> = []
   try {
     const sb = getSupabase()
-    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone')
+    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone, stage_changed_at, created_at')
     deals = data ?? []
   } catch { /* continue without DB data */ }
 
@@ -209,7 +209,13 @@ ${intel}`,
 
   // ── 3. RevenueBot — pipeline summary ─────────────────────────────────────────
 
-  const closed = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.value_ghs, 0)
+  // Only deals closed since the 1st count toward the monthly goal; summing
+  // every deal ever closed overstated progress once a few wins piled up.
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime()
+  const closed = deals
+    .filter(d => d.stage === 'closed' && (d.stage_changed_at ?? d.created_at ?? 0) >= monthStart)
+    .reduce((s, d) => s + d.value_ghs, 0)
   const pipeline = deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.value_ghs, 0)
   const pct = Math.min(100, Math.round((closed / 12000) * 100))
 
