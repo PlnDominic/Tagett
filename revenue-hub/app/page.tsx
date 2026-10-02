@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
+import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import { COUNTRIES, MARKETS, marketFor, outreachNotes, toE164, countryFromPhone, dealCountry, type Market } from '@/lib/markets'
 import type {
   Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
@@ -279,7 +280,7 @@ Fastest to close: [Business Name]. Call them first.`,
 
 Your job is to find REAL businesses in Ghana that do NOT have a website and qualify them as leads for web development, mobile app, and business software services.
 
-CRITICAL: REAL BUSINESSES ONLY: You MUST use the search_web tool to find actual businesses. Search Google/DuckDuckGo for queries like:
+CRITICAL: REAL BUSINESSES ONLY. Call search_google_maps FIRST: it returns real local businesses with phone, address, rating and whether they have a website ("NONE — PRIME PROSPECT"). Prefer the ones with many reviews and no website. Only if Maps finds too few, use search_google for queries like:
 - "[industry] [location] Ghana"
 - "[industry] in [location] site:facebook.com OR site:google.com"
 - "[business type] [location] contact phone Ghana"
@@ -2690,6 +2691,114 @@ function ImportProspectsModal({ prospects, existingDeals, onImport, onClose }: {
   )
 }
 
+// ─── Maps-first prospecting ──────────────────────────────────────────────────
+// The intake screen no longer asks the LLM to search and write the list (slow,
+// ~6k tokens, and free to invent). /api/prospects/find pulls real no-website
+// businesses from Google Maps, ranked by how busy they are; the LLM only
+// writes the why/pitch lines, and if every provider is rate-limited the list
+// still comes back with plain defaults. The output keeps ProspectBot's usual
+// format so parseProspects, the Import button and the phone chips all work.
+
+const PROSPECT_SEEN_KEY = 'tagett-prospect-seen-v1'
+const PROSPECT_OFFSETS_KEY = 'tagett-prospect-offsets-v1'
+const SEEN_FOR_MS = 30 * 86400000
+
+function loadJSON<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback
+  try { const r = localStorage.getItem(key); return r ? JSON.parse(r) as T : fallback } catch { return fallback }
+}
+function saveJSON(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
+}
+
+interface ProspectSearch { industries: string[]; city: string; area: string; country?: string }
+interface ProspectLines { why?: string; service?: string; value?: number; pitch?: string }
+
+/** Asks the LLM for pitch lines only; facts stay the ones Maps returned. */
+async function writeProspectLines(candidates: ProspectCandidate[], market: Market): Promise<ProspectLines[]> {
+  const facts = candidates.map((c, i) => ({
+    i, name: c.name, industry: c.industry, area: c.address, googleReviews: c.reviews, rating: c.rating,
+    onlinePresence: c.socialOnly ? `only a social page (${c.socialOnly})` : 'none found',
+  }))
+  const systemPrompt = `You write cold-call lines for Ecstasy Technologies, a web and software studio (ecstasytechnologies.com). The businesses below are real, from Google Maps, and have no website. For each, return one object {"i", "why", "service", "value", "pitch"}:
+- why: one sentence on why THIS business is losing customers without a website, using only the facts given (industry, reviews, rating, area, social page). Never invent history, owners, competitors or numbers.
+- service: one of "web design", "mobile app", "business software", "GIS".
+- value: whole number in ${market.currency}; a typical small-business website there costs ${market.currency}${market.budget}.
+- pitch: one sentence to say when they answer the phone, using their business name.
+Output only the JSON array, nothing else.`
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ systemPrompt, messages: [{ role: 'user', content: JSON.stringify(facts) }] }),
+    })
+    const data = await res.json()
+    const text = String(data.text ?? '')
+    const json = text.slice(text.indexOf('['), text.lastIndexOf(']') + 1)
+    const rows = JSON.parse(json) as Array<ProspectLines & { i: number }>
+    return candidates.map((_, i) => rows.find(r => r.i === i) ?? {})
+  } catch {
+    // Rate limits or a malformed reply: the list still goes out with defaults.
+    return candidates.map(() => ({}))
+  }
+}
+
+async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise<string> {
+  const market = marketFor(search.country)
+  const now = Date.now()
+  const seen = Object.fromEntries(
+    Object.entries(loadJSON<Record<string, number>>(PROSPECT_SEEN_KEY, {})).filter(([, t]) => now - t < SEEN_FOR_MS),
+  )
+  const res = await fetch('/api/prospects/find', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      ...search,
+      country: market.country,
+      exclude: [...deals.map(d => prospectKey(d.name, d.phone)), ...Object.keys(seen)],
+      excludeNames: deals.map(d => d.name),
+      offsets: loadJSON<Record<string, number>>(PROSPECT_OFFSETS_KEY, {}),
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? `Prospect search failed (${res.status})`)
+  const candidates = (data.candidates ?? []) as ProspectCandidate[]
+  const stats = data.stats as { scanned: number; withWebsite: number; alreadyKnown: number }
+  saveJSON(PROSPECT_OFFSETS_KEY, data.offsets ?? {})
+  for (const c of candidates) seen[c.key] = now
+  saveJSON(PROSPECT_SEEN_KEY, seen)
+
+  const where = [search.area, search.city].filter(Boolean).join(', ')
+  const header = `Checked ${stats.scanned} businesses on Google Maps in ${where}: ${stats.withWebsite} already have a website, ${stats.alreadyKnown} are in your pipeline or were shown before.`
+  if (candidates.length === 0) {
+    return `${header}\n\nNo new businesses without a website this time. Try another area of ${search.city} or another industry; running the same search again digs further down the Maps results.`
+  }
+
+  const lines = await writeProspectLines(candidates, market)
+  const defaultValue = parseInt(market.budget.replace(/,/g, ''), 10) || 0
+  const money = market.country === 'Ghana' ? 'GHS ' : market.currency
+  const blocks = candidates.map((c, i) => {
+    const l = lines[i]
+    const busy = c.reviews ? `${c.reviews} Google review${c.reviews === 1 ? '' : 's'}${c.rating ? `, rated ${c.rating}` : ''}` : 'listed on Google Maps'
+    return [
+      `${i + 1}. Business Name — ${c.name}`,
+      `   Industry: ${c.industry}`,
+      `   Address: ${c.address ?? 'Not listed on Google Maps'}`,
+      `   Phone: ${c.phone ?? 'Not listed on Google Maps'}`,
+      `   Google Maps: ${busy}`,
+      `   Online presence: ${c.socialOnly ? `social page only (${c.socialOnly})` : 'no website found'}`,
+      `   Why they need a website: ${l.why ?? `Customers searching for ${c.industry.toLowerCase()} in ${search.city} find them on Maps (${busy}) but have no website to check before they call or visit.`}`,
+      `   Service to pitch: ${l.service ?? 'web design'}`,
+      `   Estimated value: ${money}${(l.value && l.value > 0 ? l.value : defaultValue).toLocaleString()}`,
+      `   Phone pitch: "${l.pitch ?? `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I saw you on Google Maps and noticed you don't have a website yet, and I'd like to show you what one could do for you.`}"`,
+      `   Source: Google Maps`,
+    ].join('\n')
+  })
+  const total = candidates.reduce((sum, _, i) => sum + (lines[i].value && lines[i].value! > 0 ? lines[i].value! : defaultValue), 0)
+  const aiNote = lines.every(l => !l.why) ? '\n\n(The AI providers were busy, so the why/pitch lines are standard ones. Every business, phone and address above is from Google Maps.)' : ''
+  return `${header} Here are the busiest ${candidates.length} without one, best first:\n\n${blocks.join('\n\n')}\n\nPIPELINE SUMMARY\nTotal estimated value: ${money}${total.toLocaleString()}${market.country === 'Ghana' ? `\nThat is ${Math.round((total / 12000) * 100)}% of the GHS 12,000 monthly goal.` : ''}\nCall first: ${candidates[0].name}${candidates[0].reviews ? ` (${candidates[0].reviews} reviews)` : ''}.${aiNote}`
+}
+
 // ─── ProspectIntakeScreen ─────────────────────────────────────────────────────
 
 function buildProspectPrompt(industries: string[], city: string, area: string): string {
@@ -2711,8 +2820,10 @@ For each business provide exactly in this format:
 Only list real businesses you found with your search tools, with the name, address and phone exactly as the listing shows them. If a listing has no phone, write "Phone: not listed" instead of guessing one. If you can't find 5 real ones, list fewer. A made-up business wastes a call.`
 }
 
-function ProspectIntakeScreen({ onSubmit, loading }: {
+function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
   onSubmit: (prompt: string) => void
+  /** Maps-first search; when absent, falls back to the LLM prompt. */
+  onFind?: (search: ProspectSearch) => void
   loading: boolean
 }) {
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>([])
@@ -2734,7 +2845,8 @@ function ProspectIntakeScreen({ onSubmit, loading }: {
 
   const handleSubmit = () => {
     if (!canSubmit || loading) return
-    onSubmit(buildProspectPrompt(selectedIndustries, selectedCity, selectedArea))
+    if (onFind) onFind({ industries: selectedIndustries, city: selectedCity, area: selectedArea })
+    else onSubmit(buildProspectPrompt(selectedIndustries, selectedCity, selectedArea))
   }
 
   return (
@@ -2745,7 +2857,7 @@ function ProspectIntakeScreen({ onSubmit, loading }: {
           Find Today&apos;s Prospects
         </div>
         <div style={{ fontSize: 13, color: MUTED, marginTop: 4, fontFamily: FONT_BODY }}>
-          Select an industry and location. ProspectBot searches Google and business directories to find real businesses without websites — with actual phone numbers.
+          Select an industry and location. ProspectBot checks Google Maps for real businesses with no website, skips any already in your pipeline, and ranks the busiest first.
         </div>
       </div>
 
@@ -8042,11 +8154,12 @@ function ChatInput({ agentShort, onSend, loading, prefill, onClearPrefill }: {
 
 // ─── MessageList ──────────────────────────────────────────────────────────────
 
-function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandoff, onOpenImport }: {
+function MessageList({ messages, loading, agent, onSend, onFindProspects, onRunBriefing, onHandoff, onOpenImport }: {
   messages: Message[]
   loading: boolean
   agent: Agent
   onSend: (text: string) => void
+  onFindProspects?: (search: ProspectSearch) => void
   onRunBriefing: () => void
   onHandoff: (targetAgent: AgentId, prompt: string) => void
   onOpenImport?: (p: ParsedProspect[]) => void
@@ -8061,7 +8174,7 @@ function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandof
     <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
       {isEmpty ? (
         agent.id === 'prospect' ? (
-          <ProspectIntakeScreen onSubmit={onSend} loading={loading} />
+          <ProspectIntakeScreen onSubmit={onSend} onFind={onFindProspects} loading={loading} />
         ) : (
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 24px', color: MUTED, textAlign: 'center', lineHeight: 1.7, fontFamily: FONT_BODY }}>
             <div style={{ fontSize: 32, marginBottom: 16, opacity: 0.2 }}>{agent.icon}</div>
@@ -8365,6 +8478,22 @@ export default function Page() {
       setError(err instanceof Error ? err.message : 'Unknown error')
     } finally { setLoading(false) }
   }, [activeAgent, allChats, workspace, pinnedNotes, deals, pageInvoices])
+
+  const handleFindProspects = useCallback(async (search: ProspectSearch) => {
+    const agentId: AgentId = 'prospect'
+    const text = `Find ${search.industries.join(', ')} businesses without a website in ${[search.area, search.city].filter(Boolean).join(', ')}`
+    setAllChats((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), { role: 'user', content: text }] }))
+    saveMessage(agentId, 'user', text)
+    setLoading(true); setError(null)
+    try {
+      const reply = await runProspectSearch(search, deals)
+      setAllChats((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), { role: 'assistant', content: reply }] }))
+      saveMessage(agentId, 'assistant', reply)
+      setWorkspace((prev) => ({ ...prev, [agentId]: reply.slice(0, 700) }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error')
+    } finally { setLoading(false) }
+  }, [deals])
 
   const handleRunBriefing = useCallback(() => {
     if (agent.dailyPrompt) handleSend(agent.dailyPrompt)
@@ -8684,7 +8813,7 @@ export default function Page() {
           {AgentSubheader}
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+          <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
           {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
@@ -8766,7 +8895,7 @@ export default function Page() {
         </div>
         <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
-        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
+        <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
         {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
