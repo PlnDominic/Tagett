@@ -9,6 +9,7 @@ import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
 import { sendPush } from '@/lib/push'
 import { MARKETS, Market, Region, outreachNotes, randomPlace } from '@/lib/markets'
+import { searchListenPosts, type ListenPost } from '@/lib/social-listening-search'
 
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
@@ -152,10 +153,10 @@ export async function GET(req: NextRequest) {
   const outreach = outreachNotes(market)
   const workspace: Record<string, string> = {}
 
-  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null; stage_changed_at?: number | null; created_at?: number | null }> = []
+  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null; stage_changed_at?: number | null; created_at?: number | null; source_url?: string | null }> = []
   try {
     const sb = getSupabase()
-    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone, stage_changed_at, created_at')
+    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone, stage_changed_at, created_at, source_url')
     deals = data ?? []
   } catch { /* continue without DB data */ }
 
@@ -163,7 +164,20 @@ export async function GET(req: NextRequest) {
   // Prospects come straight from Google Maps (no LLM), the same search the
   // ProspectBot start screen uses, so the morning list holds only real
   // businesses and is saved as data the app can show and import.
-  const [social, found] = await Promise.all([
+  // Social listening: one SerpAPI search a night for people asking for a
+  // website this past week, Facebook and X on alternate nights to keep the
+  // monthly search budget small. Saved as raw posts; the app's AI reads them
+  // when they're opened, so this costs no AI quota overnight.
+  // OVERNIGHT_LISTENING=off turns it off.
+  const listenPlatform = new Date().getUTCDate() % 2 ? 'x' as const : 'facebook' as const
+  const serpKey = process.env.SERPAPI_KEY
+  const listening: Promise<ListenPost[]> = serpKey && process.env.OVERNIGHT_LISTENING !== 'off'
+    ? searchListenPosts(serpKey, { mode: 'requests', country: market.country, recency: 'w', platforms: [listenPlatform] })
+        .then(r => r.posts.filter(p => !deals.some(d => d.source_url === p.url)))
+        .catch(() => [])
+    : Promise.resolve([])
+
+  const [social, found, listenPosts] = await Promise.all([
     runAgent({
       apiKey,
       tools: getAgentTools('scout'),
@@ -181,6 +195,7 @@ OUTREACH FOR THIS MARKET: ${outreach}`,
       exclude: deals.map(d => prospectKey(d.name, d.phone ?? undefined)),
       excludeNames: deals.map(d => d.name),
     }),
+    listening,
   ])
 
   const leads = found.candidates
@@ -249,6 +264,8 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
       // Structured leads + where they came from, for ProspectBot's
       // "found overnight" list in the app.
       prospect_leads: { country: market.country, city, locale, industry, leads },
+      // Posts asking for a website, for Social listening's "found overnight".
+      social_posts: { country: market.country, platform: listenPlatform, posts: listenPosts },
     }], rows => sb.from('agent_runs').insert(rows))
   } catch { /* non-fatal */ }
 
@@ -276,9 +293,10 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
   try {
     await sendPush({
       title: leads.length ? `🌙 ${leads.length} new lead${leads.length === 1 ? '' : 's'} ready` : '🤖 Tagett auto-run complete',
-      body: leads.length
+      body: (leads.length
         ? `${industry} in ${locale}, no website, busiest first. Open ProspectBot to import them.`
-        : `No new ${industry} leads in ${locale} tonight. Pitches and pipeline summary are in your email.`,
+        : `No new ${industry} leads in ${locale} tonight. Pitches and pipeline summary are in your email.`)
+        + (listenPosts.length ? ` Plus ${listenPosts.length} ${listenPlatform === 'x' ? 'X' : 'Facebook'} post${listenPosts.length === 1 ? '' : 's'} asking for a website in ${market.country}: SocialScout → Social listening.` : ''),
     })
   } catch { /* non-fatal */ }
 
