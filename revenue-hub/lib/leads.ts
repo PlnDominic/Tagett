@@ -32,12 +32,17 @@ export function parseProspects(text: string): ParsedProspect[] {
 
     const valueRaw = field('Estimated value')
     let valueGHS = 0
-    // A value quoted in another currency (£1,500, KSh 30,000) is not GHS; leave
-    // it at 0 to be set after the call rather than store the wrong amount.
-    const foreignCurrency = valueRaw && !/GHS|₵/i.test(valueRaw) && /[£$€₦]|KSh|\bR\s?\d|MX\$|[A-Z]{2,3}\s?\d/.test(valueRaw)
+    let valueLocal: number | undefined
+    // A value quoted in another currency (£1,500, KSh 30,000, kr 15,000) is
+    // not GHS: keep it as valueLocal, converted to GHS on import, rather than
+    // store it as the wrong GHS amount.
+    const foreignCurrency = valueRaw && !/GHS|₵/i.test(valueRaw) && /[£$€₦]|KSh|\bkr\b|zł|\bR\s?\d|MX\$|[A-Z]{2,3}\s?\d/.test(valueRaw)
     if (valueRaw && !foreignCurrency) {
       const m = valueRaw.match(/GHS\s*([\d,]+)|₵\s*([\d,]+)|([\d,]+)/)
       if (m) valueGHS = parseInt((m[1] || m[2] || m[3]).replace(/,/g, ''), 10) || 0
+    } else if (valueRaw) {
+      const m = valueRaw.match(/\d[\d,]*/)
+      if (m) valueLocal = parseInt(m[0].replace(/,/g, ''), 10) || undefined
     }
 
     const pitchRaw = field('Phone pitch')
@@ -54,6 +59,7 @@ export function parseProspects(text: string): ParsedProspect[] {
       sourceUrl: field('Source')?.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, ''),
       servicePitch: field('Service to pitch'),
       valueGHS,
+      valueLocal,
       phonePitch,
     })
   }

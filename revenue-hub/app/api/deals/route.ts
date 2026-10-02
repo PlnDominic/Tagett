@@ -9,6 +9,8 @@ interface Deal {
   name: string
   industry: string
   valueGHS: number
+  valueLocal?: number
+  currency?: string
   stage: string
   phone?: string
   email?: string
@@ -34,6 +36,8 @@ function toRow(d: Deal) {
     name: d.name,
     industry: d.industry,
     value_ghs: d.valueGHS,
+    value_local: d.valueLocal ?? null,
+    currency: d.currency ?? null,
     stage: d.stage,
     phone: d.phone ?? null,
     email: d.email ?? null,
@@ -60,6 +64,8 @@ function fromRow(r: Record<string, unknown>): Deal {
     name: r.name as string,
     industry: (r.industry as string) ?? 'Unknown',
     valueGHS: (r.value_ghs as number) ?? 0,
+    valueLocal: r.value_local == null ? undefined : Number(r.value_local),
+    currency: (r.currency as string | null) ?? undefined,
     stage: (r.stage as string) ?? 'found',
     phone: (r.phone as string | null) ?? undefined,
     email: (r.email as string | null) ?? undefined,

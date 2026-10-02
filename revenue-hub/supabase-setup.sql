@@ -182,3 +182,7 @@ create table if not exists email_optouts (
 alter table email_optouts enable row level security;
 
 alter table deals add column if not exists email_history jsonb default '[]'::jsonb;
+
+-- Deals abroad keep their value in their own currency; value_ghs is it converted
+alter table deals add column if not exists value_local numeric;
+alter table deals add column if not exists currency text;  -- ISO 4217, e.g. GBP
