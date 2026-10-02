@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import { buildPriceBlock, money, priceListText, priceRange } from '@/lib/pricing'
@@ -1170,7 +1171,10 @@ function buildOutreachQueue(deals: Deal[]): string {
     const m = marketFor(dealCountry(d))
     const channel = m.whatsappFirst ? `WhatsApp${d.phone ? ` (${d.phone})` : ' (no phone saved)'}` : `Email${d.email ? ` (${d.email})` : ' (no email saved)'}`
     const touch = d.lastContactedAt ? `touch ${(d.sequenceStep ?? 1) + 1}` : 'never contacted'
-    const last = d.whatsappHistory?.length ? ` | last message: "${d.whatsappHistory[d.whatsappHistory.length - 1].text.replace(/\s+/g, ' ').slice(0, 160)}"` : ''
+    const lastWa = d.whatsappHistory?.[d.whatsappHistory.length - 1]
+    const lastEmail = d.emailHistory?.[d.emailHistory.length - 1]
+    const lastMsg = lastEmail && (!lastWa || lastEmail.sentAt > lastWa.sentAt) ? `email "${lastEmail.subject}": ${lastEmail.text}` : lastWa?.text
+    const last = lastMsg ? ` | last message: "${lastMsg.replace(/\s+/g, ' ').slice(0, 160)}"` : ''
     const replied = d.repliedAt ? ' | they replied' : ''
     const late = d.followUpAt && d.followUpAt < now ? ` | follow-up ${Math.max(1, Math.floor((now - d.followUpAt) / 86400000))} days late` : ''
     return `  - ${d.name} | ${d.industry || 'business'} | ${m.country} | ${STAGE_LABELS[d.stage]} | GHS ${d.valueGHS.toLocaleString()} | ${channel} | ${touch}${late}${replied}${last}`
@@ -2442,6 +2446,7 @@ function HandoffChips({ agentId, content, onHandoff }: {
  */
 function OutreachSendChips({ content, deals, onUpdateDeal }: { content: string; deals: Deal[]; onUpdateDeal: (id: string, updates: Partial<Deal>) => void }) {
   const [sent, setSent] = useState<Set<number>>(new Set())
+  const [composing, setComposing] = useState<{ i: number; deal: Deal; subject: string; text: string } | null>(null)
   const messages = useMemo(() => {
     const notesAt = content.search(/^\s*[-—*_ ]*(Council Check|Deal value in play)/im)
     const body = notesAt >= 0 ? content.slice(0, notesAt) : content
@@ -2483,6 +2488,13 @@ function OutreachSendChips({ content, deals, onUpdateDeal }: { content: string; 
         const missing = !deal ? 'no matching deal' : msg.channel === 'whatsapp' ? 'no phone saved' : 'no email saved'
         const color = msg.channel === 'whatsapp' ? WA_GREEN : GOLD
         const label = `${msg.channel === 'whatsapp' ? '📱 WhatsApp' : '✉ Email'} ${msg.name}`
+        if (msg.channel === 'email' && deal?.email) {
+          return (
+            <button key={i} onClick={() => setComposing({ i, deal, subject: msg.subject ?? '', text: msg.text })} style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${color}60`, background: `${color}10`, color, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, cursor: 'pointer' }}>
+              {sent.has(i) ? `✓ Emailed ${msg.name}` : `✉ Email ${msg.name}`}
+            </button>
+          )
+        }
         if (!href) {
           return <span key={i} title={`Can't send: ${missing}`} style={{ padding: '5px 12px', borderRadius: 20, border: `1px solid ${BORDER}`, color: MUTED, fontSize: 12, fontFamily: FONT_BODY }}>{label} · {missing}</span>
         }
@@ -2505,6 +2517,18 @@ function OutreachSendChips({ content, deals, onUpdateDeal }: { content: string; 
           </a>
         )
       })}
+      {composing && (
+        <EmailComposeModal
+          deal={composing.deal}
+          initialSubject={composing.subject}
+          initialText={composing.text}
+          onClose={() => setComposing(null)}
+          onSent={(subject, text) => {
+            onUpdateDeal(composing.deal.id, emailSentUpdates(composing.deal, subject, text))
+            setSent(prev => new Set(prev).add(composing.i))
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -2517,6 +2541,7 @@ function OutreachSendChips({ content, deals, onUpdateDeal }: { content: string; 
 function ProposalPublishChip({ content, deals, onUpdateDeal }: { content: string; deals: Deal[]; onUpdateDeal: (id: string, updates: Partial<Deal>) => void }) {
   const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle')
   const [link, setLink] = useState<string | null>(null)
+  const [composing, setComposing] = useState(false)
   const parsed = useMemo(() => {
     const m = content.match(/^\s*\**\s*Proposal for (.+?)\s*:\s*\**\s*$/im)
     if (!m) return null
@@ -2564,7 +2589,16 @@ function ProposalPublishChip({ content, deals, onUpdateDeal }: { content: string
       <div style={{ marginTop: 8, paddingLeft: 34, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
         <a href={link} target="_blank" rel="noopener noreferrer" style={chip(GOLD)}>↗ Proposal page</a>
         {deal?.phone && <a href={`https://wa.me/${deal.phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" onClick={() => onUpdateDeal(deal.id, waSentUpdates(deal, text))} style={chip(WA_GREEN)}>📱 Send on WhatsApp</a>}
-        {deal?.email && <a href={`mailto:${deal.email}?subject=${encodeURIComponent(`Proposal for ${deal.name}`)}&body=${encodeURIComponent(text)}`} style={chip(GOLD)}>✉ Send by email</a>}
+        {deal?.email && <button onClick={() => setComposing(true)} style={chip(GOLD)}>✉ Send by email</button>}
+        {composing && deal && (
+          <EmailComposeModal
+            deal={deal}
+            initialSubject={`Proposal for ${deal.name}`}
+            initialText={`Hi,\n\nThanks for your time. Here is my proposal for ${deal.name}, with the scope, timeline and price:\n${link}\n\nHappy to answer any questions or adjust anything.\n\nDominic`}
+            onClose={() => setComposing(false)}
+            onSent={(subject, body) => onUpdateDeal(deal.id, emailSentUpdates(deal, subject, body))}
+          />
+        )}
         <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{deal ? `${deal.name} moved to Proposal, follow-up in 3 days` : 'No matching deal, so no stage change'}</span>
       </div>
     )
@@ -3527,6 +3561,108 @@ interface QueueItem {
 // sequence: deals don't close on one message, so touch 2 is scheduled for
 // 3 days out unless a follow-up date already exists (never overwrite one
 // Dominic set himself) or the deal is already won/lost.
+function emailSentUpdates(deal: Deal, subject: string, text: string): Partial<Deal> {
+  const updates: Partial<Deal> = {
+    lastContactedAt: Date.now(),
+    emailHistory: [...(deal.emailHistory ?? []), { subject, text, sentAt: Date.now() }],
+  }
+  if (!deal.followUpAt && deal.stage !== 'closed' && deal.stage !== 'lost') {
+    updates.followUpAt = Date.now() + 3 * 86400000
+    updates.sequenceStep = 1
+  }
+  return updates
+}
+
+/**
+ * Preview, edit and send one email from support@ecstasytechnologies.com
+ * through /api/email/send. Nothing is sent without pressing Send here; the
+ * server also enforces the daily limit and the opt-out list.
+ */
+function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClose, onSent }: {
+  deal?: Deal
+  initialTo?: string
+  initialSubject?: string
+  initialText?: string
+  onClose: () => void
+  onSent: (subject: string, text: string) => void
+}) {
+  const [to, setTo] = useState(initialTo ?? deal?.email ?? '')
+  const [subject, setSubject] = useState(initialSubject ?? '')
+  const [text, setText] = useState(initialText ?? '')
+  const [status, setStatus] = useState<{ configured: boolean; from: string; sentToday: number; dailyLimit: number } | null>(null)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+  const [optedOut, setOptedOut] = useState(false)
+
+  useEffect(() => {
+    fetch('/api/email/send', { cache: 'no-store' }).then(r => r.json()).then(setStatus).catch(() => {})
+  }, [])
+
+  const send = async () => {
+    setSending(true); setError('')
+    try {
+      const res = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ to, subject, text, dealId: deal?.id }),
+      })
+      const d = await res.json()
+      if (!res.ok) { setError(d.error ?? 'Could not send.'); return }
+      onSent(subject, text)
+      onClose()
+    } catch {
+      setError('Network error. Nothing was sent.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const optOut = async () => {
+    if (!to.trim()) return
+    await fetch('/api/email/optout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ email: to, reason: 'asked to stop' }) }).catch(() => {})
+    setOptedOut(true)
+  }
+
+  const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }
+  const atLimit = !!status && status.sentToday >= status.dailyLimit
+  const canSend = !!to.trim() && !!subject.trim() && !!text.trim() && !sending && !atLimit && status?.configured !== false && !optedOut
+  // Rendered at the page root: opened from a draggable deal card, it would
+  // otherwise sit inside the card, where selecting text drags the card.
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 640, maxHeight: '90vh', overflowY: 'auto', padding: '18px 18px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Send email{deal ? ` to ${deal.name}` : ''}</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
+              From {status?.from ?? 'support@ecstasytechnologies.com'}{status ? ` · ${status.sentToday} of ${status.dailyLimit} sent today` : ''}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+        {status && !status.configured && (
+          <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>Email sending isn&apos;t set up yet: add the OUTREACH_SMTP_* settings in Vercel.</div>
+        )}
+        {atLimit && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>Today&apos;s limit is reached. Sending more risks the domain being marked as spam.</div>}
+        <input value={to} onChange={e => setTo(e.target.value)} placeholder="To" type="email" style={field} />
+        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject" style={field} />
+        <textarea value={text} onChange={e => setText(e.target.value)} rows={9} placeholder="Message" style={{ ...field, resize: 'vertical', lineHeight: 1.6 }} />
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>A footer with your business address and a &quot;reply stop to opt out&quot; line is added automatically.</div>
+        {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={send} disabled={!canSend} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: canSend ? GOLD : SURFACE2, color: canSend ? '#fff' : MUTED, fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 13, cursor: canSend ? 'pointer' : 'not-allowed' }}>
+            {sending ? 'Sending…' : 'Send now'}
+          </button>
+          <button onClick={optOut} disabled={optedOut || !to.trim()} title="They replied stop or asked not to be emailed" style={{ fontSize: 11, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', fontFamily: FONT_BODY, textDecoration: 'underline' }}>
+            {optedOut ? '✓ Added to the do-not-email list' : 'They asked not to be emailed'}
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 function waSentUpdates(deal: Deal, text: string): Partial<Deal> {
   const updates: Partial<Deal> = {
     lastContactedAt: Date.now(),
@@ -4613,6 +4749,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
 
   const [verifying, setVerifying] = useState(false)
   const [editingEmail, setEditingEmail] = useState(false)
+  const [composingEmail, setComposingEmail] = useState(false)
   const [emailDraft, setEmailDraft] = useState(deal.email ?? '')
   const [findingEmail, setFindingEmail] = useState(false)
   const [findEmailError, setFindEmailError] = useState(false)
@@ -4762,6 +4899,14 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             ✉ {deal.email}
           </a>
           <button onClick={() => setEditingEmail(true)} title="Edit email" style={{ fontSize: 10, color: MUTED, background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>✎</button>
+          <button onClick={() => setComposingEmail(true)} title="Send from support@ecstasytechnologies.com" style={{ fontSize: 10, padding: '2px 8px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, cursor: 'pointer', fontFamily: FONT_BODY }}>Send email</button>
+          {composingEmail && (
+            <EmailComposeModal
+              deal={deal}
+              onClose={() => setComposingEmail(false)}
+              onSent={(subject, text) => onUpdate(deal.id, emailSentUpdates(deal, subject, text))}
+            />
+          )}
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 5 }}>
