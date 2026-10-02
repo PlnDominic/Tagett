@@ -141,6 +141,7 @@ create table if not exists social_posts (
 
 -- Add result_deal_id to existing social_posts table if upgrading
 alter table social_posts add column if not exists result_deal_id text;
+alter table social_posts add column if not exists image_url text;
 
 -- 7. Storage bucket for project images
 --    Create via: Supabase Dashboard → Storage → New bucket

@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
   const token = getToken()
   if (!token) return notConfigured()
 
-  const { text, profileIds, now = true } = await req.json().catch(() => ({}))
+  const { text, profileIds, now = true, imageUrl } = await req.json().catch(() => ({}))
   if (!text || !Array.isArray(profileIds) || profileIds.length === 0) {
     return NextResponse.json({ error: 'text and profileIds are required' }, { status: 400 })
   }
@@ -49,6 +49,10 @@ export async function POST(req: NextRequest) {
   body.append('text', text)
   for (const id of profileIds) body.append('profile_ids[]', id)
   if (now) body.append('now', 'true')
+  if (typeof imageUrl === 'string' && /^https?:\/\//.test(imageUrl)) {
+    body.append('media[picture]', imageUrl)
+    body.append('media[thumbnail]', imageUrl)
+  }
 
   const res = await fetch(`${BUFFER_BASE}/updates/create.json`, {
     method: 'POST',

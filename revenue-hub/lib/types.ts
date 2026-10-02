@@ -168,6 +168,8 @@ export interface SocialPost {
   createdAt: number
   category?: string
   resultDealId?: string
+  /** Public image attached when posting, e.g. a screenshot of the project. */
+  imageUrl?: string
 }
 
 // ─── Clients ─────────────────────────────────────────────────────────────────

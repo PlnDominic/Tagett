@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase, writeToleratingSchemaDrift } from '@/lib/supabase'
 
 export const dynamic = 'force-dynamic'
 export const fetchCache = 'force-no-store'
@@ -14,6 +14,7 @@ interface SocialPost {
   createdAt: number
   category?: string
   resultDealId?: string
+  imageUrl?: string
 }
 
 type Row = Record<string, unknown>
@@ -29,6 +30,7 @@ function toRow(p: SocialPost) {
     created_at: p.createdAt,
     category: p.category ?? null,
     result_deal_id: p.resultDealId ?? null,
+    image_url: p.imageUrl ?? null,
   }
 }
 
@@ -43,6 +45,7 @@ function fromRow(r: Row): SocialPost {
     createdAt: r.created_at as number,
     category: (r.category as string | null) ?? undefined,
     resultDealId: (r.result_deal_id as string | null) ?? undefined,
+    imageUrl: (r.image_url as string | null) ?? undefined,
   }
 }
 
@@ -68,7 +71,9 @@ export async function POST(req: NextRequest) {
     const post: SocialPost = await req.json()
     if (!post.content) return NextResponse.json({ error: 'content required' }, { status: 400 })
     const sb = getSupabase()
-    const { error } = await sb.from('social_posts').insert(toRow(post))
+    // Tolerate a column the table doesn't have yet (image_url before its
+    // migration runs) rather than failing every save.
+    const { error } = await writeToleratingSchemaDrift([toRow(post)], rows => sb.from('social_posts').insert(rows))
     if (error) throw error
     return NextResponse.json({ ok: true, id: post.id })
   } catch (err) {
@@ -87,7 +92,9 @@ export async function PUT(req: NextRequest) {
     const toDelete = [...existingIds].filter(id => !newIds.has(id))
 
     if (posts.length > 0) {
-      const { error } = await sb.from('social_posts').upsert(posts.map(toRow), { onConflict: 'id' })
+      const { error } = await writeToleratingSchemaDrift(posts.map(toRow), rows =>
+        sb.from('social_posts').upsert(rows, { onConflict: 'id' }),
+      )
       if (error) throw error
     }
     if (toDelete.length > 0) {
