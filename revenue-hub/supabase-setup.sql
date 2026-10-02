@@ -186,3 +186,6 @@ alter table deals add column if not exists email_history jsonb default '[]'::jso
 -- Deals abroad keep their value in their own currency; value_ghs is it converted
 alter table deals add column if not exists value_local numeric;
 alter table deals add column if not exists currency text;  -- ISO 4217, e.g. GBP
+
+-- A business's own social profiles ({facebook, instagram, linkedin, tiktok, x, checkedAt})
+alter table deals add column if not exists socials jsonb;

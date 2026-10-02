@@ -1,3 +1,5 @@
+import type { Socials } from './socials'
+
 // ─── Shared types & lookup tables ──────────────────────────────────────────────
 // Extracted from app/page.tsx — these are pure type/data declarations with no
 // component or business-logic dependencies, so they're safe to share across the
@@ -85,6 +87,8 @@ export interface Deal {
   country?: string
   /** The post or page a lead was found on (SocialScout leads). */
   sourceUrl?: string
+  /** The business's own social profiles; checkedAt is set once searched, found or not. */
+  socials?: Socials
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number

@@ -16,6 +16,7 @@ interface Deal {
   email?: string
   country?: string
   sourceUrl?: string
+  socials?: Record<string, unknown>
   createdAt: number
   stageChangedAt?: number
   followUpAt?: number
@@ -43,6 +44,7 @@ function toRow(d: Deal) {
     email: d.email ?? null,
     country: d.country ?? null,
     source_url: d.sourceUrl ?? null,
+    socials: d.socials ?? null,
     created_at: d.createdAt,
     stage_changed_at: d.stageChangedAt ?? null,
     follow_up_at: d.followUpAt ?? null,
@@ -71,6 +73,7 @@ function fromRow(r: Record<string, unknown>): Deal {
     email: (r.email as string | null) ?? undefined,
     country: (r.country as string | null) ?? undefined,
     sourceUrl: (r.source_url as string | null) ?? undefined,
+    socials: (r.socials as Deal['socials'] | null) ?? undefined,
     createdAt: r.created_at as number,
     stageChangedAt: (r.stage_changed_at as number | null) ?? undefined,
     followUpAt: (r.follow_up_at as number | null) ?? undefined,
