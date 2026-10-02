@@ -32,6 +32,15 @@ function transport() {
   })
 }
 
+// Signature on every outreach email, shown in italics in the HTML part.
+export const SIGNATURE = [
+  'Pln. Dominic Kudom',
+  'Chief Executive Officer',
+  'Ecstasy Technologies',
+  'dominic@ecstasytechnologies.com',
+  '+233(0)542855399',
+]
+
 // Cold email law (UK PECR/GDPR, EU, US CAN-SPAM) expects the sender to be
 // identifiable with an address and gives the recipient an easy way to stop.
 const FOOTER = `--
@@ -43,12 +52,14 @@ function esc(s: string): string {
 }
 
 export async function sendOutreachEmail(msg: { to: string; subject: string; text: string }): Promise<void> {
-  const text = `${msg.text.trim()}\n\n${FOOTER}`
+  const text = `${msg.text.trim()}\n\n${SIGNATURE.join('\n')}\n\n${FOOTER}`
   // Plain, personal-looking HTML: heavy templates read as marketing and are
   // more likely to be filtered as cold email.
-  const html = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">${
+  // A complete document: SpamAssassin's HTML_MIME_NO_HTML_TAG docks points
+  // from an HTML part that is only a fragment (mail-tester showed -0.5).
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(msg.subject)}</title></head><body><div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">${
     esc(msg.text.trim()).replace(/\n/g, '<br>')
-  }<br><br><span style="color:#888;font-size:12px">${esc(FOOTER).replace(/\n/g, '<br>')}</span></div>`
+  }<br><br><em style="font-style:italic;color:#333">${SIGNATURE.map(esc).join('<br>')}</em><br><br><span style="color:#888;font-size:12px">${esc(FOOTER).replace(/\n/g, '<br>')}</span></div></body></html>`
   await transport().sendMail({
     from: `"${OUTREACH_NAME}" <${OUTREACH_FROM}>`,
     replyTo: OUTREACH_FROM,
