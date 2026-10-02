@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
+import { buildPriceBlock, money, priceListText, priceRange } from '@/lib/pricing'
 import { COUNTRIES, MARKETS, marketFor, outreachNotes, toE164, countryFromPhone, dealCountry, type Market } from '@/lib/markets'
 import type {
   Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
@@ -332,12 +333,7 @@ CHANNEL: WhatsApp-first markets (Ghana, Nigeria, Kenya, Mexico) get short, warm 
 
 OUTPUT FORMAT: Start each message with a label line on its own, using the deal's exact name: "WhatsApp to [deal name]:" or "Email to [deal name]:". For email, the next line is "Subject: ...". Then only the message itself, signed as Dominic. Put any notes for Dominic after all the messages.
 
-Services and typical Ghana prices (quote in the deal's own market currency elsewhere):
-- Web design & development: GHS 3,500–4,000
-- Web applications: GHS 8,000–25,000
-- Mobile apps: GHS 10,000–30,000
-- Business software: GHS 15,000–40,000
-- GIS solutions: GHS 3,000–10,000
+Prices: quote only from the PRICE LIST block, in the deal's own market and currency.
 
 Real projects you can cite as proof: Lavimac Royal Hotel website and hotel system, Mikjan and Nhyiraba hotel systems, Solani Construction, Royal Ecclesia church system, MoldGold school system, Obotan credit union system, Dynamic Shipping & Logistics, Bubbly Montessori, BABMA Municipal Assembly. Never invent results or quotes from them.
 
@@ -356,16 +352,15 @@ COUNCIL ACCOUNTABILITY: After your response, always include a "— Council Check
     short: 'Project',
     description: 'Scope projects & generate proposals',
     briefingLabel: 'Generate a Proposal',
-    dailyPrompt: `Generate a ready-to-send project proposal I can use today. Choose the service most likely to close quickly with a Ghanaian client.
+    dailyPrompt: `Write a proposal for the first deal in PROPOSAL CANDIDATES. If there are none, say so in one line and tell me which deals to move to "Interested" first.
 
-Include:
-- Project title and one-line summary
-- Scope of work with clear deliverables
-- Timeline in weeks
-- Itemised GHS pricing with a total
-- Payment terms (deposit + milestones)
+Use exactly this layout, so it can be published as the client's proposal page:
 
-Make it professional enough to forward directly to a client. All amounts in GHS.`,
+Proposal for [exact deal name]:
+Price: [one total amount, with its currency, from the PRICE LIST for their market]
+[3 to 5 short plain-text paragraphs for the client: what gets built, what it includes, the timeline in weeks, and payment terms (deposit, then milestones). No markdown, no headers.]
+
+Base it only on what the candidate line says about them. Put any notes for me after the proposal.`,
     systemPrompt: `You are ProjectBot, a project scoping AI for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). When given a project brief, you:
 
 1. Ask clarifying questions if needed
@@ -373,12 +368,7 @@ Make it professional enough to forward directly to a client. All amounts in GHS.
 3. Generate a GHS-priced proposal with line items
 4. Flag risks and assumptions
 
-Service pricing ranges (always in GHS):
-- Web design & development: GHS 3,500–4,000
-- Web applications: GHS 8,000–25,000
-- Mobile apps (iOS/Android): GHS 10,000–30,000
-- Business software & automation: GHS 15,000–40,000
-- GIS solutions: GHS 3,000–10,000
+Prices: use only the PRICE LIST block, in the client's own market and currency, and always write the currency.
 
 Consider Ghanaian project realities: internet reliability, client capacity, payment schedules, and local market expectations. Write proposals professional enough to send directly to a client.
 
@@ -412,12 +402,7 @@ When given revenue data, you:
 4. Suggest strategies to close any gap to GHS 12,000
 5. Project the month-end total based on current pace
 
-Service pricing context:
-- Web design & development: GHS 3,500–4,000
-- Web applications: GHS 8,000–25,000
-- Mobile apps: GHS 10,000–30,000
-- Business software: GHS 15,000–40,000
-- GIS solutions: GHS 3,000–10,000
+Service prices: see the PRICE LIST block.
 
 Always express amounts in GHS. Give clear, actionable analysis.
 
@@ -1145,6 +1130,30 @@ function buildMoneyToChase(deals: Deal[], invoices: Invoice[]): string {
   parts.push(`FORECAST: closed this month ${fmt(month)}; open pipeline weighted by stage odds ${fmt(weighted)} (${Object.entries(STAGE_WEIGHT).filter(([k, w]) => w > 0 && k !== 'closed').map(([k, w]) => `${STAGE_LABELS[k as DealStage]} ${Math.round(w * 100)}%`).join(', ')}); likely month end ${fmt(month + weighted)} against the GHS 12,000 goal, ${daysLeft} days left.`)
 
   return `MONEY TO CHASE (real data):\n${parts.join('\n\n')}`
+}
+
+/**
+ * ProjectBot's work list: deals that said they're interested (or replied)
+ * and have no proposal yet, most valuable first. Proposals are only written
+ * for these real deals; the daily button used to invent a client.
+ */
+async function buildProposalCandidates(deals: Deal[]): Promise<string> {
+  let proposed = new Set<string>()
+  try {
+    const res = await fetch('/api/proposals', { cache: 'no-store' })
+    const rows = res.ok ? await res.json() as Array<{ deal_id?: string | null }> : []
+    proposed = new Set(rows.map(r => r.deal_id).filter((x): x is string => !!x))
+  } catch { /* unknown: list every interested deal */ }
+  const ready = deals
+    .filter(d => !proposed.has(d.id) && (d.stage === 'interested' || (d.stage === 'contacted' && d.repliedAt)))
+    .sort((a, b) => b.valueGHS - a.valueGHS)
+    .slice(0, 5)
+  if (!ready.length) return 'PROPOSAL CANDIDATES: none (no interested deals without a proposal).'
+  return `PROPOSAL CANDIDATES (interested, no proposal yet; best first):\n${ready.map(d => {
+    const m = marketFor(dealCountry(d))
+    const last = d.whatsappHistory?.length ? ` | last message: "${d.whatsappHistory[d.whatsappHistory.length - 1].text.replace(/\s+/g, ' ').slice(0, 160)}"` : ''
+    return `  - ${d.name} | ${d.industry || 'business'} | ${m.country} (${m.currency}) | ${STAGE_LABELS[d.stage]} | estimated GHS ${d.valueGHS.toLocaleString()}${d.repliedAt ? ' | they replied' : ''}${last}`
+  }).join('\n')}`
 }
 
 /** ContentBot's work list: deals due a message today, with what it needs to write one. */
@@ -2497,6 +2506,75 @@ function OutreachSendChips({ content, deals, onUpdateDeal }: { content: string; 
   )
 }
 
+/**
+ * Turns a ProjectBot "Proposal for X:" reply into the client's proposal page
+ * (/p/<id>) in one tap, in the deal's own currency, then moves the deal to
+ * Proposal with a follow-up in 3 days, as the deal card's proposal flow does.
+ */
+function ProposalPublishChip({ content, deals, onUpdateDeal }: { content: string; deals: Deal[]; onUpdateDeal: (id: string, updates: Partial<Deal>) => void }) {
+  const [state, setState] = useState<'idle' | 'saving' | 'error'>('idle')
+  const [link, setLink] = useState<string | null>(null)
+  const parsed = useMemo(() => {
+    const m = content.match(/^\s*\**\s*Proposal for (.+?)\s*:\s*\**\s*$/im)
+    if (!m) return null
+    const rest = content.slice(m.index! + m[0].length)
+    const notesAt = rest.search(/^\s*[-—*_ ]*(Council Check|This project contributes|Notes? for)/im)
+    const body = (notesAt >= 0 ? rest.slice(0, notesAt) : rest).trim()
+    const priceLine = body.match(/^\s*Price:\s*(.+)$/im)
+    const amount = priceLine ? parseInt(priceLine[1].replace(/[^\d]/g, ''), 10) || 0 : 0
+    const scope = body.replace(/^\s*Price:.*$/im, '').replace(/\*\*/g, '').trim()
+    return { name: m[1].replace(/\*/g, '').trim(), amount, scope }
+  }, [content])
+  if (!parsed || !parsed.scope) return null
+  const n = parsed.name.toLowerCase()
+  const deal = deals.find(d => d.name.toLowerCase() === n) ?? deals.find(d => d.name.toLowerCase().includes(n) || n.includes(d.name.toLowerCase()))
+  const market = marketFor(deal ? dealCountry(deal) : undefined)
+
+  const publish = async () => {
+    setState('saving')
+    try {
+      const res = await fetch('/api/proposals', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dealId: deal?.id, businessName: deal?.name ?? parsed.name, industry: deal?.industry, scope: parsed.scope, priceGHS: parsed.amount, currency: market.currency }),
+      })
+      const d = await res.json()
+      if (!res.ok) throw new Error(d.error)
+      setLink(`${window.location.origin}${d.path}`)
+      setState('idle')
+      if (deal) {
+        onUpdateDeal(deal.id, {
+          stage: 'proposal', stageChangedAt: Date.now(), followUpAt: Date.now() + 3 * 86400000,
+          // valueGHS is in GHS, so only a Ghana price can replace the estimate.
+          ...(market.currency === 'GHS' && parsed.amount ? { valueGHS: parsed.amount } : {}),
+        })
+      }
+    } catch {
+      setState('error')
+    }
+  }
+
+  const chip = (color: string) => ({ padding: '5px 12px', borderRadius: 20, border: `1px solid ${color}60`, background: `${color}10`, color, fontSize: 12, fontFamily: FONT_BODY, fontWeight: 500, textDecoration: 'none', cursor: 'pointer' } as React.CSSProperties)
+  if (link) {
+    const text = `Hi, here's my proposal for ${deal?.name ?? parsed.name}: ${link}`
+    return (
+      <div style={{ marginTop: 8, paddingLeft: 34, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+        <a href={link} target="_blank" rel="noopener noreferrer" style={chip(GOLD)}>↗ Proposal page</a>
+        {deal?.phone && <a href={`https://wa.me/${deal.phone.replace(/\D/g, '')}?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener noreferrer" onClick={() => onUpdateDeal(deal.id, waSentUpdates(deal, text))} style={chip(WA_GREEN)}>📱 Send on WhatsApp</a>}
+        {deal?.email && <a href={`mailto:${deal.email}?subject=${encodeURIComponent(`Proposal for ${deal.name}`)}&body=${encodeURIComponent(text)}`} style={chip(GOLD)}>✉ Send by email</a>}
+        <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{deal ? `${deal.name} moved to Proposal, follow-up in 3 days` : 'No matching deal, so no stage change'}</span>
+      </div>
+    )
+  }
+  return (
+    <div style={{ marginTop: 8, paddingLeft: 34 }}>
+      <button onClick={publish} disabled={state === 'saving'} style={chip(state === 'error' ? '#e05c5c' : GOLD)}>
+        {state === 'saving' ? 'Publishing…' : state === 'error' ? 'Could not publish · retry' : `→ Publish proposal page for ${deal?.name ?? parsed.name}${parsed.amount ? ` (${money(market, parsed.amount)})` : ''}`}
+      </button>
+    </div>
+  )
+}
+
 function ProspectActionChips({ content, onOpenImport }: { content: string; onOpenImport?: (p: ParsedProspect[]) => void }) {
   const prospects = extractProspects(content)
   const parsed = parseProspects(content)
@@ -2737,6 +2815,7 @@ function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport, deals,
       )}
       {!isUser && agentId === 'viral' && <ViralCalendarChip content={message.content} />}
       {!isUser && agentId === 'content' && deals && onUpdateDeal && <OutreachSendChips content={message.content} deals={deals} onUpdateDeal={onUpdateDeal} />}
+      {!isUser && agentId === 'scope' && deals && onUpdateDeal && <ProposalPublishChip content={message.content} deals={deals} onUpdateDeal={onUpdateDeal} />}
       {!isUser && isLast && (agentId === 'content' || agentId === 'viral') && (
         <SocialShareBar content={message.content} schedule={agentId === 'viral'} />
       )}
@@ -2880,7 +2959,8 @@ async function writeProspectLines(candidates: ProspectCandidate[], market: Marke
   const systemPrompt = `You write cold-call lines for Ecstasy Technologies, a web and software studio (ecstasytechnologies.com). The businesses below are real, from Google Maps, and have no website. For each, return one object {"i", "why", "service", "value", "pitch"}:
 - why: one sentence on why THIS business is losing customers without a website, using only the facts given (industry, reviews, rating, area, social page). Never invent history, owners, competitors or numbers.
 - service: one of "web design", "mobile app", "business software", "GIS".
-- value: whole number in ${market.currency}; a typical small-business website there costs ${market.currency}${market.budget}.
+- value: whole number in ${market.currency} for the service you pick, within these prices for ${market.country}:
+${priceListText(market)}
 - pitch: one opening sentence for first contact, using their business name.
 How first contact works in ${market.country}: ${outreachNotes(market)}
 Output only the JSON array, nothing else.`
@@ -2937,7 +3017,7 @@ async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise
 /** Writes a lead list in ProspectBot's format (parseProspects reads it back for Import). */
 async function presentProspects(candidates: ProspectCandidate[], city: string, market: Market, header: string): Promise<string> {
   const lines = await writeProspectLines(candidates, market)
-  const defaultValue = parseInt(market.budget.replace(/,/g, ''), 10) || 0
+  const defaultValue = priceRange('web', market)[0]
   const money = market.country === 'Ghana' ? 'GHS ' : market.currency
   const blocks = candidates.map((c, i) => {
     const l = lines[i]
@@ -3876,6 +3956,7 @@ function ProposalModal({ deal, onClose }: { deal: Deal; onClose: () => void }) {
           industry: deal.industry || undefined,
           scope,
           priceGHS: parseInt(price, 10) || 0,
+          currency: marketFor(dealCountry(deal)).currency,
         }),
       })
       const d = await res.json()
@@ -8709,8 +8790,14 @@ export default function Page() {
       const snapshot = buildPipelineSnapshot(deals, pageInvoices)
       const extra = activeAgent === 'revenue' ? buildMoneyToChase(deals, pageInvoices)
         : activeAgent === 'content' ? buildOutreachQueue(deals)
+        : activeAgent === 'scope' ? await buildProposalCandidates(deals)
         : ''
-      const liveWorkspace = { ...workspace, _live: [snapshot, extra].filter(Boolean).join('\n\n') }
+      // Every bot that quotes a price gets the one shared list, for Ghana plus
+      // each market that has an open deal.
+      const prices = ['content', 'scope', 'revenue'].includes(activeAgent)
+        ? buildPriceBlock(deals.filter(d => d.stage !== 'closed' && d.stage !== 'lost').map(d => dealCountry(d)))
+        : ''
+      const liveWorkspace = { ...workspace, _live: [snapshot, extra, prices].filter(Boolean).join('\n\n') }
       const reply = await callChat(AGENTS[activeAgent].systemPrompt, next, pinnedNotes, activeAgent, liveWorkspace)
       setAllChats((prev) => ({ ...prev, [activeAgent]: [...(prev[activeAgent] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(activeAgent, 'assistant', reply)

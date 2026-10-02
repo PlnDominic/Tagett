@@ -99,8 +99,10 @@ create table if not exists proposals (
   first_viewed_at bigint,
   last_viewed_at  bigint,
   created_at   bigint not null,
+  currency     text not null default 'GHS',
   updated_at   timestamptz default now()
 );
+alter table proposals add column if not exists currency text not null default 'GHS';
 
 -- 9. Maintenance retainers (recurring monthly revenue)
 create table if not exists retainers (
