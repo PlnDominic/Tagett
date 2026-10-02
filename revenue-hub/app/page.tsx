@@ -450,22 +450,19 @@ COUNCIL ACCOUNTABILITY: After your response, always include a "— Council Check
     briefingLabel: "Today's Viral Strategy",
     dailyPrompt: `Give me today's complete viral content strategy for Ecstasy Technologies (ecstasytechnologies.com). Mix project proof posts with generic viral content that builds an audience even without showing specific work.
 
-Deliver:
+Start with one line headed "Last results:" saying what WHAT HAS WORKED tells you to do more or less of today (or that nothing is tracked yet). Then use a project and an angle you have NOT used in RECENT POSTS.
 
-1. VIRAL X THREAD (6 tweets). Project reveal.
-   — Tweet 1: "We just built [X] for a [client type] in Ghana 🇬🇭" — hook with real project name
-   — Tweets 2-4: walk through what was built, what it solved, one surprising detail
-   — Tweet 5: "Screenshot below 👇" — specify which screenshot to attach
-   — Tweet 6: CTA → ecstasytechnologies.com
+Deliver these three, each starting with its label on its own line exactly as shown:
 
-2. GENERIC VIRAL POST (X or LinkedIn) — No project needed
-   — Bold opinion, hot take, or insight about tech/business in Ghana/Africa
-   — e.g. "Unpopular opinion: most Ghanaian businesses don't need a GHS 20,000 app. They need a GHS 4,000 website and WhatsApp integration."
-   — Something that makes people argue in the comments
+X (showcase):
+A 6-tweet project reveal thread, tweets numbered 1/6 to 6/6.
+1/6 hooks with the real project ("We just built [X] for a [client type] 🇬🇭"); 2/6 to 4/6 walk through what was built and what it solved; 5/6 says which screenshot to attach; 6/6 is the CTA.
 
-3. INSTAGRAM / TIKTOK REELS SCRIPT (60 seconds)
-   — Alternate between: (a) screen recording walkthrough of a real project, OR (b) talking head "here's what I learned building software in Ghana"
-   — Specify which format today and what to show/say
+LinkedIn (take):
+A bold opinion, hot take, or insight about tech/business in Ghana/Africa that makes people argue in the comments. No project needed.
+
+TikTok (reel):
+A 60-second script, shot by shot: either a screen-recording walkthrough of a real project or a talking-head "here's what I learned building software in Ghana".
 
 Write everything as Dominic Kudom. Immediately postable.`,
     systemPrompt: `You are ViralBot, a viral social media strategist for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You help Dominic Kudom build a massive following that converts to inbound software clients by showcasing REAL completed projects with screenshots as social proof.
@@ -504,7 +501,7 @@ SCREENSHOT DIRECTION: Always tell Dominic exactly what to screenshot or record. 
 CONTENT PHILOSOPHY:
 - Hook = the project reveal ("We built X for a Y in Ghana")
 - Proof = the screenshot / screen recording
-- Story = what problem it solved, how long it took, what the client said
+- Story = what problem it solved. Say how long it took or what the client said ONLY if that detail is in the PORTFOLIO or CLIENT QUOTES blocks. Never invent a quote, timeline, or result; a fabricated testimonial posted publicly costs more trust than it wins
 - CTA = ecstasytechnologies.com or DM for inquiries
 
 FORMATS:
@@ -514,7 +511,11 @@ Instagram/TikTok: screen recording walkthrough script (shot by shot)
 
 GHANA CONTEXT: Ground everything in real Ghanaian business realities — mobile money payments, WhatsApp-first clients, unreliable internet, the pride of seeing your business go digital.
 
-Always write as Dominic Kudom. No placeholders. Immediately postable.
+Always write as Dominic Kudom. Immediately postable: no placeholders, and no invented facts. If a detail isn't known, write around it.
+
+OUTPUT FORMAT: Start every postable piece with a label line on its own: the platform (X, LinkedIn, Instagram, Facebook or TikTok) followed by its type in brackets, (showcase), (take) or (reel), then a colon. Example: "LinkedIn (showcase):". Put nothing but the post itself under each label, so each piece can go straight into the Social Calendar. The pipeline and Council lines below come after all posts.
+
+MEMORY: RECENT POSTS lists what has already gone out or is drafted. Don't reuse the same project or the same angle within 14 days. WHAT HAS WORKED lists which posts actually led to deals; lean toward those types.
 
 PIPELINE ROLE: Viral project content attracts inbound clients who see the work and want the same. After your content output, always add:
 "This content targets: [client type]
@@ -1118,6 +1119,11 @@ async function callChat(
 
   fullPrompt += '\n\n' + systemPrompt
 
+  if (agentId === 'viral') {
+    const viral = await buildViralContext()
+    if (viral) fullPrompt += `\n\n${viral}`
+  }
+
   if (workspace) {
     const intel = buildTeamIntel(workspace, agentId)
     if (intel) {
@@ -1127,7 +1133,7 @@ async function callChat(
 
   fullPrompt += `\n\n— SCOPE BOUNDARY —
 You are working exclusively for Ecstasy Technologies, a web design and development company based in Bibiani, Ghana, owned by Dominic Kudom.
-Only reference businesses and people that appear in the LIVE PIPELINE or TEAM INTEL above. If you are asked about a client, business, or number that is not listed there, say "I don't have that in the pipeline" rather than guessing.
+Only reference businesses and people that appear in the LIVE PIPELINE, TEAM INTEL, PORTFOLIO or CLIENT QUOTES above (or your own project list). If you are asked about a client, business, or number that is not listed there, say "I don't have that in the pipeline" rather than guessing.
 Never invent names, phone numbers, prices, or deals that are not in the data above.
 — END SCOPE BOUNDARY —`
 
@@ -1139,6 +1145,205 @@ Never invent names, phone numbers, prices, or deals that are not in the data abo
   const data = await res.json()
   if (!res.ok) throw new Error(data.error ?? `Server error ${res.status}`)
   return data.text as string
+}
+
+// ─── ViralBot memory ──────────────────────────────────────────────────────────
+// ViralBot used to get the same prompt every day with no idea what had already
+// gone out, what the live portfolio holds, or which posts brought in deals, so
+// it repeated itself and filled gaps by inventing details. This gives it all
+// three, read from the Social Calendar, the pipeline and the website.
+
+const VIRAL_CATEGORY_LABELS: Record<string, string> = {
+  'viral-showcase': 'Project Showcase', 'viral-take': 'Hot Take', 'viral-reel': 'Reel Script',
+}
+const POST_TYPE_TO_CATEGORY: Record<string, string> = {
+  showcase: 'viral-showcase', take: 'viral-take', reel: 'viral-reel',
+}
+
+function postCategoryLabel(category: string): string {
+  return SOCIAL_CATEGORIES.find(c => c.id === category)?.label
+    ?? VIRAL_CATEGORY_LABELS[category]
+    ?? (category === 'status' ? 'Status Pack' : category === 'teach' ? '🎓 Teach' : category)
+}
+
+/** Post text without the tracked WhatsApp line appendTrackedCTA adds. */
+function stripTrackedCTA(content: string): string {
+  return content.replace(/\n*WhatsApp: https:\/\/wa\.me\/\S+\s*$/, '').trim()
+}
+
+/**
+ * The code an inbound WhatsApp carries ("Ref ABCD") when it came from this
+ * post. Read from the link itself: some callers build the code from an id
+ * other than the post's (the testimonial flow does), so recomputing it lies.
+ */
+function postRefCode(post: SocialPost): string | null {
+  return post.content.match(/wa\.me\/\d+\?text=Ref%20([A-Za-z0-9]+)/)?.[1] ?? null
+}
+
+async function fetchPortfolioBlock(): Promise<string> {
+  try {
+    const res = await fetch('/api/website/projects', { cache: 'no-store' })
+    if (!res.ok) return ''
+    const projects = await res.json() as WebsiteProject[]
+    if (!Array.isArray(projects) || projects.length === 0) return ''
+    const lines = projects.slice(0, 40).map(p => [
+      p.title, p.category, p.client, p.year, p.status === 'in-progress' ? 'in progress' : null,
+      p.features?.length ? `features: ${p.features.slice(0, 3).join(', ')}` : null,
+      p.technologies?.length ? `stack: ${p.technologies.join(', ')}` : null,
+    ].filter(Boolean).join(' | '))
+    return `PORTFOLIO (live from ecstasytechnologies.com, more current than your built-in list; only these details are known):\n${lines.map(l => `  - ${l}`).join('\n')}`
+  } catch {
+    return ''
+  }
+}
+
+function buildViralMemory(posts: SocialPost[], deals: Deal[]): string {
+  const day = 86400000
+  const now = Date.now()
+  const snippet = (p: SocialPost) => stripTrackedCTA(p.content).replace(/\s+/g, ' ').slice(0, 110)
+  const when = (t: number) => new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const parts: string[] = []
+
+  const recent = posts
+    .filter(p => now - (p.postedAt ?? p.createdAt) < 21 * day)
+    .sort((a, b) => (b.postedAt ?? b.createdAt) - (a.postedAt ?? a.createdAt))
+    .slice(0, 12)
+  parts.push(recent.length
+    ? `RECENT POSTS (last 21 days; don't repeat these projects or angles):\n${recent.map(p =>
+        `  - ${when(p.postedAt ?? p.createdAt)} | ${p.status} | ${p.category ? postCategoryLabel(p.category) : 'uncategorised'} | ${snippet(p)}`).join('\n')}`
+    : 'RECENT POSTS: none yet.')
+
+  // Testimonial posts are drafted from what a client actually said (see
+  // TestimonialModal), so they are the only quotes ViralBot may reuse.
+  const quotes = posts.filter(p => p.id.endsWith('-testimonial')).slice(0, 8)
+  parts.push(quotes.length
+    ? `CLIENT QUOTES (real; the only client words you may quote):\n${quotes.map(p => `  - ${stripTrackedCTA(p.content)}`).join('\n')}`
+    : 'CLIENT QUOTES: none recorded. Do not quote any client.')
+
+  const posted = posts.filter(p => p.status === 'posted')
+  if (posted.length === 0) {
+    parts.push('WHAT HAS WORKED: nothing tracked yet (no posts marked as posted).')
+  } else {
+    const byCat = new Map<string, { posted: number; deals: number; ghs: number }>()
+    for (const p of posted) {
+      const key = p.category ? postCategoryLabel(p.category) : 'Uncategorised'
+      const row = byCat.get(key) ?? { posted: 0, deals: 0, ghs: 0 }
+      row.posted++
+      const deal = p.resultDealId ? deals.find(d => d.id === p.resultDealId) : undefined
+      if (deal) { row.deals++; row.ghs += deal.valueGHS }
+      byCat.set(key, row)
+    }
+    const rows = [...byCat.entries()]
+      .sort((a, b) => b[1].deals - a[1].deals || b[1].posted - a[1].posted)
+      .map(([cat, r]) => `  - ${cat}: ${r.posted} posted, ${r.deals} led to a deal${r.ghs ? ` (GHS ${r.ghs.toLocaleString()})` : ''}`)
+    const wins = posted
+      .filter(p => p.resultDealId && deals.some(d => d.id === p.resultDealId))
+      .slice(0, 5)
+      .map(p => {
+        const d = deals.find(x => x.id === p.resultDealId)!
+        return `  - "${snippet(p)}" led to ${d.name} (${STAGE_LABELS[d.stage]}, GHS ${d.valueGHS.toLocaleString()})`
+      })
+    parts.push(`WHAT HAS WORKED (posts marked as leading to a deal):\n${rows.join('\n')}${wins.length ? `\nPosts that brought deals:\n${wins.join('\n')}` : ''}`)
+  }
+  return parts.join('\n\n')
+}
+
+async function fetchSocialPosts(): Promise<SocialPost[]> {
+  // The database has posts made on other devices; this browser's copy is the
+  // fallback, and is merged in for drafts that haven't synced yet.
+  const local = loadSocialPosts()
+  try {
+    const res = await fetch('/api/social-posts', { cache: 'no-store' })
+    const remote = res.ok ? await res.json() as SocialPost[] : []
+    if (!Array.isArray(remote) || remote.length === 0) return local
+    const ids = new Set(remote.map(p => p.id))
+    return [...remote, ...local.filter(p => !ids.has(p.id))]
+  } catch {
+    return local
+  }
+}
+
+async function buildViralContext(): Promise<string> {
+  const [posts, portfolio] = await Promise.all([fetchSocialPosts(), fetchPortfolioBlock()])
+  const memory = buildViralMemory(posts, loadDeals())
+  return `— VIRALBOT MEMORY —\n${[portfolio, memory].filter(Boolean).join('\n\n')}\n— END VIRALBOT MEMORY —`
+}
+
+/**
+ * Splits a ViralBot answer into Social Calendar drafts, one per labelled piece
+ * ("LinkedIn (take):"). The Pipeline and Council lines after the posts are
+ * notes for Dominic, not post text, so everything from them on is dropped.
+ */
+function parseViralDrafts(text: string): SocialPost[] {
+  const platformMap: Record<string, SocialPlatform[]> = {
+    x: ['twitter'], twitter: ['twitter'], linkedin: ['linkedin'], facebook: ['facebook'],
+    instagram: ['instagram'], tiktok: ['tiktok', 'instagram'],
+  }
+  const notesAt = text.search(/^\s*[-—*_ ]*(Council Check|This content targets:)/im)
+  const body = notesAt >= 0 ? text.slice(0, notesAt) : text
+  const base = Date.now()
+  const drafts: SocialPost[] = []
+  let current: { platforms: SocialPlatform[]; category?: string; lines: string[] } | null = null
+  const flush = () => {
+    const content = current?.lines.join('\n').trim()
+    if (!current || !content) return
+    // Timestamp last: the WhatsApp ref code is the id's final 4 characters.
+    const id = `viral-${base + drafts.length}`
+    // A reel script is filming notes, not a caption, so it gets no WhatsApp link.
+    const tracked = current.category === 'viral-reel' ? content : appendTrackedCTA(content, id)
+    drafts.push({ id, content: tracked, platforms: current.platforms, status: 'draft', createdAt: base, category: current.category })
+  }
+  for (const line of body.split('\n')) {
+    const m = line.replace(/[*_#]/g, '').match(/^\s*(X|Twitter|LinkedIn|Facebook|Instagram|TikTok)\s*(?:\((showcase|take|reel)\))?\s*:\s*(.*)$/i)
+    if (m) {
+      flush()
+      current = { platforms: platformMap[m[1].toLowerCase()], category: m[2] ? POST_TYPE_TO_CATEGORY[m[2].toLowerCase()] : undefined, lines: m[3] ? [m[3]] : [] }
+    } else if (current) {
+      current.lines.push(line)
+    }
+  }
+  flush()
+  return drafts
+}
+
+function ViralCalendarChip({ content }: { content: string }) {
+  const [state, setState] = useState<'idle' | 'saving' | 'done' | 'error'>('idle')
+  const drafts = useMemo(() => parseViralDrafts(content), [content])
+  const pending = useRef<SocialPost[] | null>(null)
+  if (drafts.length === 0) return null
+
+  const send = async () => {
+    setState('saving')
+    if (!pending.current) {
+      // Local first so the Social Calendar shows them straight away; a retry
+      // only resends what failed, so it never duplicates a draft.
+      saveSocialPosts([...drafts, ...loadSocialPosts()])
+      pending.current = drafts
+    }
+    // POST (insert-one) rather than PUT, which would replace the whole list.
+    const failed: SocialPost[] = []
+    await Promise.all(pending.current.map(d =>
+      fetch('/api/social-posts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(d) })
+        .then(r => { if (!r.ok) failed.push(d) }).catch(() => { failed.push(d) })))
+    pending.current = failed
+    setState(failed.length === 0 ? 'done' : 'error')
+  }
+
+  return (
+    <div style={{ marginTop: 8, paddingLeft: 34 }}>
+      <button
+        onClick={send}
+        disabled={state === 'saving' || state === 'done'}
+        title="Adds each labelled post as a separate draft, without the Pipeline and Council notes"
+        style={{ padding: '5px 14px', borderRadius: 20, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: state === 'error' ? '#e05c5c' : GOLD, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: state === 'idle' || state === 'error' ? 'pointer' : 'default' }}
+      >
+        {state === 'saving' ? 'Adding…'
+          : state === 'done' ? `✓ ${drafts.length} draft${drafts.length === 1 ? '' : 's'} in Social Calendar`
+          : state === 'error' ? `${pending.current?.length ?? 0} not synced · retry`
+          : `→ Send ${drafts.length} draft${drafts.length === 1 ? '' : 's'} to Social Calendar`}
+      </button>
+    </div>
+  )
 }
 
 // ─── Agent handoff map ────────────────────────────────────────────────────────
@@ -2232,6 +2437,7 @@ function ChatMessage({ message, agentId, isLast, onHandoff, onOpenImport }: {
       {!isUser && agentId === 'prospect' && (
         <ProspectActionChips content={message.content} onOpenImport={onOpenImport} />
       )}
+      {!isUser && agentId === 'viral' && <ViralCalendarChip content={message.content} />}
       {!isUser && isLast && (agentId === 'content' || agentId === 'viral') && (
         <SocialShareBar content={message.content} schedule={agentId === 'viral'} />
       )}
@@ -4977,7 +5183,8 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
                       {PLATFORM_ICONS[p]} {PLATFORM_LABELS[p]}
                     </span>
                   ))}
-                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{SOCIAL_CATEGORIES.find(c => c.id === post.category)?.label ?? (post.category === 'status' ? 'Status Pack' : post.category === 'teach' ? '🎓 Teach' : post.category)}</span>}
+                  {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{postCategoryLabel(post.category)}</span>}
+                  {postRefCode(post) && <span title={`A WhatsApp that opens with "Ref ${postRefCode(post)}" came from this post. Use 🎯 Mark as worked to link the deal.`} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>Ref {postRefCode(post)}</span>}
                 </div>
               )}
 
