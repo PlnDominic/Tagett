@@ -97,6 +97,8 @@ export interface Deal {
   whatsappHistory?: Array<{ text: string; sentAt: number }>
   /** Outreach emails sent from the app (support@ecstasytechnologies.com). */
   emailHistory?: Array<{ subject: string; text: string; sentAt: number }>
+  /** Personal messages sent on social media (copied from Social listening, sent by hand). */
+  dmHistory?: Array<{ network: string; text: string; sentAt: number }>
   repliedAt?: number
   callLog?: Array<{ calledAt: number }>
   websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'

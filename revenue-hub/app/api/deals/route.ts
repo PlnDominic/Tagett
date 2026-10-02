@@ -24,6 +24,7 @@ interface Deal {
   lastContactedAt?: number
   whatsappHistory?: Array<{ text: string; sentAt: number }>
   emailHistory?: Array<{ subject: string; text: string; sentAt: number }>
+  dmHistory?: Array<{ network: string; text: string; sentAt: number }>
   repliedAt?: number
   callLog?: Array<{ calledAt: number }>
   websiteCheck?: string
@@ -52,6 +53,7 @@ function toRow(d: Deal) {
     last_contacted_at: d.lastContactedAt ?? null,
     whatsapp_history: d.whatsappHistory ?? [],
     email_history: d.emailHistory ?? [],
+    dm_history: d.dmHistory ?? [],
     replied_at: d.repliedAt ?? null,
     call_log: d.callLog ?? [],
     website_check: d.websiteCheck ?? null,
@@ -81,6 +83,7 @@ function fromRow(r: Record<string, unknown>): Deal {
     lastContactedAt: (r.last_contacted_at as number | null) ?? undefined,
     whatsappHistory: (r.whatsapp_history as Deal['whatsappHistory']) ?? undefined,
     emailHistory: (r.email_history as Deal['emailHistory']) ?? undefined,
+    dmHistory: (r.dm_history as Deal['dmHistory']) ?? undefined,
     repliedAt: (r.replied_at as number | null) ?? undefined,
     callLog: (r.call_log as Deal['callLog']) ?? undefined,
     websiteCheck: (r.website_check as string | null) ?? undefined,

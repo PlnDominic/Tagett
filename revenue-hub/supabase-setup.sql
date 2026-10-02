@@ -189,3 +189,6 @@ alter table deals add column if not exists currency text;  -- ISO 4217, e.g. GBP
 
 -- A business's own social profiles ({facebook, instagram, linkedin, tiktok, x, checkedAt})
 alter table deals add column if not exists socials jsonb;
+
+-- Personal messages sent on social media from Social listening
+alter table deals add column if not exists dm_history jsonb default '[]'::jsonb;

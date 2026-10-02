@@ -7,6 +7,7 @@ import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
 import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
+import { REQUEST_PHRASES, THREAD_PHRASES, cleanHandle, messageUrl, profileUrl, xReplyUrl, type Commenter, type ListenMode, type ListenPlatform, type Recency } from '@/lib/social-listening'
 import { currencyCodeFor, toGHS, type GhsRates } from '@/lib/fx'
 import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
 import { buildPriceBlock, money, priceListText, priceRange } from '@/lib/pricing'
@@ -3506,6 +3507,7 @@ async function writeOutreachEmail(deal: Deal): Promise<{ subject: string; body: 
   const previous = [
     ...(deal.emailHistory ?? []).map(e => ({ at: e.sentAt, text: `email "${e.subject}": ${e.text}` })),
     ...(deal.whatsappHistory ?? []).map(w => ({ at: w.sentAt, text: `WhatsApp: ${w.text}` })),
+    ...(deal.dmHistory ?? []).map(m => ({ at: m.sentAt, text: `${m.network} message: ${m.text}` })),
   ].sort((a, b) => a.at - b.at).slice(-3)
   const facts = [
     `Business: ${deal.name}`,
@@ -8806,6 +8808,335 @@ function MissionBar({ workspace, earnedGHS, pipelineGHS, onClearWorkspace }: {
 
 // ─── ScoutToolbar ─────────────────────────────────────────────────────────────
 
+// ─── Social listening ─────────────────────────────────────────────────────────
+
+interface ListenPost { url: string; platform: ListenPlatform; author?: string; postId?: string; title: string; snippet: string; date?: string }
+interface ListenLead {
+  key: string
+  platform: ListenPlatform
+  handle?: string
+  name: string
+  industry: string
+  place?: string
+  need: string
+  message: string
+  postUrl: string
+  postId?: string
+  country?: string
+}
+
+const LISTEN_RULES = (country: string) => {
+  const market = country === 'Anywhere' ? null : marketFor(country)
+  return `Write as Dominic Kudom, founder of Ecstasy Technologies (ecstasytechnologies.com), a web and software studio. ${market ? `They are most likely in ${market.country}: ${outreachNotes(market)}` : 'They could be anywhere: use plain international English.'}
+Each message is a personal first message on social media, 35 to 70 words: mention what they said or what their business does, so it could only have been written to them; name one concrete thing a website or system would do for a business like theirs (orders or bookings while they sleep, being found on Google, looking established next to competitors); you may mention one similar past project from PROJECTS, never invent one or any result; end with one easy question. No prices, no links except ecstasytechnologies.com at most once, no "hope you're well", no hard sell, no hashtags or emojis. Sign "Dominic, Ecstasy Technologies".
+PROJECTS: ${KNOWN_PROJECTS}`
+}
+
+const READ_REQUESTS_PROMPT = (country: string) => `You read public Facebook and X posts found by searching phrases like "I need a website". Keep only posts where the writer needs a website, app, online store or developer for their own business or project. Drop developers, agencies and freelancers advertising their own services, job adverts for employees, courses, and anything unrelated.
+${LISTEN_RULES(country)}
+Return only a JSON array, one object per kept post: {"i": post number, "name": business or person name as shown (else the handle), "industry": what they do or "Unknown", "place": town/country if stated else "", "need": what they asked for in under 15 words, "message": the reply to send them}`
+
+const READ_COMMENTS_PROMPT = (country: string) => `You read the comments under a social media post that invited businesses to introduce themselves ("comment your business"). Keep only comments from someone promoting a business or service of their own. Drop jokes, emojis, "following", people asking questions, and the post's author.
+${LISTEN_RULES(country)}
+Return only a JSON array, one object per kept comment: {"handle": the commenter's username exactly as given (without @), "name": business name if stated else the handle, "industry": what they sell or do, "place": town/country if stated else "", "need": in under 15 words, what a website would do for them, "message": the direct message to send them}`
+
+async function askJsonArray<T>(systemPrompt: string, content: string): Promise<T[]> {
+  const res = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ systemPrompt, messages: [{ role: 'user', content }] }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? 'The AI could not read these right now.')
+  const text = String(data.text ?? '')
+  const start = text.indexOf('['), end = text.lastIndexOf(']')
+  if (start < 0 || end < start) return []
+  try { return JSON.parse(text.slice(start, end + 1)) as T[] } catch { return [] }
+}
+
+function dmSentUpdates(deal: Deal, network: ListenPlatform, text: string): Partial<Deal> {
+  const updates: Partial<Deal> = {
+    lastContactedAt: Date.now(),
+    dmHistory: [...(deal.dmHistory ?? []), { network, text, sentAt: Date.now() }],
+  }
+  if (deal.stage === 'found') { updates.stage = 'contacted'; updates.stageChangedAt = Date.now() }
+  if (!deal.followUpAt && deal.stage !== 'closed' && deal.stage !== 'lost') {
+    updates.followUpAt = Date.now() + 3 * 86400000
+    updates.sequenceStep = 1
+  }
+  return updates
+}
+
+const LISTEN_SKIPPED_KEY = 'tagett.listen.skipped'
+function readSkipped(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(LISTEN_SKIPPED_KEY) ?? '[]') as string[]) } catch { return new Set() }
+}
+function saveSkipped(s: Set<string>) {
+  try { localStorage.setItem(LISTEN_SKIPPED_KEY, JSON.stringify(Array.from(s).slice(-2000))) } catch { /* private mode */ }
+}
+
+// Kept across open/close so a long search isn't lost by closing the panel.
+const listenCache: { mode: ListenMode; country: string; recency: Recency; posts: ListenPost[]; leads: ListenLead[]; threadLeads: Record<string, ListenLead[]> } = {
+  mode: 'requests', country: 'Ghana', recency: 'm', posts: [], leads: [], threadLeads: {},
+}
+
+const PLATFORM_ICON: Record<ListenPlatform, string> = { facebook: 'f', x: '𝕏', instagram: 'ig', tiktok: 'tt' }
+
+/**
+ * Finds people asking for a website on Facebook and X, and businesses
+ * introducing themselves under "comment your business" posts on Instagram
+ * and TikTok, and writes each one a personal first message. Messages are
+ * copied and the conversation opened for Dominic to send from his own
+ * account: none of these platforms allow sending cold DMs through an API.
+ */
+function SocialListeningModal({ deals, onAddDeal, onUpdateDeal, onClose }: {
+  deals: Deal[]
+  onAddDeal: (d: Omit<Deal, 'id' | 'createdAt'>) => void
+  onUpdateDeal: (id: string, updates: Partial<Deal>) => void
+  onClose: () => void
+}) {
+  const [mode, setMode] = useState<ListenMode>(listenCache.mode)
+  const [country, setCountry] = useState(listenCache.country)
+  const [recency, setRecency] = useState<Recency>(listenCache.recency)
+  const [posts, setPosts] = useState<ListenPost[]>(listenCache.posts)
+  const [leads, setLeads] = useState<ListenLead[]>(listenCache.leads)
+  const [threadLeads, setThreadLeads] = useState<Record<string, ListenLead[]>>(listenCache.threadLeads)
+  const [busy, setBusy] = useState('')
+  const [error, setError] = useState('')
+  const [skipped, setSkipped] = useState<Set<string>>(() => new Set())
+  const [opened, setOpened] = useState<Set<string>>(new Set())
+  const [pasteFor, setPasteFor] = useState<string | null>(null)
+  const [pasted, setPasted] = useState('')
+  const [apify, setApify] = useState<boolean | null>(null)
+
+  useEffect(() => { setSkipped(readSkipped()) }, [])
+  useEffect(() => { fetch('/api/social/comments').then(r => r.json()).then(d => setApify(!!d.configured)).catch(() => setApify(false)) }, [])
+  useEffect(() => { Object.assign(listenCache, { mode, country, recency, posts, leads, threadLeads }) }, [mode, country, recency, posts, leads, threadLeads])
+
+  const dealCountryFor = (c: string) => (c === 'Anywhere' ? undefined : c)
+  const findDeal = (l: ListenLead) => l.handle
+    ? deals.find(d => d.socials?.[l.platform]?.toLowerCase() === profileUrl(l.platform, l.handle!).toLowerCase())
+    : deals.find(d => d.sourceUrl === l.postUrl)
+  const dmsToday = deals.reduce((n, d) => n + (d.dmHistory ?? []).filter(m => m.sentAt >= new Date().setHours(0, 0, 0, 0)).length, 0)
+
+  const search = async () => {
+    setBusy('Searching…'); setError('')
+    try {
+      const res = await fetch('/api/social/listen', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ mode, country, recency }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Search failed')
+      const found = (data.posts as ListenPost[]).filter(p => !skipped.has(p.url) && !deals.some(d => d.sourceUrl === p.url))
+      if (mode === 'threads') { setPosts(found); setBusy(''); if (!found.length) setError('No new posts found. Try a longer time range or Anywhere.'); return }
+      if (!found.length) { setLeads([]); setBusy(''); setError('No new posts found. Try a longer time range or Anywhere.'); return }
+      setBusy(`Reading ${found.length} posts…`)
+      const list = found.map((p, i) => `${i + 1}. [${p.platform}${p.author ? ` @${p.author}` : ''}${p.date ? `, ${p.date}` : ''}] ${p.title} | ${p.snippet}`).join('\n')
+      const rows = await askJsonArray<{ i: number; name?: string; industry?: string; place?: string; need?: string; message?: string }>(READ_REQUESTS_PROMPT(country), list)
+      const next = rows.flatMap(r => {
+        const p = found[Number(r.i) - 1]
+        if (!p || !r.message) return []
+        return [{
+          key: p.url, platform: p.platform, handle: p.author, name: r.name || p.author || 'Unknown', industry: r.industry || 'Unknown',
+          place: r.place || undefined, need: r.need || '', message: r.message, postUrl: p.url, postId: p.postId, country: dealCountryFor(country),
+        }]
+      })
+      setLeads(next)
+      if (!next.length) setError(`Read ${found.length} posts: none were someone needing a website (most were developers advertising). Try another time range.`)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const readComments = async (post: ListenPost, pastedText?: string) => {
+    setBusy(pastedText ? 'Reading the comments…' : 'Fetching comments…'); setError('')
+    try {
+      let content: string
+      if (pastedText) {
+        content = pastedText.slice(0, 12000)
+      } else {
+        const res = await fetch('/api/social/comments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: post.url }) })
+        const data = await res.json()
+        if (!res.ok) { setPasteFor(post.url); throw new Error(`${data.error ?? 'Could not fetch comments'}. Paste them instead.`) }
+        const comments = (data.comments as Commenter[]).filter(c => !deals.some(d => d.socials?.[post.platform]?.toLowerCase() === profileUrl(post.platform, c.handle).toLowerCase()))
+        if (!comments.length) throw new Error('No new commenters on this post.')
+        content = comments.map(c => `@${c.handle}: ${c.text}`).join('\n')
+      }
+      setBusy('Writing a message for each business…')
+      // A few dozen comments at a time keeps each AI call small enough for the free tiers.
+      const lines = content.split('\n')
+      const chunks: string[] = []
+      for (let i = 0; i < lines.length; i += 30) chunks.push(lines.slice(i, i + 30).join('\n'))
+      const rows: Array<{ handle?: string; name?: string; industry?: string; place?: string; need?: string; message?: string }> = []
+      for (const chunk of chunks) {
+        rows.push(...await askJsonArray<typeof rows[number]>(READ_COMMENTS_PROMPT(country), `POST (by ${post.author ? '@' + post.author : 'unknown'}): ${post.title} | ${post.snippet}\n\nCOMMENTS:\n${chunk}`))
+      }
+      const seen = new Set<string>()
+      const next = rows.flatMap(r => {
+        const handle = r.handle ? cleanHandle(r.handle) : ''
+        if (!handle || !r.message || seen.has(handle.toLowerCase()) || handle.toLowerCase() === post.author?.toLowerCase()) return []
+        seen.add(handle.toLowerCase())
+        return [{
+          key: `${post.platform}:${handle.toLowerCase()}`, platform: post.platform, handle, name: r.name || handle, industry: r.industry || 'Unknown',
+          place: r.place || undefined, need: r.need || '', message: r.message, postUrl: post.url, country: dealCountryFor(country),
+        }]
+      })
+      setThreadLeads(prev => ({ ...prev, [post.url]: next }))
+      setPasteFor(null); setPasted('')
+      if (!next.length) setError('No businesses found in these comments.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not read the comments')
+    } finally {
+      setBusy('')
+    }
+  }
+
+  const leadFields = (l: ListenLead, extra: Partial<Deal>): Omit<Deal, 'id' | 'createdAt'> => ({
+    name: l.name, industry: l.industry, valueGHS: 0, stage: 'found', country: l.country,
+    sourceUrl: l.postUrl,
+    socials: l.handle ? { [l.platform]: profileUrl(l.platform, l.handle) } : undefined,
+    ...extra,
+  })
+  const addToPipeline = (l: ListenLead) => { if (!findDeal(l)) onAddDeal(leadFields(l, {})) }
+  const markSent = (l: ListenLead) => {
+    const deal = findDeal(l)
+    if (deal) { onUpdateDeal(deal.id, dmSentUpdates(deal, l.platform, l.message)); return }
+    const base = leadFields(l, {})
+    onAddDeal({ ...base, ...dmSentUpdates({ ...base, id: '', createdAt: Date.now() } as Deal, l.platform, l.message) })
+  }
+  const copyAndOpen = (l: ListenLead, url: string) => {
+    navigator.clipboard?.writeText(l.message).catch(() => {})
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setOpened(prev => new Set(prev).add(l.key))
+  }
+  const skip = (key: string) => {
+    const next = new Set(skipped).add(key)
+    setSkipped(next); saveSkipped(next)
+  }
+  const updateMessage = (key: string, message: string) => {
+    setLeads(prev => prev.map(l => l.key === key ? { ...l, message } : l))
+    setThreadLeads(prev => Object.fromEntries(Object.entries(prev).map(([k, ls]) => [k, ls.map(l => l.key === key ? { ...l, message } : l)])))
+  }
+
+  const btn = (primary: boolean): React.CSSProperties => ({ fontSize: 11, padding: '5px 10px', borderRadius: 7, border: primary ? 'none' : `1px solid ${BORDER}`, background: primary ? GOLD : 'transparent', color: primary ? '#fff' : TEXT, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap' })
+  const field: React.CSSProperties = { padding: '6px 8px', borderRadius: 7, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 12, fontFamily: FONT_BODY, outline: 'none' }
+
+  // A render function, not a component: a component defined here would remount
+  // on every keystroke and the message box would lose focus.
+  const renderLead = (l: ListenLead) => {
+    const deal = findDeal(l)
+    const lastDm = deal?.dmHistory?.[deal.dmHistory.length - 1]
+    const where = l.handle ? messageUrl(l.platform, l.handle) : l.postUrl
+    return (
+      <div key={l.key} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' }}>
+          <div style={{ minWidth: 0 }}>
+            <span style={{ fontSize: 10, fontWeight: 700, fontFamily: FONT_HEADING, color: MUTED, marginRight: 6 }}>{PLATFORM_ICON[l.platform]}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, fontFamily: FONT_HEADING, color: TEXT }}>{l.name}</span>
+            {l.handle && <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}> @{l.handle}</span>}
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{[l.industry !== 'Unknown' ? l.industry : null, l.place, l.need].filter(Boolean).join(' · ')}</div>
+          </div>
+          <a href={l.postUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, flexShrink: 0 }}>post ↗</a>
+        </div>
+        {deal && <div style={{ fontSize: 11, color: '#10B981', fontFamily: FONT_BODY }}>In pipeline{lastDm ? ` · messaged ${new Date(lastDm.sentAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : ''}</div>}
+        <textarea value={l.message} onChange={e => updateMessage(l.key, e.target.value)} rows={4} style={{ ...field, width: '100%', boxSizing: 'border-box', resize: 'vertical', lineHeight: 1.5 }} />
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          {l.platform === 'x' && l.postId
+            ? <>
+                <button onClick={() => { window.open(xReplyUrl(l.postId!, l.message), '_blank', 'noopener,noreferrer'); setOpened(prev => new Set(prev).add(l.key)) }} style={btn(true)}>Reply on X</button>
+                {l.handle && <button onClick={() => copyAndOpen(l, messageUrl('x', l.handle!))} style={btn(false)}>Copy & DM</button>}
+              </>
+            : <button onClick={() => copyAndOpen(l, where)} style={btn(true)}>{l.handle && l.platform !== 'x' ? 'Copy & open chat' : 'Copy & open post'}</button>}
+          {opened.has(l.key) && <button onClick={() => { markSent(l); setOpened(prev => { const n = new Set(prev); n.delete(l.key); return n }) }} style={{ ...btn(false), borderColor: '#10B981', color: '#10B981' }}>✓ I sent it</button>}
+          {!deal && <button onClick={() => addToPipeline(l)} style={btn(false)}>Add to pipeline</button>}
+          <button onClick={() => skip(l.key)} style={{ ...btn(false), color: MUTED }}>Skip</button>
+        </div>
+      </div>
+    )
+  }
+
+  const visibleLeads = leads.filter(l => !skipped.has(l.key))
+  const visiblePosts = posts.filter(p => !skipped.has(p.url))
+
+  return createPortal(
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1000, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: SURFACE, borderRadius: '16px 16px 0 0', width: '100%', maxWidth: 720, maxHeight: '92vh', overflowY: 'auto', padding: '18px 16px 24px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 15, color: TEXT }}>Social listening</div>
+            <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>
+              {dmsToday} personal message{dmsToday === 1 ? '' : 's'} sent today. Keep it to about 20 a day per account so the platforms don&apos;t flag you.
+            </div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: MUTED, background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {([['requests', 'Asking for a website · Facebook, X'], ['threads', '"Comment your business" · Instagram, TikTok']] as Array<[ListenMode, string]>).map(([m, label]) => (
+            <button key={m} onClick={() => { setMode(m); setError('') }} style={{ fontSize: 12, padding: '6px 12px', borderRadius: 16, border: `1px solid ${mode === m ? GOLD : BORDER}`, background: mode === m ? `${GOLD}14` : 'transparent', color: mode === m ? GOLD : MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>{label}</button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={country} onChange={e => setCountry(e.target.value)} style={field}>
+            <option value="Anywhere">Anywhere</option>
+            {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={recency} onChange={e => setRecency(e.target.value as Recency)} style={field}>
+            <option value="w">Past week</option>
+            <option value="m">Past month</option>
+            <option value="y">Past year</option>
+          </select>
+          <button onClick={search} disabled={!!busy} style={{ ...btn(true), padding: '7px 14px', fontSize: 12, opacity: busy ? 0.6 : 1 }}>
+            {busy || 'Search'}
+          </button>
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>2 SerpAPI searches</span>
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, lineHeight: 1.5 }}>
+          {mode === 'requests'
+            ? `Looks for posts saying "${REQUEST_PHRASES.slice(0, 3).join('", "')}" and similar. Developers advertising themselves are left out. Each person gets a message written to what they posted.`
+            : `Looks for posts saying "${THREAD_PHRASES.slice(0, 2).join('", "')}" and similar, then reads the comments and writes each business there a personal message.${apify === false ? ' To fetch comments automatically, add APIFY_TOKEN in Vercel; until then, paste them.' : ''}`}
+        </div>
+        {error && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>{error}</div>}
+
+        {mode === 'requests' && visibleLeads.map(renderLead)}
+
+        {mode === 'threads' && visiblePosts.map(p => {
+          const found = (threadLeads[p.url] ?? []).filter(l => !skipped.has(l.key))
+          return (
+            <div key={p.url} style={{ border: `1px solid ${BORDER}`, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, fontFamily: FONT_HEADING, color: MUTED, marginRight: 6 }}>{PLATFORM_ICON[p.platform]}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, fontFamily: FONT_HEADING, color: TEXT }}>{p.title}</span>
+                  <div style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>{p.snippet}</div>
+                </div>
+                <a href={p.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, flexShrink: 0 }}>open ↗</a>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {apify !== false && <button onClick={() => readComments(p)} disabled={!!busy} style={btn(true)}>{threadLeads[p.url] ? 'Read comments again' : 'Find businesses in comments'}</button>}
+                <button onClick={() => setPasteFor(pasteFor === p.url ? null : p.url)} style={btn(apify === false)}>Paste comments</button>
+                <button onClick={() => skip(p.url)} style={{ ...btn(false), color: MUTED }}>Skip post</button>
+              </div>
+              {pasteFor === p.url && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <textarea value={pasted} onChange={e => setPasted(e.target.value)} rows={5} placeholder="Open the post, select the comments, copy, and paste them here (usernames included)" style={{ ...field, width: '100%', boxSizing: 'border-box', resize: 'vertical' }} />
+                  <button onClick={() => readComments(p, pasted)} disabled={!pasted.trim() || !!busy} style={{ ...btn(true), alignSelf: 'flex-start' }}>Find businesses</button>
+                </div>
+              )}
+              {found.map(renderLead)}
+            </div>
+          )
+        })}
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 const SCOUT_PRESETS = [
   { label: 'Need website Ghana', query: 'Search Reddit and web for Ghana businesses saying they need a website or web developer. Find at least 3 specific businesses or individuals looking for websites.' },
   { label: 'Poor website complaints', query: 'Find businesses in Ghana complaining about their current website being slow, outdated, or unprofessional. Check social media and forums.' },
@@ -8815,11 +9146,15 @@ const SCOUT_PRESETS = [
   { label: 'Competitor analysis', query: 'Search for other web development companies in Ghana. What are they offering? What gaps exist that Ecstasy Technologies can fill?' },
 ]
 
-function ScoutToolbar({ onSend, loading }: { onSend: (q: string) => void; loading: boolean }) {
+function ScoutToolbar({ onSend, loading, onOpenListening }: { onSend: (q: string) => void; loading: boolean; onOpenListening: () => void }) {
   return (
     <div style={{ padding: '8px 12px 6px', borderBottom: `1px solid ${BORDER}`, background: SURFACE, flexShrink: 0 }}>
       <div style={{ fontSize: 10, color: MUTED, fontFamily: FONT_BODY, marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Quick searches</div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <button onClick={onOpenListening} title="Find people asking for a website on Facebook and X, and businesses in 'comment your business' posts on Instagram and TikTok, with a personal message for each"
+          style={{ fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 600, color: '#fff', border: 'none', borderRadius: 14, padding: '4px 11px', background: GOLD, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+          📡 Social listening
+        </button>
         {SCOUT_PRESETS.map(p => (
           <button key={p.label} onClick={() => !loading && onSend(p.query)}
             disabled={loading}
@@ -8976,6 +9311,7 @@ export default function Page() {
   const [notesOpen, setNotesOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [importModal, setImportModal] = useState<ParsedProspect[] | null>(null)
+  const [listeningOpen, setListeningOpen] = useState(false)
   const [pinnedNotes, setPinnedNotes] = useState(() =>
     typeof window !== 'undefined' ? (localStorage.getItem('tagett-pinned-notes-v1') ?? '') : ''
   )
@@ -9637,7 +9973,8 @@ export default function Page() {
           <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
           {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
           <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onAskCouncil={handleAskCouncil} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
-          {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
+          {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} onOpenListening={() => setListeningOpen(true)} />}
+        {listeningOpen && <SocialListeningModal deals={deals} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onClose={() => setListeningOpen(false)} />}
           <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
         </div>
         <PinnedNotesPanel open={notesOpen} notes={pinnedNotes} onClose={() => setNotesOpen(false)} onChange={setPinnedNotes} />
@@ -9719,7 +10056,8 @@ export default function Page() {
         <MissionBar workspace={workspace} earnedGHS={earnedGHS} pipelineGHS={pipelineGHS} onClearWorkspace={() => setWorkspace({})} />
         {error && <ErrorBanner error={error} onDismiss={() => setError(null)} />}
         <MessageList messages={messages} loading={loading} agent={agent} onSend={handleSend} onFindProspects={handleFindProspects} onShowOvernight={handleShowOvernight} deals={deals} onUpdateDeal={handleUpdateDeal} onAskCouncil={handleAskCouncil} onRunBriefing={handleRunBriefing} onHandoff={handleHandoff} onOpenImport={setImportModal} />
-        {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} />}
+        {activeAgent === 'scout' && <ScoutToolbar onSend={handleSend} loading={loading} onOpenListening={() => setListeningOpen(true)} />}
+        {listeningOpen && <SocialListeningModal deals={deals} onAddDeal={handleAddDeal} onUpdateDeal={handleUpdateDeal} onClose={() => setListeningOpen(false)} />}
         <ChatInput agentShort={agent.short} onSend={handleSend} loading={loading} prefill={activeAgent === 'viral' ? viralPrefill : null} onClearPrefill={() => setViralPrefill(null)} />
       </>
     )
