@@ -6,7 +6,9 @@ import { stripEmDashes } from '@/lib/text'
 // it now answers every request with a 404 "model does not exist". gpt-oss-120b
 // is the migration target Groq names for it.
 const GROQ_MODEL    = 'openai/gpt-oss-120b'
-const GEMINI_MODEL  = 'gemini-2.0-flash'
+// gemini-2.0-flash was shut down by Google and now 404s; it was silently the
+// last fallback, so every request that reached it surfaced as "API error 404".
+const GEMINI_MODEL  = 'gemini-2.5-flash'
 const MISTRAL_MODEL = 'mistral-small-latest'
 const MAX_TOOL_ITERATIONS = 5
 
@@ -75,9 +77,9 @@ export async function POST(req: NextRequest) {
 
   const tools: ToolDefinition[] = agentId ? getAgentTools(agentId) : []
 
-  const groq    = groqKey    ? { url: GROQ_URL,    key: groqKey,    model: GROQ_MODEL }    : null
-  const gemini  = geminiKey  ? { url: GEMINI_URL,  key: geminiKey,  model: GEMINI_MODEL }  : null
-  const mistral = mistralKey ? { url: MISTRAL_URL, key: mistralKey, model: MISTRAL_MODEL } : null
+  const groq    = groqKey    ? { name: 'Groq', url: GROQ_URL,    key: groqKey,    model: GROQ_MODEL }    : null
+  const gemini  = geminiKey  ? { name: 'Gemini', url: GEMINI_URL,  key: geminiKey,  model: GEMINI_MODEL }  : null
+  const mistral = mistralKey ? { name: 'Mistral', url: MISTRAL_URL, key: mistralKey, model: MISTRAL_MODEL } : null
 
   // Tool-using agents lead with Mistral/Gemini (llama-family tool calls are the
   // least reliable); plain chat leads with Groq for latency. Every configured
@@ -101,16 +103,19 @@ export async function POST(req: NextRequest) {
 
   for (let i = 0; i < MAX_TOOL_ITERATIONS; i++) {
     let res: Response | null = null
-    let lastError = 'No LLM provider available'
     let lastStatus = 502
+    const failures: string[] = []
 
     for (const provider of chain) {
       const attempt = await callLLM(provider.url, provider.key, provider.model, chatMessages, tools)
       if (attempt.ok) { res = attempt; break }
 
-      const err = await attempt.json().catch(() => ({}))
-      lastError = (err as { error?: { message?: string } })?.error?.message ?? `API error ${attempt.status}`
+      // Gemini's OpenAI-compatible endpoint wraps its error body in an array.
+      const raw = await attempt.json().catch(() => ({}))
+      const err = (Array.isArray(raw) ? raw[0] : raw) as { error?: { message?: string } }
+      const lastError = err?.error?.message ?? `API error ${attempt.status}`
       lastStatus = attempt.status
+      failures.push(`${provider.name} ${attempt.status}: ${lastError}`)
 
       // Malformed tool calls are a quirk of the model, not the provider —
       // retrying the same one without tools usually succeeds.
@@ -124,8 +129,11 @@ export async function POST(req: NextRequest) {
     }
 
     if (!res) {
-      console.error('[chat] all providers failed:', lastError)
-      return NextResponse.json({ error: lastError }, { status: lastStatus })
+      // Report every provider's failure, not just the last one. The last
+      // fallback's error used to hide that the real cause was rate limits upstream.
+      const error = failures.length ? `All AI providers failed (${failures.join(' | ')})` : 'No LLM provider available'
+      console.error('[chat]', error)
+      return NextResponse.json({ error }, { status: lastStatus })
     }
 
     const data = await res.json()
