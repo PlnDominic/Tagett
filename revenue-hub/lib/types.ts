@@ -72,7 +72,12 @@ export interface Deal {
   id: string
   name: string
   industry: string
+  /** Always GHS: every total and the monthly goal add this up. */
   valueGHS: number
+  /** For a deal abroad, the value in its own currency (see currency); valueGHS is it converted. */
+  valueLocal?: number
+  /** ISO 4217 code of valueLocal, e.g. "GBP". Unset for GHS deals. */
+  currency?: string
   stage: DealStage
   phone?: string
   email?: string
@@ -107,6 +112,8 @@ export interface ParsedProspect {
   whyNeedsWebsite?: string
   servicePitch?: string
   valueGHS: number
+  /** A value quoted in another currency, as written; converted on import. */
+  valueLocal?: number
   phonePitch?: string
   /** Market the lead is in, when the list says (Maps-sourced lists do). */
   country?: string

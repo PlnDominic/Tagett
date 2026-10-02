@@ -36,9 +36,17 @@ describe('parseProspects', () => {
     expect(leads[0].phone).toBe('+233241234567')
   })
 
-  it('reads GHS values but leaves foreign-currency values at 0', () => {
+  it('reads GHS values, and keeps foreign-currency values separately', () => {
     expect(leads[0].valueGHS).toBe(3500)
+    expect(leads[0].valueLocal).toBeUndefined()
     expect(leads[1].valueGHS).toBe(0)
+    expect(leads[1].valueLocal).toBe(1500)
+  })
+
+  it('treats kr and zł amounts as foreign, not GHS', () => {
+    const [se, pl] = parseProspects(`1. Business Name — Malmo Bakery\n   Estimated value: kr 15,000\n\n2. Business Name — Krakow Dental\n   Estimated value: 6,000 zł`)
+    expect([se.valueGHS, se.valueLocal]).toEqual([0, 15000])
+    expect([pl.valueGHS, pl.valueLocal]).toEqual([0, 6000])
   })
 
   it('keeps country and a cleaned source link', () => {

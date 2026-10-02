@@ -6,6 +6,7 @@ import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
+import { currencyCodeFor, toGHS, type GhsRates } from '@/lib/fx'
 import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
 import { buildPriceBlock, money, priceListText, priceRange } from '@/lib/pricing'
 import { COUNTRIES, MARKETS, marketFor, outreachNotes, toE164, countryFromPhone, dealCountry, type Market } from '@/lib/markets'
@@ -2470,10 +2471,11 @@ function ProposalPublishChip({ content, deals, onUpdateDeal }: { content: string
       setLink(`${window.location.origin}${d.path}`)
       setState('idle')
       if (deal) {
+        // The proposal's price becomes the deal's value, in its own currency.
+        const value = parsed.amount ? await valueFieldsFor(parsed.amount, dealCountry(deal)) : {}
         onUpdateDeal(deal.id, {
           stage: 'proposal', stageChangedAt: Date.now(), followUpAt: Date.now() + 3 * 86400000,
-          // valueGHS is in GHS, so only a Ghana price can replace the estimate.
-          ...(market.currency === 'GHS' && parsed.amount ? { valueGHS: parsed.amount } : {}),
+          ...value,
         })
       }
     } catch {
@@ -3560,6 +3562,25 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
     </div>,
     document.body,
   )
+}
+
+let ratesPromise: Promise<GhsRates | null> | null = null
+/** Today's rates against GHS from /api/fx, fetched once per session. */
+function fetchGhsRates(): Promise<GhsRates | null> {
+  ratesPromise ??= fetch('/api/fx').then(r => r.ok ? r.json() : null).then(d => d?.rates ?? null).catch(() => { ratesPromise = null; return null })
+  return ratesPromise
+}
+
+/**
+ * Value fields for a deal from an amount in its own market's currency:
+ * the amount and currency are kept, and valueGHS is it converted. Without a
+ * rate, valueGHS is left at 0 rather than guessed.
+ */
+async function valueFieldsFor(amount: number, country: string | undefined): Promise<Pick<Deal, 'valueGHS' | 'valueLocal' | 'currency'>> {
+  const code = currencyCodeFor(country)
+  if (code === 'GHS') return { valueGHS: Math.round(amount), valueLocal: undefined, currency: undefined }
+  const ghs = toGHS(amount, code, await fetchGhsRates())
+  return { valueGHS: ghs ?? 0, valueLocal: amount, currency: code }
 }
 
 function waSentUpdates(deal: Deal, text: string): Partial<Deal> {
@@ -4739,7 +4760,9 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             </select>
           </div>
           <div style={{ fontFamily: FONT_HEADING, fontSize: 13, fontWeight: 700, color: deal.stage === 'closed' ? GOLD : deal.stage === 'lost' ? MUTED : TEXT, marginTop: 3 }}>
-            GHS {deal.valueGHS.toLocaleString()}
+            {deal.currency && deal.currency !== 'GHS' && deal.valueLocal
+              ? <>{money(marketFor(dealCountry(deal)), deal.valueLocal)} <span style={{ fontSize: 11, fontWeight: 400, color: MUTED }}>≈ GHS {deal.valueGHS.toLocaleString()}</span></>
+              : <>GHS {deal.valueGHS.toLocaleString()}</>}
           </div>
         </div>
         <button onClick={() => onDelete(deal.id)} style={{ width: 22, height: 22, flexShrink: 0, borderRadius: 5, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontSize: 10, cursor: 'pointer' }}>✕</button>
@@ -4955,9 +4978,11 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
   const [proposalModal, setProposalModal] = useState<Deal | null>(null)
   const [auditModal, setAuditModal] = useState<Deal | null>(null)
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.name) return
-    onAdd({ name: form.name, industry: form.industry, valueGHS: parseInt(form.valueGHS, 10) || 0, stage: 'found', phone: form.phone || undefined, email: form.email || undefined, country: form.country })
+    // Entered in the selected country's currency; stored converted to GHS too.
+    const value = await valueFieldsFor(parseInt(form.valueGHS, 10) || 0, form.country)
+    onAdd({ name: form.name, industry: form.industry, ...value, stage: 'found', phone: form.phone || undefined, email: form.email || undefined, country: form.country })
     // Keep the country: leads are usually added in batches from one market.
     setForm(p => ({ name: '', industry: '', valueGHS: '', phone: '', email: '', country: p.country }))
     setShowForm(false)
@@ -5022,7 +5047,7 @@ function DealPipeline({ deals, onAdd, onMove, onDelete, onUpdate, onOpenAgent, o
           <div style={{ marginTop: 12, padding: 12, borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}06`, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Business name *" style={inputStyle} />
             <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="Industry" style={inputStyle} />
-            <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder="Value (GHS)" type="number" style={inputStyle} />
+            <input value={form.valueGHS} onChange={e => setForm(p => ({ ...p, valueGHS: e.target.value }))} placeholder={`Value (${marketFor(form.country).currency})`} type="number" style={inputStyle} />
             <input value={form.phone} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone (+233…)" style={inputStyle} />
             <input value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} placeholder="Email (for international leads)" type="email" style={inputStyle} />
             <select value={form.country} onChange={e => setForm(p => ({ ...p, country: e.target.value }))} title="Country the business is in" style={inputStyle}>
@@ -9038,14 +9063,22 @@ export default function Page() {
     }).catch(() => {})
   }, [])
 
-  const handleImportProspects = useCallback((selected: ParsedProspect[], followUpDays: number) => {
+  const handleImportProspects = useCallback(async (selected: ParsedProspect[], followUpDays: number) => {
     const base = Date.now()
     const followUpAt = base + followUpDays * 24 * 60 * 60 * 1000
+    // Values quoted in a lead's own currency are kept and converted to GHS.
+    const rates = selected.some(p => p.valueLocal) ? await fetchGhsRates() : null
     const newDeals: Deal[] = selected.map((p, i) => ({
       id: (base + i).toString(),
       name: p.name,
       industry: p.industry,
       valueGHS: p.valueGHS,
+      ...(() => {
+        const country = (p.country && COUNTRIES.includes(p.country) ? p.country : undefined) ?? countryFromPhone(p.phone)
+        const code = currencyCodeFor(country)
+        if (!p.valueLocal || code === 'GHS') return {}
+        return { valueLocal: p.valueLocal, currency: code, valueGHS: toGHS(p.valueLocal, code, rates) ?? 0 }
+      })(),
       stage: 'found' as DealStage,
       phone: p.phone,
       country: (p.country && COUNTRIES.includes(p.country) ? p.country : undefined) ?? countryFromPhone(p.phone),
