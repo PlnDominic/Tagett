@@ -162,6 +162,7 @@ ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS city             TEXT;
 ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS social_results   TEXT;
 ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS prospect_results TEXT;
 ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS pitch_drafts     TEXT;
+ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS prospect_leads   JSONB;  -- {country, city, locale, industry, leads[]} from Google Maps, shown in ProspectBot
 ALTER TABLE agent_runs ADD COLUMN IF NOT EXISTS pipeline_summary TEXT;
 
 CREATE INDEX IF NOT EXISTS agent_runs_run_at_idx ON agent_runs (run_at DESC);

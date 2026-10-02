@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase, writeToleratingSchemaDrift } from '@/lib/supabase'
+import { findProspects } from '@/lib/prospect-search'
+import { prospectKey } from '@/lib/prospects'
 import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
 import { sendPush } from '@/lib/push'
@@ -150,8 +152,18 @@ export async function GET(req: NextRequest) {
   const outreach = outreachNotes(market)
   const workspace: Record<string, string> = {}
 
+  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null }> = []
+  try {
+    const sb = getSupabase()
+    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone')
+    deals = data ?? []
+  } catch { /* continue without DB data */ }
+
   // ── 1. Scout + Prospect in parallel ──────────────────────────────────────────
-  const [social, prospect] = await Promise.all([
+  // Prospects come straight from Google Maps (no LLM), the same search the
+  // ProspectBot start screen uses, so the morning list holds only real
+  // businesses and is saved as data the app can show and import.
+  const [social, found] = await Promise.all([
     runAgent({
       apiKey,
       tools: getAgentTools('scout'),
@@ -161,18 +173,20 @@ Call search_google FIRST — it's a real Google search via SerpAPI and actually 
 OUTREACH FOR THIS MARKET: ${outreach}`,
       userMsg: `Find businesses in ${locale} right now who need a website or are complaining about their current one. Use search_google first with country="${market.country}".`,
     }),
-    runAgent({
-      apiKey,
-      tools: getAgentTools('prospect'),
-      system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month in new deals.
-You are ProspectBot. NEVER invent businesses — only report what a tool call actually returns.
-Industry focus this run: ${industry}. Place focus: ${locale} — often a small town or village, which is the point: businesses there are far less likely to already have a website.
-Call search_google_maps FIRST with query="${industry}", city="${city}" and country="${market.country}" — it returns real local businesses with a website field, so any result with no website is a confirmed prime prospect with a verified phone number. The country argument matters: city names repeat across countries and Maps will silently return the wrong one. If this run is outside Ghana, also call search_brownbook with the same query/city/country — it's an independently sourced free directory that occasionally has an email address Maps doesn't. If the market is United Kingdom, also call search_yell — real phone numbers on some listings, not all. Only fall back to search_web if all of these return no results or are unavailable. Find 3-5 real businesses without websites. Include phone numbers (and emails, when found) where available.
-OUTREACH FOR THIS MARKET: ${outreach}`,
-      userMsg: `Find ${industry} businesses in ${locale} that don't have websites. Use search_google_maps first with country="${market.country}" — it's built for exactly this.`,
+    findProspects({
+      industries: [industry],
+      // Region included: village names repeat within a country.
+      city: place.admin1 ? `${city}, ${place.admin1}` : city,
+      country: market.country,
+      exclude: deals.map(d => prospectKey(d.name, d.phone ?? undefined)),
+      excludeNames: deals.map(d => d.name),
     }),
   ])
 
+  const leads = found.candidates
+  const prospect = leads.length
+    ? leads.map((c, i) => `${i + 1}. ${c.name} | ${c.address ?? 'address not listed'} | ${c.phone ?? 'no phone listed'} | ${c.reviews} Google reviews${c.rating ? `, rated ${c.rating}` : ''}${c.socialOnly ? ` | social page only: ${c.socialOnly}` : ''}`).join('\n')
+    : `No ${industry} businesses without a website found on Google Maps in ${locale} (checked ${found.stats.scanned}).`
   workspace.scout = social
   workspace.prospect = prospect
 
@@ -194,12 +208,6 @@ ${intel}`,
   workspace.content = pitches
 
   // ── 3. RevenueBot — pipeline summary ─────────────────────────────────────────
-  let deals: Array<{ stage: string; value_ghs: number; name: string }> = []
-  try {
-    const sb = getSupabase()
-    const { data } = await sb.from('deals').select('stage, value_ghs, name')
-    deals = data ?? []
-  } catch { /* continue without DB data */ }
 
   const closed = deals.filter(d => d.stage === 'closed').reduce((s, d) => s + d.value_ghs, 0)
   const pipeline = deals.filter(d => d.stage !== 'closed').reduce((s, d) => s + d.value_ghs, 0)
@@ -220,7 +228,9 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
   // ── 4. Save to Supabase ───────────────────────────────────────────────────────
   try {
     const sb = getSupabase()
-    await sb.from('agent_runs').insert({
+    // prospect_leads is newer than the table; tolerate it being missing so
+    // the rest of the run is still recorded before the migration runs.
+    await writeToleratingSchemaDrift([{
       run_at: new Date().toISOString(),
       industry,
       // Qualified with the country: run history is ambiguous otherwise now that
@@ -230,7 +240,10 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
       prospect_results: prospect,
       pitch_drafts: pitches,
       pipeline_summary: pipelineSummary,
-    })
+      // Structured leads + where they came from, for ProspectBot's
+      // "found overnight" list in the app.
+      prospect_leads: { country: market.country, city, locale, industry, leads },
+    }], rows => sb.from('agent_runs').insert(rows))
   } catch { /* non-fatal */ }
 
   // ── 5. Send email ─────────────────────────────────────────────────────────────
@@ -256,8 +269,10 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
   // exception, so this notification never actually went out.
   try {
     await sendPush({
-      title: '🤖 Tagett auto-run complete',
-      body: `Leads found. Pitches drafted. Check your email — ${runAt}`,
+      title: leads.length ? `🌙 ${leads.length} new lead${leads.length === 1 ? '' : 's'} ready` : '🤖 Tagett auto-run complete',
+      body: leads.length
+        ? `${industry} in ${locale}, no website, busiest first. Open ProspectBot to import them.`
+        : `No new ${industry} leads in ${locale} tonight. Pitches and pipeline summary are in your email.`,
     })
   } catch { /* non-fatal */ }
 
