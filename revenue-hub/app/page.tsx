@@ -6151,8 +6151,11 @@ INVOICES:
     } catch { /* non-fatal — advisors proceed without live data */ }
 
     await Promise.allSettled(
-      COUNCIL_AGENT_IDS.map(async (agentId) => {
+      COUNCIL_AGENT_IDS.map(async (agentId, i) => {
         try {
+          // Five simultaneous requests trip the free-tier rate limits (Mistral
+          // allows ~1 req/s), so stagger the advisors slightly.
+          await new Promise(r => setTimeout(r, i * 1200))
           const enrichedQ = liveSnapshot ? `${q}\n\n${liveSnapshot}` : q
           const text = await callChat(AGENTS[agentId].systemPrompt, [{ role: 'user', content: enrichedQ }], pinnedNotes, agentId, workspace)
           setResponses(prev => ({ ...prev, [agentId]: text }))
