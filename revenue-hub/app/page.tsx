@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
-import { COUNTRIES, marketFor, toE164, countryFromPhone, dealCountry } from '@/lib/markets'
+import { COUNTRIES, MARKETS, marketFor, outreachNotes, toE164, countryFromPhone, dealCountry, type Market } from '@/lib/markets'
 import type {
   Message, AgentId, ViewId, MobileTab, ProjectCategory, WebsiteProject, Agent, AllChats,
   DealStage, Deal, ParsedProspect, InvoiceMilestone, Invoice, Retainer,
@@ -464,6 +464,13 @@ A bold opinion, hot take, or insight about tech/business in Ghana/Africa that ma
 TikTok (reel):
 A 60-second script, shot by shot: either a screen-recording walkthrough of a real project or a talking-head "here's what I learned building software in Ghana".
 
+Only if YOUR DATA has a figure with a sample of 20 or more, add a fourth:
+
+X (data):
+One post built on a single real number from YOUR DATA, stating the sample size (e.g. "We checked 64 Kumasi pharmacies: 41 had no website."). Never round up, never generalise beyond the sample.
+
+Write for the AUDIENCE TODAY market, not automatically for Ghana.
+
 Write everything as Dominic Kudom. Immediately postable.`,
     systemPrompt: `You are ViralBot, a viral social media strategist for Ecstasy Technologies, a software studio based in Ghana (ecstasytechnologies.com). You help Dominic Kudom build a massive following that converts to inbound software clients by showcasing REAL completed projects with screenshots as social proof.
 
@@ -509,11 +516,11 @@ X Threads: project reveal → walkthrough → screenshot prompt → CTA
 LinkedIn: founder case study — real client, real problem, real outcome
 Instagram/TikTok: screen recording walkthrough script (shot by shot)
 
-GHANA CONTEXT: Ground everything in real Ghanaian business realities — mobile money payments, WhatsApp-first clients, unreliable internet, the pride of seeing your business go digital.
+GHANA CONTEXT (when AUDIENCE TODAY is Ghana): Ground everything in real Ghanaian business realities — mobile money payments, WhatsApp-first clients, unreliable internet, the pride of seeing your business go digital.
 
 Always write as Dominic Kudom. Immediately postable: no placeholders, and no invented facts. If a detail isn't known, write around it.
 
-OUTPUT FORMAT: Start every postable piece with a label line on its own: the platform (X, LinkedIn, Instagram, Facebook or TikTok) followed by its type in brackets, (showcase), (take) or (reel), then a colon. Example: "LinkedIn (showcase):". Put nothing but the post itself under each label, so each piece can go straight into the Social Calendar. The pipeline and Council lines below come after all posts.
+OUTPUT FORMAT: Start every postable piece with a label line on its own: the platform (X, LinkedIn, Instagram, Facebook or TikTok) followed by its type in brackets, (showcase), (take), (reel) or (data), then a colon. Example: "LinkedIn (showcase):". Put nothing but the post itself under each label, so each piece can go straight into the Social Calendar. The pipeline and Council lines below come after all posts.
 
 MEMORY: RECENT POSTS lists what has already gone out or is drafted. Don't reuse the same project or the same angle within 14 days. WHAT HAS WORKED lists which posts actually led to deals; lean toward those types.
 
@@ -1154,10 +1161,81 @@ Never invent names, phone numbers, prices, or deals that are not in the data abo
 // three, read from the Social Calendar, the pipeline and the website.
 
 const VIRAL_CATEGORY_LABELS: Record<string, string> = {
-  'viral-showcase': 'Project Showcase', 'viral-take': 'Hot Take', 'viral-reel': 'Reel Script',
+  'viral-showcase': 'Project Showcase', 'viral-take': 'Hot Take', 'viral-reel': 'Reel Script', 'viral-data': 'Data Post',
 }
 const POST_TYPE_TO_CATEGORY: Record<string, string> = {
-  showcase: 'viral-showcase', take: 'viral-take', reel: 'viral-reel',
+  showcase: 'viral-showcase', take: 'viral-take', reel: 'viral-reel', data: 'viral-data',
+}
+
+// ─── ViralBot audience ───
+// Which market today's content speaks to. Ghana is home, but prospecting now
+// covers 24 countries and UK/US/EU small businesses pay several times more,
+// so posts written only for Ghana miss the best-paying audiences.
+const VIRAL_AUDIENCE_KEY = 'tagett-viral-audience-v1'
+function loadViralAudience(): string {
+  if (typeof window === 'undefined') return MARKETS[0].country
+  try { return marketFor(localStorage.getItem(VIRAL_AUDIENCE_KEY) ?? undefined).country } catch { return MARKETS[0].country }
+}
+
+function ViralAudiencePicker() {
+  const [audience, setAudience] = useState(MARKETS[0].country)
+  useEffect(() => { setAudience(loadViralAudience()) }, [])
+  return (
+    <label title="Which market ViralBot writes for. Posts outside WhatsApp-first markets link to your website instead of WhatsApp." style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
+      Audience
+      <select
+        value={audience}
+        onChange={e => { setAudience(e.target.value); try { localStorage.setItem(VIRAL_AUDIENCE_KEY, e.target.value) } catch {} }}
+        style={{ fontSize: 11, padding: '3px 6px', borderRadius: 6, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontFamily: FONT_BODY }}
+      >
+        {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+    </label>
+  )
+}
+
+/**
+ * Pipeline numbers ViralBot can turn into data posts ("we checked 60 Kumasi
+ * businesses..."). Nobody else has these, which is what makes them shareable,
+ * but only if they are exact: every figure carries its sample size, and
+ * percentages under 10 data points are left out rather than overstated.
+ */
+function buildPipelineStats(deals: Deal[], audience: string): string {
+  const inMarket = deals.filter(d => dealCountry(d) === audience)
+  const pool = inMarket.length >= 10 ? inMarket : deals
+  const scope = pool === inMarket
+    ? `leads in ${audience}`
+    : `leads across all markets (only ${inMarket.length} in ${audience}, so never present these as ${audience} figures)`
+  if (pool.length === 0) return 'YOUR DATA: no leads in the pipeline yet. Do not write a data post.'
+  const pct = (a: number, b: number) => `${a} of ${b} (${Math.round((a / b) * 100)}%)`
+  const lines: string[] = [`Leads researched: ${pool.length} ${scope}`]
+
+  const checked = pool.filter(d => d.websiteCheck)
+  const noSite = checked.filter(d => d.websiteCheck === 'confirmed_no_site')
+  if (checked.length >= 10) lines.push(`Website checks: ${pct(noSite.length, checked.length)} had no website`)
+
+  const byIndustry = new Map<string, Deal[]>()
+  for (const d of pool) {
+    const k = d.industry && d.industry !== 'Unknown' ? d.industry : ''
+    if (k) byIndustry.set(k, [...(byIndustry.get(k) ?? []), d])
+  }
+  const top = [...byIndustry.entries()].sort((a, b) => b[1].length - a[1].length).slice(0, 5)
+  if (top.length) {
+    lines.push(`By industry: ${top.map(([k, ds]) => {
+      const c = ds.filter(d => d.websiteCheck)
+      const n = c.filter(d => d.websiteCheck === 'confirmed_no_site').length
+      return c.length >= 10 ? `${k} ${ds.length} (no website: ${pct(n, c.length)})` : `${k} ${ds.length}`
+    }).join('; ')}`)
+  }
+
+  const contacted = pool.filter(d => d.lastContactedAt || (d.stage !== 'found' && d.stage !== 'lost'))
+  const replied = contacted.filter(d => d.repliedAt)
+  if (contacted.length >= 10) lines.push(`Outreach: ${pct(replied.length, contacted.length)} contacted businesses replied`)
+
+  const closed = pool.filter(d => d.stage === 'closed')
+  if (closed.length) lines.push(`Projects won: ${closed.length}`)
+
+  return `YOUR DATA (real pipeline numbers; use only these, always state the sample size, never extrapolate to a whole city or country):\n${lines.map(l => `  - ${l}`).join('\n')}`
 }
 
 function postCategoryLabel(category: string): string {
@@ -1177,7 +1255,64 @@ function stripTrackedCTA(content: string): string {
  * other than the post's (the testimonial flow does), so recomputing it lies.
  */
 function postRefCode(post: SocialPost): string | null {
-  return post.content.match(/wa\.me\/\d+\?text=Ref%20([A-Za-z0-9]+)/)?.[1] ?? null
+  return post.content.match(/wa\.me\/\d+\?text=Ref%20([A-Za-z0-9]+)/)?.[1]
+    ?? post.content.match(/[?&]ref=([A-Za-z0-9]+)/)?.[1]
+    ?? null
+}
+
+/**
+ * appendTrackedCTA's WhatsApp link suits WhatsApp-first markets; elsewhere a
+ * cold WhatsApp reads as spam, so the post links to the contact page with the
+ * same ref code instead (attributable once the site's form records ?ref).
+ */
+function trackedCTAFor(content: string, id: string, market: Market): string {
+  if (market.whatsappFirst) return appendTrackedCTA(content, id)
+  return `${content}\n\n${ECSTASY_URL}/contact?ref=${id.slice(-4).toUpperCase()}`
+}
+
+/** Absolute URL for a portfolio image, or null if it can't be fetched by Buffer. */
+function absoluteImageUrl(image: string | undefined): string | null {
+  if (!image || image.startsWith('data:')) return null
+  if (/^https?:\/\//.test(image)) return image
+  if (image.startsWith('/')) return `${ECSTASY_URL}${image}`
+  return null
+}
+
+async function screenshotUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/social/screenshot', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url }) })
+    const data = await res.json()
+    return res.ok && data.url ? data.url as string : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Attaches an image to each showcase draft that names a portfolio project:
+ * the project's own portfolio image if it has one, else a fresh screenshot of
+ * its live site. Drafts that name no project, or whose project has neither,
+ * are left without one.
+ */
+async function attachProjectImages(drafts: SocialPost[]): Promise<SocialPost[]> {
+  if (!drafts.some(d => d.category === 'viral-showcase')) return drafts
+  let projects: WebsiteProject[] = []
+  try {
+    const res = await fetch('/api/website/projects', { cache: 'no-store' })
+    if (res.ok) projects = await res.json()
+  } catch { /* no portfolio: drafts go without images */ }
+  if (!Array.isArray(projects) || projects.length === 0) return drafts
+  // Longest title first, so "Lavimac Hotel Management System" wins over "Lavimac".
+  const byTitle = [...projects].sort((a, b) => b.title.length - a.title.length)
+  const out: SocialPost[] = []
+  for (const d of drafts) {
+    if (d.category !== 'viral-showcase') { out.push(d); continue }
+    const text = d.content.toLowerCase()
+    const project = byTitle.find(p => p.title && text.includes(p.title.toLowerCase()))
+    const imageUrl = absoluteImageUrl(project?.image) ?? (project?.link ? await screenshotUrl(project.link) : null)
+    out.push(imageUrl ? { ...d, imageUrl } : d)
+  }
+  return out
 }
 
 async function fetchPortfolioBlock(): Promise<string> {
@@ -1265,7 +1400,11 @@ async function fetchSocialPosts(): Promise<SocialPost[]> {
 
 async function buildViralContext(): Promise<string> {
   const [posts, portfolio] = await Promise.all([fetchSocialPosts(), fetchPortfolioBlock()])
-  const memory = buildViralMemory(posts, loadDeals())
+  const deals = loadDeals()
+  const audience = loadViralAudience()
+  const market = marketFor(audience)
+  const audienceBlock = `AUDIENCE TODAY: small-business owners in ${market.country}. Prices in ${market.currency}; a typical small-business website there costs ${market.currency}${market.budget}. ${outreachNotes(market)}${market.country === 'Ghana' ? '' : ` Your GHANA CONTEXT instructions don't apply today: use ${market.country}'s own references and spelling, and present Ecstasy Technologies as a remote studio that already delivers for clients abroad.`}`
+  const memory = [audienceBlock, buildViralMemory(posts, deals), buildPipelineStats(deals, audience)].join('\n\n')
   return `— VIRALBOT MEMORY —\n${[portfolio, memory].filter(Boolean).join('\n\n')}\n— END VIRALBOT MEMORY —`
 }
 
@@ -1274,7 +1413,7 @@ async function buildViralContext(): Promise<string> {
  * ("LinkedIn (take):"). The Pipeline and Council lines after the posts are
  * notes for Dominic, not post text, so everything from them on is dropped.
  */
-function parseViralDrafts(text: string): SocialPost[] {
+function parseViralDrafts(text: string, market: Market = MARKETS[0]): SocialPost[] {
   const platformMap: Record<string, SocialPlatform[]> = {
     x: ['twitter'], twitter: ['twitter'], linkedin: ['linkedin'], facebook: ['facebook'],
     instagram: ['instagram'], tiktok: ['tiktok', 'instagram'],
@@ -1289,12 +1428,12 @@ function parseViralDrafts(text: string): SocialPost[] {
     if (!current || !content) return
     // Timestamp last: the WhatsApp ref code is the id's final 4 characters.
     const id = `viral-${base + drafts.length}`
-    // A reel script is filming notes, not a caption, so it gets no WhatsApp link.
-    const tracked = current.category === 'viral-reel' ? content : appendTrackedCTA(content, id)
+    // A reel script is filming notes, not a caption, so it gets no link.
+    const tracked = current.category === 'viral-reel' ? content : trackedCTAFor(content, id, market)
     drafts.push({ id, content: tracked, platforms: current.platforms, status: 'draft', createdAt: base, category: current.category })
   }
   for (const line of body.split('\n')) {
-    const m = line.replace(/[*_#]/g, '').match(/^\s*(X|Twitter|LinkedIn|Facebook|Instagram|TikTok)\s*(?:\((showcase|take|reel)\))?\s*:\s*(.*)$/i)
+    const m = line.replace(/[*_#]/g, '').match(/^\s*(X|Twitter|LinkedIn|Facebook|Instagram|TikTok)\s*(?:\((showcase|take|reel|data)\))?\s*:\s*(.*)$/i)
     if (m) {
       flush()
       current = { platforms: platformMap[m[1].toLowerCase()], category: m[2] ? POST_TYPE_TO_CATEGORY[m[2].toLowerCase()] : undefined, lines: m[3] ? [m[3]] : [] }
@@ -1308,17 +1447,19 @@ function parseViralDrafts(text: string): SocialPost[] {
 
 function ViralCalendarChip({ content }: { content: string }) {
   const [state, setState] = useState<'idle' | 'saving' | 'done' | 'error'>('idle')
-  const drafts = useMemo(() => parseViralDrafts(content), [content])
+  // The audience is read when the reply is shown, which is when it was written.
+  const drafts = useMemo(() => parseViralDrafts(content, marketFor(loadViralAudience())), [content])
   const pending = useRef<SocialPost[] | null>(null)
   if (drafts.length === 0) return null
 
   const send = async () => {
     setState('saving')
     if (!pending.current) {
+      const withImages = await attachProjectImages(drafts)
       // Local first so the Social Calendar shows them straight away; a retry
       // only resends what failed, so it never duplicates a draft.
-      saveSocialPosts([...drafts, ...loadSocialPosts()])
-      pending.current = drafts
+      saveSocialPosts([...withImages, ...loadSocialPosts()])
+      pending.current = withImages
     }
     // POST (insert-one) rather than PUT, which would replace the whole list.
     const failed: SocialPost[] = []
@@ -1337,7 +1478,7 @@ function ViralCalendarChip({ content }: { content: string }) {
         title="Adds each labelled post as a separate draft, without the Pipeline and Council notes"
         style={{ padding: '5px 14px', borderRadius: 20, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: state === 'error' ? '#e05c5c' : GOLD, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: state === 'idle' || state === 'error' ? 'pointer' : 'default' }}
       >
-        {state === 'saving' ? 'Adding…'
+        {state === 'saving' ? 'Adding (screenshots can take ~30s)…'
           : state === 'done' ? `✓ ${drafts.length} draft${drafts.length === 1 ? '' : 's'} in Social Calendar`
           : state === 'error' ? `${pending.current?.length ?? 0} not synced · retry`
           : `→ Send ${drafts.length} draft${drafts.length === 1 ? '' : 's'} to Social Calendar`}
@@ -5026,7 +5167,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
         const res = await fetch('/api/social/buffer', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: post.content, profileIds: profiles.map(p => p.id), now: true }),
+          body: JSON.stringify({ text: post.content, profileIds: profiles.map(p => p.id), now: true, imageUrl: post.imageUrl }),
         })
         if (res.ok) {
           setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'posted', postedAt: Date.now() } : p))
@@ -5042,7 +5183,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
         const res = await fetch('/api/social/buffer', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: post.content, profileIds: profiles.map(p => p.id), now: false }),
+          body: JSON.stringify({ text: post.content, profileIds: profiles.map(p => p.id), now: false, imageUrl: post.imageUrl }),
         })
         if (res.ok) {
           setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'scheduled' } : p))
@@ -5060,6 +5201,19 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
   const saveEdit = (id: string) => {
     setPosts(prev => prev.map(p => p.id === id ? { ...p, content: editContent } : p))
     setEditingId(null)
+  }
+
+  const [shootingId, setShootingId] = useState<string | null>(null)
+  const [shotError, setShotError] = useState<string | null>(null)
+  const addScreenshot = async (postId: string) => {
+    const url = window.prompt('Page to screenshot (full address, e.g. https://lavimacroyalhotel.com)')?.trim()
+    if (!url) return
+    setShootingId(postId)
+    setShotError(null)
+    const imageUrl = await screenshotUrl(/^https?:\/\//.test(url) ? url : `https://${url}`)
+    if (imageUrl) setPosts(prev => prev.map(p => p.id === postId ? { ...p, imageUrl } : p))
+    else setShotError(postId)
+    setShootingId(null)
   }
 
   const [markingId, setMarkingId] = useState<string | null>(null)
@@ -5184,7 +5338,7 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
                     </span>
                   ))}
                   {post.category && <span style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>{postCategoryLabel(post.category)}</span>}
-                  {postRefCode(post) && <span title={`A WhatsApp that opens with "Ref ${postRefCode(post)}" came from this post. Use 🎯 Mark as worked to link the deal.`} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>Ref {postRefCode(post)}</span>}
+                  {postRefCode(post) && <span title={`An inbound message quoting "Ref ${postRefCode(post)}" came from this post. Use 🎯 Mark as worked to link the deal.`} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 10, background: SURFACE2, color: MUTED, fontFamily: FONT_BODY }}>Ref {postRefCode(post)}</span>}
                 </div>
               )}
 
@@ -5207,6 +5361,20 @@ Output exactly 2 posts: one labelled "X:" (under 200 chars, one sharp insight �
                 <div style={{ fontSize: 14, color: TEXT, fontFamily: FONT_BODY, lineHeight: 1.65, whiteSpace: 'pre-wrap', marginBottom: 10 }}>
                   {post.content}
                 </div>
+              )}
+
+              {/* Attached image: posted with it through Buffer */}
+              {post.imageUrl ? (
+                <div style={{ marginBottom: 10 }}>
+                  <img src={post.imageUrl} alt="Attached to this post" style={{ display: 'block', maxWidth: '100%', maxHeight: 180, borderRadius: 8, border: `1px solid ${BORDER}` }} />
+                  {post.status !== 'posted' && (
+                    <button onClick={() => setPosts(prev => prev.map(p => p.id === post.id ? { ...p, imageUrl: undefined } : p))} style={{ marginTop: 4, fontSize: 11, color: MUTED, background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: FONT_BODY }}>Remove image</button>
+                  )}
+                </div>
+              ) : post.status !== 'posted' && !post.platforms.includes('status') && (
+                <button onClick={() => addScreenshot(post.id)} disabled={shootingId === post.id} title="Screenshot a live web page (e.g. the project's site) and attach it" style={{ marginBottom: 10, fontSize: 11, padding: '3px 9px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, cursor: shootingId === post.id ? 'wait' : 'pointer', fontFamily: FONT_BODY }}>
+                  {shootingId === post.id ? 'Taking screenshot (up to ~30s)…' : shotError === post.id ? 'Screenshot failed · try again' : '📷 Add screenshot'}
+                </button>
               )}
 
               {/* Post timestamp */}
@@ -7870,6 +8038,7 @@ function MessageList({ messages, loading, agent, onSend, onRunBriefing, onHandof
             <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 15, color: TEXT, marginBottom: 6 }}>{agent.label}</div>
             <div style={{ fontSize: 13, color: MUTED, marginBottom: 4 }}>{agent.description}</div>
             <div style={{ fontSize: 12, color: MUTED, opacity: 0.6, marginBottom: 8 }}>Tap to run autonomously, or type a message below.</div>
+            {agent.id === 'viral' && <div style={{ marginBottom: 10 }}><ViralAudiencePicker /></div>}
             <BriefingButton label={agent.briefingLabel} onClick={onRunBriefing} loading={loading} size="large" />
           </div>
         )
@@ -8470,6 +8639,7 @@ export default function Page() {
       <div style={{ padding: '10px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottom: `1px solid ${BORDER}`, flexShrink: 0 }}>
         <span style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, flex: 1 }}>{agent.description}</span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {agent.id === 'viral' && <ViralAudiencePicker />}
           {agent.id !== 'prospect' && <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />}
           {messages.length > 0 && <button onClick={handleClear} style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, minHeight: 30 }}>Clear</button>}
         </div>
@@ -8553,7 +8723,8 @@ export default function Page() {
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <button onClick={() => setSearchOpen(true)} title="Search everything (Ctrl/Cmd+K)" style={{ fontSize: 15, color: MUTED, padding: '4px 8px', border: `1px solid ${BORDER}`, borderRadius: 6, background: 'none', cursor: 'pointer' }}>⌕</button>
-            {agent.id !== 'prospect' && <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />}
+            {agent.id === 'viral' && <ViralAudiencePicker />}
+          {agent.id !== 'prospect' && <BriefingButton label={agent.briefingLabel} onClick={handleRunBriefing} loading={loading} size="small" />}
             {messages.length > 0 && (
               <button onClick={handleClear} style={{ fontSize: 12, color: MUTED, padding: '4px 10px', border: `1px solid ${BORDER}`, borderRadius: 6, fontFamily: FONT_BODY, transition: 'color 0.15s, border-color 0.15s' }}
                 onMouseEnter={(e) => { const t = e.currentTarget; t.style.color = TEXT; t.style.borderColor = MUTED }}

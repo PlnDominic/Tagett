@@ -243,6 +243,8 @@ CREATE TABLE IF NOT EXISTS social_posts (
 ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS scheduled_for BIGINT;
 ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS posted_at     BIGINT;
 ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS category      TEXT;
+ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS result_deal_id TEXT;
+ALTER TABLE social_posts ADD COLUMN IF NOT EXISTS image_url     TEXT;  -- public screenshot attached when posting
 
 CREATE INDEX IF NOT EXISTS social_posts_status_idx     ON social_posts (status);
 CREATE INDEX IF NOT EXISTS social_posts_created_at_idx ON social_posts (created_at DESC);
