@@ -6,6 +6,7 @@ import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
+import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
 import { currencyCodeFor, toGHS, type GhsRates } from '@/lib/fx'
 import { closedThisMonth, buildMoneyToChase } from '@/lib/pipeline'
 import { buildPriceBlock, money, priceListText, priceRange } from '@/lib/pricing'
@@ -3512,6 +3513,7 @@ async function writeOutreachEmail(deal: Deal): Promise<{ subject: string; body: 
     `Country: ${market.country} (${outreachNotes(market)})`,
     `Website: ${deal.websiteCheck === 'found_site' ? `they have one (${deal.websiteCheckUrl ?? 'url unknown'}), pitch improving it` : deal.websiteCheck === 'confirmed_no_site' ? 'confirmed they have no website' : 'none found'}`,
     deal.sourceUrl ? `Found via: ${deal.sourceUrl}` : null,
+    socialLinks(deal.socials).length ? `On social media: ${socialLinks(deal.socials).map(([n]) => SOCIAL_LABELS[n]).join(', ')} ${deal.websiteCheck === 'found_site' ? '' : ' (customers can find them there, but not on a site of their own)'}` : null,
     deal.repliedAt ? 'They have replied before.' : null,
     `PREVIOUS MESSAGES: ${previous.length ? previous.map(m => m.text.replace(/\s+/g, ' ').slice(0, 300)).join(' || ') : 'none, this is the first contact'}`,
     portfolio || `PROJECTS: ${KNOWN_PROJECTS}`,
@@ -4739,6 +4741,37 @@ function AuditModal({ initialUrl, contextName, contextPhone, onClose }: {
 
 // ─── DealCard ─────────────────────────────────────────────────────────────────
 
+const SOCIAL_ICONS: Record<SocialNetwork, string> = { facebook: 'f', instagram: 'ig', linkedin: 'in', tiktok: 'tt', x: '𝕏' }
+
+/** Searches Google (in the deal's own country) for its social profiles. */
+async function findSocialsFor(deal: Deal): Promise<Socials> {
+  const res = await fetch('/api/deals/find-socials', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name: deal.name, hint: deal.industry && deal.industry !== 'Unknown' ? deal.industry : undefined, country: dealCountry(deal) }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? 'Search failed')
+  return data.socials as Socials
+}
+
+function socialLinks(socials: Socials | undefined): Array<[SocialNetwork, string]> {
+  if (!socials) return []
+  return (Object.keys(SOCIAL_LABELS) as SocialNetwork[]).filter(n => socials[n]).map(n => [n, socials[n]!])
+}
+
+function SocialIcons({ socials }: { socials: Socials | undefined }) {
+  return (
+    <>
+      {socialLinks(socials).map(([n, url]) => (
+        <a key={n} href={url} target="_blank" rel="noopener noreferrer" title={`${SOCIAL_LABELS[n]}: ${url}`} style={{ minWidth: 20, height: 18, padding: '0 4px', borderRadius: 5, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 10, fontWeight: 700, fontFamily: FONT_HEADING, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', textDecoration: 'none' }}>
+          {SOCIAL_ICONS[n]}
+        </a>
+      ))}
+    </>
+  )
+}
+
 function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, onSetFollowUp, onWhatsApp, onCreateProposal, onAddRetainer, onTurnIntoTestimonial, onOpenPortal, onOpenAudit, isDragging, onDragStart, onDragEnd }: {
   deal: Deal
   onDelete: (id: string) => void
@@ -4765,6 +4798,18 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
     : null
 
   const [verifying, setVerifying] = useState(false)
+  const [findingSocials, setFindingSocials] = useState(false)
+  const [socialsError, setSocialsError] = useState('')
+  const findSocials = async () => {
+    setFindingSocials(true); setSocialsError('')
+    try {
+      onUpdate(deal.id, { socials: await findSocialsFor(deal) })
+    } catch (err) {
+      setSocialsError(err instanceof Error ? err.message : 'Search failed')
+    } finally {
+      setFindingSocials(false)
+    }
+  }
   const [editingEmail, setEditingEmail] = useState(false)
   const [composingEmail, setComposingEmail] = useState(false)
   const [emailDraft, setEmailDraft] = useState(deal.email ?? '')
@@ -4948,6 +4993,21 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
         </div>
       )}
 
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
+        <SocialIcons socials={deal.socials} />
+        <button
+          onClick={findSocials}
+          disabled={findingSocials}
+          title={`Search Google in ${marketFor(dealCountry(deal)).country} for their Facebook, Instagram, LinkedIn, TikTok and X`}
+          style={{ background: 'none', border: 'none', cursor: findingSocials ? 'wait' : 'pointer', padding: 0, fontSize: 11, fontFamily: FONT_BODY, color: socialsError ? '#e05c5c' : deal.socials?.checkedAt ? MUTED : GOLD, opacity: findingSocials ? 0.6 : 1 }}
+        >
+          {findingSocials ? 'Searching socials…'
+            : socialsError ? `${socialsError} · retry`
+            : !deal.socials?.checkedAt ? '⌕ Find socials'
+            : socialLinks(deal.socials).length ? '↻' : 'No socials found · retry'}
+        </button>
+      </div>
+
       {followUpLabel && (
         <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: isOverdue ? '#e05c5c' : MUTED, fontFamily: FONT_BODY }}>
           {isOverdue ? <IconWarning size={10} color="#e05c5c" /> : <IconBellSmall color={MUTED} />}
@@ -4966,7 +5026,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
         <button onClick={() => onCreateProposal(deal)} title="Create a shareable proposal link with view tracking" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer' }}>
           📄 Proposal
         </button>
-        <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${deal.name}${deal.industry ? ' ' + deal.industry : ''} Ghana`)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', textDecoration: 'none' }}>
+        <a href={`https://www.google.com/maps/search/${encodeURIComponent(`${deal.name}${deal.industry ? ' ' + deal.industry : ''} ${marketFor(dealCountry(deal)).country}`)}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, cursor: 'pointer', textDecoration: 'none' }}>
           📍 Maps
         </a>
         <button
@@ -6253,6 +6313,78 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
   )
 }
 
+/**
+ * Finds social profiles for open deals that were never checked, abroad
+ * first (where WhatsApp and a phone call are least likely to work), one at a
+ * time. Profiles are saved as found: each one is a public page to look at,
+ * not something sent.
+ */
+function BulkSocialsFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
+  const [running, setRunning] = useState(false)
+  const [done, setDone] = useState<Array<{ id: string; name: string; found: number; error?: string }>>([])
+  const stopRef = useRef(false)
+
+  const targets = deals
+    .filter(d => !d.socials?.checkedAt && d.stage !== 'closed' && d.stage !== 'lost')
+    .sort((a, b) => Number(dealCountry(a) === 'Ghana') - Number(dealCountry(b) === 'Ghana'))
+  const abroad = targets.filter(d => dealCountry(d) !== 'Ghana').length
+
+  const run = async () => {
+    const queue = targets.slice()
+    stopRef.current = false
+    setRunning(true)
+    for (const d of queue) {
+      if (stopRef.current) break
+      try {
+        const socials = await findSocialsFor(d)
+        onUpdate(d.id, { socials })
+        setDone(prev => [...prev, { id: d.id, name: d.name, found: socialLinks(socials).length }])
+      } catch (err) {
+        const error = err instanceof Error ? err.message : 'Search failed'
+        setDone(prev => [...prev, { id: d.id, name: d.name, found: 0, error }])
+        // Out of searches: every next one would fail too.
+        if (/SerpAPI|SERPAPI/.test(error)) break
+      }
+    }
+    setRunning(false)
+  }
+
+  const withSocials = done.filter(r => r.found > 0)
+  return (
+    <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
+      <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>Find Social Profiles</div>
+      <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>
+        {targets.length} open lead{targets.length === 1 ? '' : 's'} not yet checked{abroad ? `, ${abroad} abroad (searched first)` : ''}. One Google search each, in the lead&apos;s own country, for their Facebook, Instagram, LinkedIn, TikTok and X. Only profiles that name the business are kept.
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: done.length ? 10 : 0 }}>
+        {running ? (
+          <button onClick={() => { stopRef.current = true }} style={{ padding: '6px 14px', background: SURFACE2, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Stop</button>
+        ) : (
+          <button onClick={run} disabled={targets.length === 0} style={{ padding: '6px 14px', background: GOLD, color: '#fff', border: 'none', borderRadius: 6, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: targets.length === 0 ? 'default' : 'pointer', opacity: targets.length === 0 ? 0.5 : 1 }}>
+            Find socials ({targets.length})
+          </button>
+        )}
+        {(running || done.length > 0) && (
+          <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY }}>
+            {running ? 'Searching… ' : ''}{withSocials.length} with profiles of {done.length} checked
+          </span>
+        )}
+      </div>
+      {done.filter(r => r.found > 0 || r.error).map(r => {
+        const deal = deals.find(d => d.id === r.id)
+        return (
+          <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 0', borderTop: `1px solid ${BORDER}` }}>
+            <span style={{ fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, color: TEXT, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+            {r.error
+              ? <span style={{ fontSize: 11, color: '#e05c5c', fontFamily: FONT_BODY }}>{r.error}</span>
+              : <span style={{ display: 'flex', gap: 4, flexShrink: 0 }}><SocialIcons socials={deal?.socials} /></span>}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function DataQualityView({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
   const [tab, setTab] = useState<'health' | 'duplicates' | 'issues'>('health')
   const [clients, setClients] = useState<Client[]>([])
@@ -6425,6 +6557,7 @@ function DataQualityView({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
             </div>
 
             <BulkEmailFinder deals={deals} onUpdate={onUpdate} />
+            <BulkSocialsFinder deals={deals} onUpdate={onUpdate} />
 
             {needsNorm.length > 0 && (
               <div style={{ background: `${GOLD}0A`, border: `1px solid ${GOLD}35`, borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
