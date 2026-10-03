@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { MODE_PLATFORMS, type ListenMode, type Recency } from '@/lib/social-listening'
 import { searchListenPosts } from '@/lib/social-listening-search'
+import { serpApiKey } from '@/lib/serpapi'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -10,7 +11,7 @@ export const maxDuration = 30
 // developer on Facebook and X; 'threads' finds "comment your business" posts
 // on Instagram and TikTok. country 'Anywhere' searches without a place.
 export async function POST(req: Request) {
-  const key = process.env.SERPAPI_KEY
+  const key = serpApiKey()
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
   const body = await req.json().catch(() => ({})) as { mode?: ListenMode; country?: string; recency?: Recency; phrases?: string[] }
   const mode: ListenMode = body.mode === 'threads' ? 'threads' : 'requests'

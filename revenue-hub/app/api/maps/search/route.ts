@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { marketFor } from '@/lib/markets'
+import { serpApiKey } from '@/lib/serpapi'
 
 export const dynamic = 'force-dynamic'
 
-const KEY = process.env.SERPAPI_KEY
+const KEY = serpApiKey()
 
 export interface PlaceResult {
   id: string

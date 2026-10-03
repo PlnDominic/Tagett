@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { marketFor } from '@/lib/markets'
 import { pickSocials } from '@/lib/socials'
+import { serpApiKey } from '@/lib/serpapi'
 
 export const dynamic = 'force-dynamic'
 
 // POST { name, hint?, country? } -> the business's Facebook, Instagram,
 // LinkedIn, TikTok and X profiles, from one Google search in its own country.
 export async function POST(req: Request) {
-  const key = process.env.SERPAPI_KEY
+  const key = serpApiKey()
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
   const { name, hint, country } = await req.json().catch(() => ({})) as { name?: string; hint?: string; country?: string }
   if (!name?.trim()) return NextResponse.json({ error: 'name required' }, { status: 400 })

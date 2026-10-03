@@ -10,6 +10,7 @@ import { stripEmDashes } from '@/lib/text'
 import { sendPush } from '@/lib/push'
 import { MARKETS, Market, Region, outreachNotes, randomPlace } from '@/lib/markets'
 import { searchListenPosts, type ListenPost } from '@/lib/social-listening-search'
+import { serpApiKey } from '@/lib/serpapi'
 
 // Vercel: allow up to 120s for this route (requires Pro plan)
 export const maxDuration = 120
@@ -172,7 +173,7 @@ export async function GET(req: NextRequest) {
   // when they're opened, so this costs no AI quota overnight.
   // OVERNIGHT_LISTENING=off turns it off.
   const listenPlatform = new Date().getUTCDate() % 2 ? 'x' as const : 'facebook' as const
-  const serpKey = process.env.SERPAPI_KEY
+  const serpKey = serpApiKey()
   const listening: Promise<{ posts: ListenPost[]; error?: string }> = serpKey && process.env.OVERNIGHT_LISTENING !== 'off'
     ? searchListenPosts(serpKey, { mode: 'requests', country: market.country, recency: 'w', platforms: [listenPlatform] })
         .then(r => ({ posts: r.posts.filter(p => !deals.some(d => d.source_url === p.url)), error: r.errors[0] }))
