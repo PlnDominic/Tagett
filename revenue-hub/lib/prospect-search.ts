@@ -40,8 +40,10 @@ export interface ProspectSearchResult {
   candidates: ProspectCandidate[]
   offsets: Record<string, number>
   stats: { scanned: number; withWebsite: number; alreadyKnown: number }
-  /** Set when SerpAPI refused before anything was found. */
-  error?: 'quota' | 'no-key'
+  /** Set when SerpAPI refused or failed before anything was found. */
+  error?: 'quota' | 'no-key' | 'failed'
+  /** What went wrong, for 'failed'. */
+  errorMessage?: string
 }
 
 export async function findProspects(input: ProspectSearchInput): Promise<ProspectSearchResult> {
@@ -72,12 +74,26 @@ export async function findProspects(input: ProspectSearchInput): Promise<Prospec
         q: `${industry} ${place} ${market.country}`,
         start: String(start),
       })
-      const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
-      if (!res.ok) {
-        if (found.size === 0 && res.status === 429) return { ...empty, error: 'quota' }
+      let res: Response
+      try {
+        res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
+      } catch (err) {
+        // A timeout or network error used to escape and fail the whole
+        // overnight run; now it ends this search like any other failure.
+        if (found.size === 0 && scanned === 0) return { ...empty, error: 'failed', errorMessage: err instanceof Error && err.name === 'TimeoutError' ? 'SerpAPI timed out' : 'SerpAPI unreachable' }
         break
       }
-      const data = await res.json() as { local_results?: MapsPlace[] }
+      const data = await res.json().catch(() => ({})) as { local_results?: MapsPlace[]; error?: string }
+      // SerpAPI says why in `error`. "Hasn't returned any results" is just an
+      // empty search; running out of searches is not, even on a 200.
+      const serpError = data.error && !/hasn't returned any results/i.test(data.error) ? data.error : undefined
+      if (!res.ok || serpError) {
+        if (found.size === 0 && scanned === 0) {
+          if (res.status === 429 || /run out of searches|plan|limit/i.test(serpError ?? '')) return { ...empty, error: 'quota' }
+          return { ...empty, error: 'failed', errorMessage: serpError ?? `SerpAPI error ${res.status}` }
+        }
+        break
+      }
       const results = data.local_results ?? []
       // Remember how far this query has been read, so the next run of the
       // same search continues past these results instead of repeating them.
@@ -111,4 +127,24 @@ export async function findProspects(input: ProspectSearchInput): Promise<Prospec
   const candidates = [...found.values()].sort((a, b) => score(b) - score(a)).slice(0, TARGET)
 
   return { candidates, offsets, stats: { scanned, withWebsite, alreadyKnown } }
+}
+
+/**
+ * The overnight search: the chosen town first, and when it has nothing on
+ * Google Maps at all (often true of the small towns the run picks on
+ * purpose), its region, then the whole country. Stops at the first area with
+ * leads, or at a SerpAPI error, which every wider search would hit too.
+ */
+export async function findProspectsWidening(
+  input: Omit<ProspectSearchInput, 'city'>,
+  areas: string[],
+): Promise<{ result: ProspectSearchResult; area: string; tried: string[] }> {
+  const tried: string[] = []
+  let last: ProspectSearchResult | null = null
+  for (const area of areas.filter((a, i) => areas.indexOf(a) === i)) {
+    tried.push(area)
+    last = await findProspects({ ...input, city: area })
+    if (last.error || last.candidates.length) return { result: last, area, tried }
+  }
+  return { result: last ?? await findProspects({ ...input, city: '' }), area: tried[tried.length - 1] ?? '', tried }
 }
