@@ -17,5 +17,6 @@ export async function POST(req: Request) {
   const result = await findProspects(body as ProspectSearchInput)
   if (result.error === 'no-key') return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
   if (result.error === 'quota') return NextResponse.json({ error: 'Out of SerpAPI searches for now' }, { status: 429 })
+  if (result.error === 'failed') return NextResponse.json({ error: result.errorMessage ?? 'Google Maps search failed' }, { status: 502 })
   return NextResponse.json(result)
 }

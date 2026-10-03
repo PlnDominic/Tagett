@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 import { getSupabase, writeToleratingSchemaDrift } from '@/lib/supabase'
-import { findProspects } from '@/lib/prospect-search'
+import { findProspectsWidening } from '@/lib/prospect-search'
 import { prospectKey } from '@/lib/prospects'
 import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
@@ -84,7 +84,9 @@ async function runAgent(opts: {
       temperature: 0.3,
       messages: msgs,
     }
-    if (opts.tools.length) body.tools = opts.tools
+    // The last step gets no tools, so the agent answers with what it has
+    // found instead of searching again and ending as "[max iterations]".
+    if (opts.tools.length && i < MAX_ITER - 1) body.tools = opts.tools
 
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -171,13 +173,13 @@ export async function GET(req: NextRequest) {
   // OVERNIGHT_LISTENING=off turns it off.
   const listenPlatform = new Date().getUTCDate() % 2 ? 'x' as const : 'facebook' as const
   const serpKey = process.env.SERPAPI_KEY
-  const listening: Promise<ListenPost[]> = serpKey && process.env.OVERNIGHT_LISTENING !== 'off'
+  const listening: Promise<{ posts: ListenPost[]; error?: string }> = serpKey && process.env.OVERNIGHT_LISTENING !== 'off'
     ? searchListenPosts(serpKey, { mode: 'requests', country: market.country, recency: 'w', platforms: [listenPlatform] })
-        .then(r => r.posts.filter(p => !deals.some(d => d.source_url === p.url)))
-        .catch(() => [])
-    : Promise.resolve([])
+        .then(r => ({ posts: r.posts.filter(p => !deals.some(d => d.source_url === p.url)), error: r.errors[0] }))
+        .catch(err => ({ posts: [], error: err instanceof Error ? err.message : 'Search failed' }))
+    : Promise.resolve({ posts: [] })
 
-  const [social, found, listenPosts] = await Promise.all([
+  const [social, searched, listening_] = await Promise.all([
     runAgent({
       apiKey,
       tools: getAgentTools('scout'),
@@ -187,21 +189,31 @@ Call search_google FIRST — it's a real Google search via SerpAPI and actually 
 OUTREACH FOR THIS MARKET: ${outreach}`,
       userMsg: `Find businesses in ${locale} right now who need a website or are complaining about their current one. Use search_google first with country="${market.country}".`,
     }),
-    findProspects({
+    // The town first (region included: village names repeat within a
+    // country), then its region, then the whole country, so a small town
+    // with nothing on Maps doesn't leave the morning list empty.
+    findProspectsWidening({
       industries: [industry],
-      // Region included: village names repeat within a country.
-      city: place.admin1 ? `${city}, ${place.admin1}` : city,
       country: market.country,
       exclude: deals.map(d => prospectKey(d.name, d.phone ?? undefined)),
       excludeNames: deals.map(d => d.name),
-    }),
+    }, [place.admin1 ? `${city}, ${place.admin1}` : city, ...(place.admin1 ? [place.admin1] : []), '']),
     listening,
   ])
 
+  const { result: found, area: foundArea, tried } = searched
+  const listenPosts = listening_.posts
   const leads = found.candidates
-  const prospect = leads.length
-    ? leads.map((c, i) => `${i + 1}. ${c.name} | ${c.address ?? 'address not listed'} | ${c.phone ?? 'no phone listed'} | ${c.reviews} Google reviews${c.rating ? `, rated ${c.rating}` : ''}${c.socialOnly ? ` | social page only: ${c.socialOnly}` : ''}`).join('\n')
-    : `No ${industry} businesses without a website found on Google Maps in ${locale} (checked ${found.stats.scanned}).`
+  const where = (area: string) => area ? `${area}, ${market.country}` : `${market.country} (country-wide)`
+  const leadsLocale = where(foundArea)
+  // A failed search used to read as "nothing found"; say what happened.
+  const searchError = found.error === 'quota' ? 'Out of SerpAPI searches: no Google Maps search could run tonight. Check "Searches left" at serpapi.com.'
+    : found.error === 'no-key' ? 'SERPAPI_KEY is not set in Vercel, so no Google Maps search ran.'
+    : found.error === 'failed' ? `Google Maps search failed: ${found.errorMessage ?? 'unknown error'}.`
+    : null
+  const prospect = searchError ?? (leads.length
+    ? `${foundArea !== tried[0] ? `Nothing in ${where(tried[0])}, so widened to ${leadsLocale}.\n` : ''}${leads.map((c, i) => `${i + 1}. ${c.name} | ${c.address ?? 'address not listed'} | ${c.phone ?? 'no phone listed'} | ${c.reviews} Google reviews${c.rating ? `, rated ${c.rating}` : ''}${c.socialOnly ? ` | social page only: ${c.socialOnly}` : ''}`).join('\n')}`
+    : `No ${industry} businesses without a website found on Google Maps in ${tried.map(where).join(', then ')} (checked ${found.stats.scanned} in the last).`)
   workspace.scout = social
   workspace.prospect = prospect
 
@@ -211,7 +223,7 @@ OUTREACH FOR THIS MARKET: ${outreach}`,
     apiKey,
     tools: [],
     system: `TEAM: Ecstasy Technologies 6-agent revenue team. Goal: GHS 12,000/month.
-You are ContentBot. Leads this run are in ${locale}.
+You are ContentBot. Leads this run are in ${leadsLocale}.
 OUTREACH FOR THIS MARKET: ${outreach}
 Based on the TEAM INTEL below, draft 3 short pitch messages (under 60 words each) for the top leads found, in whichever channel the note above says this market actually uses. Each message should be warm, specific to their business, reference a real Ecstasy Technologies project as proof, and end with one clear CTA.
 
@@ -263,9 +275,10 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
       pipeline_summary: pipelineSummary,
       // Structured leads + where they came from, for ProspectBot's
       // "found overnight" list in the app.
-      prospect_leads: { country: market.country, city, locale, industry, leads },
+      // locale is where the leads were found, which may be wider than the town.
+      prospect_leads: { country: market.country, city, locale: leadsLocale, industry, leads, ...(searchError ? { error: searchError } : {}) },
       // Posts asking for a website, for Social listening's "found overnight".
-      social_posts: { country: market.country, platform: listenPlatform, posts: listenPosts },
+      social_posts: { country: market.country, platform: listenPlatform, posts: listenPosts, ...(listening_.error ? { error: listening_.error } : {}) },
     }], rows => sb.from('agent_runs').insert(rows))
   } catch { /* non-fatal */ }
 
@@ -294,8 +307,8 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
     await sendPush({
       title: leads.length ? `🌙 ${leads.length} new lead${leads.length === 1 ? '' : 's'} ready` : '🤖 Tagett auto-run complete',
       body: (leads.length
-        ? `${industry} in ${locale}, no website, busiest first. Open ProspectBot to import them.`
-        : `No new ${industry} leads in ${locale} tonight. Pitches and pipeline summary are in your email.`)
+        ? `${industry} in ${leadsLocale}, no website, busiest first. Open ProspectBot to import them.`
+        : searchError ?? `No new ${industry} leads in ${locale} or wider tonight. Pitches and pipeline summary are in your email.`)
         + (listenPosts.length ? ` Plus ${listenPosts.length} ${listenPlatform === 'x' ? 'X' : 'Facebook'} post${listenPosts.length === 1 ? '' : 's'} asking for a website in ${market.country}: SocialScout → Social listening.` : ''),
     })
   } catch { /* non-fatal */ }
