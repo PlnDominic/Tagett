@@ -6480,7 +6480,7 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
     <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
       <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>Find Emails</div>
       <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>
-        {targets.length} open lead{targets.length === 1 ? '' : 's'} with no email. For each: their website (and Hunter.io if set up), Google, the country&apos;s business directories, their Facebook Page, then the contact info on their Facebook and Instagram profiles (with Apify, if set up). Run Find socials first for the best results. Nothing is saved until you approve it.
+        {targets.length} open lead{targets.length === 1 ? '' : 's'} with no email. For each: their website (homepage, contact and imprint pages), the free email finders you&apos;ve set up (Hunter.io, Tomba.io, Snov.io), Google, the country&apos;s business directories, their Facebook Page, then the contact info on their Facebook and Instagram profiles (with Apify). Addresses whose domain can&apos;t receive email are dropped. Run Find socials first for the best results. Nothing is saved until you approve it.
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: results.length ? 12 : 0 }}>
         {running ? (
