@@ -4,11 +4,13 @@
 // returned, which is what makes the leads trustworthy and the search cheap.
 import { marketFor, toE164 } from '@/lib/markets'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
+import { auditSite, siteIssue } from '@/lib/site-audit'
 import { serpApiKey } from './serpapi'
 
 const PAGE_SIZE = 20          // Google Maps results per page
 const MAX_PAGES_PER_QUERY = 3 // how deep one run digs before giving up
 const TARGET = 5              // leads wanted per run
+const MAX_AUDITS = 8          // sites checked per weak-website search
 
 // A Facebook/Instagram page or link-in-bio is not a website: those
 // businesses are still prospects, and often the warmest ones.
@@ -35,12 +37,22 @@ export interface ProspectSearchInput {
   excludeNames?: string[]
   /** How far each search has been read, keyed by query; returned updated. */
   offsets?: Record<string, number>
+  /**
+   * 'no-site' (default): businesses with no website. 'weak-site': businesses
+   * whose website is slow, broken or insecure; abroad, where most businesses
+   * have some site and those are the ones with a findable email.
+   */
+  target?: ProspectTarget
+  /** Per-site PageSpeed timeout for the weak-website search. */
+  auditTimeoutMs?: number
 }
+
+export type ProspectTarget = 'no-site' | 'weak-site'
 
 export interface ProspectSearchResult {
   candidates: ProspectCandidate[]
   offsets: Record<string, number>
-  stats: { scanned: number; withWebsite: number; alreadyKnown: number }
+  stats: { scanned: number; withWebsite: number; alreadyKnown: number; audited?: number; fine?: number }
   /** Set when SerpAPI refused or failed before anything was found. */
   error?: 'quota' | 'no-key' | 'failed'
   /** What went wrong, for 'failed'. */
@@ -62,6 +74,7 @@ export async function findProspects(input: ProspectSearchInput): Promise<Prospec
   const excludeNames = new Set((input.excludeNames ?? []).map(n => prospectKey(n).split('|')[0]))
   const offsets: Record<string, number> = { ...(input.offsets ?? {}) }
 
+  const weak = input.target === 'weak-site'
   const found = new Map<string, ProspectCandidate>()
   let scanned = 0, withWebsite = 0, alreadyKnown = 0
 
@@ -106,7 +119,11 @@ export async function findProspects(input: ProspectSearchInput): Promise<Prospec
         scanned++
         const site = r.website?.trim()
         const socialOnly = site && SOCIAL_ONLY.test(site.replace(/^https?:\/\//, '')) ? site : undefined
-        if (site && !socialOnly) { withWebsite++; continue }
+        const hasSite = !!site && !socialOnly
+        if (hasSite) withWebsite++
+        // Each search keeps the other kind out: no-site wants none, weak-site
+        // needs a real site to check.
+        if (weak ? !hasSite : hasSite) continue
         const phone = toE164(r.phone, market)
         const k = prospectKey(r.title, phone)
         if (exclude.has(k) || excludeNames.has(k.split('|')[0])) { alreadyKnown++; continue }
@@ -114,6 +131,7 @@ export async function findProspects(input: ProspectSearchInput): Promise<Prospec
         found.set(k, {
           key: k, name: r.title, industry, address: r.address, phone,
           rating: r.rating, reviews: r.reviews ?? 0, socialOnly, category: r.type,
+          ...(weak ? { website: site } : {}),
         })
       }
       if (results.length < PAGE_SIZE) break // last page of this search
@@ -125,9 +143,25 @@ export async function findProspects(input: ProspectSearchInput): Promise<Prospec
   // with no website is losing the most customers online. Rating breaks ties
   // and tempers volume (a 2-star place with many reviews is a harder sell).
   const score = (c: ProspectCandidate) => Math.log10(1 + c.reviews) * ((c.rating ?? 3.5) / 5) + (c.phone ? 0.3 : 0)
-  const candidates = [...found.values()].sort((a, b) => score(b) - score(a)).slice(0, TARGET)
+  const ranked = [...found.values()].sort((a, b) => score(b) - score(a))
+  if (!weak) return { candidates: ranked.slice(0, TARGET), offsets, stats: { scanned, withWebsite, alreadyKnown } }
 
-  return { candidates, offsets, stats: { scanned, withWebsite, alreadyKnown } }
+  // Weak-website search: check the busiest sites (in parallel, PageSpeed
+  // takes 10-30 seconds each) and keep the ones with a problem to lead with.
+  const toAudit = ranked.slice(0, MAX_AUDITS)
+  const audits = await Promise.all(toAudit.map(c => auditSite(c.website!, input.auditTimeoutMs)))
+  const weakOnes = toAudit.flatMap((c, i) => {
+    const issue = siteIssue(audits[i])
+    return issue ? [{ ...c, siteIssue: issue, siteScore: audits[i].score }] : []
+  })
+  if (!weakOnes.length && audits.every(a => a.quota)) {
+    return { ...empty, offsets, error: 'failed', errorMessage: 'Out of PageSpeed checks for now (add PAGESPEED_API_KEY in Vercel for more)' }
+  }
+  return {
+    candidates: weakOnes.slice(0, TARGET),
+    offsets,
+    stats: { scanned, withWebsite, alreadyKnown, audited: toAudit.length, fine: toAudit.length - weakOnes.length },
+  }
 }
 
 /**

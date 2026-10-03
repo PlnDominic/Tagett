@@ -53,7 +53,10 @@ export function parseProspects(text: string): ParsedProspect[] {
       industry: field('Industry') ?? 'Unknown',
       address: field('Address'),
       phone,
-      whyNeedsWebsite: field('Why they need a website'),
+      whyNeedsWebsite: field('Why they need a website') ?? field('Why they need a better website'),
+      // Weak-website leads: their site and what's wrong with it.
+      websiteUrl: field('Website')?.match(/https?:\/\/\S+/)?.[0],
+      siteIssue: field('Website issue'),
       country: field('Country'),
       // SocialScout leads carry the post or page they came from.
       sourceUrl: field('Source')?.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, ''),

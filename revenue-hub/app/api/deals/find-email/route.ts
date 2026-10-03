@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server'
 import { marketFor } from '@/lib/markets'
 import { serpApiKey } from '@/lib/serpapi'
+import { apifyToken, runActor } from '@/lib/apify'
+import { DIRECTORY_SITES, emailsFromProfile, isSingleListing } from '@/lib/email-sources'
+import type { Socials } from '@/lib/socials'
+
+// Social profiles are read with Apify scrapers, which take 20-40 seconds.
+export const maxDuration = 60
 
 // Addresses that show up in search results / page HTML but are never the
 // business's own contact — platform noreply addresses, template/demo
@@ -85,7 +91,7 @@ export async function POST(req: Request) {
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
 
   try {
-    const { name, hint, websiteUrl, country } = await req.json() as { name?: string; hint?: string; websiteUrl?: string; country?: string }
+    const { name, hint, websiteUrl, country, socials } = await req.json() as { name?: string; hint?: string; websiteUrl?: string; country?: string; socials?: Socials }
     if (!name) return NextResponse.json({ error: 'name required' }, { status: 400 })
     // Searching Google Ghana for a Manchester plumber mostly returns nothing,
     // so both the query and the result region follow the deal's market.
@@ -108,6 +114,24 @@ export async function POST(req: Request) {
           if (candidates.length > 0) break // stop once the homepage or contact page yields something
         }
       } catch { /* invalid URL, skip */ }
+    }
+
+    // 1b. Hunter.io (optional, HUNTER_API_KEY; free plan 25 searches a month)
+    // knows addresses on a domain that aren't printed on the site itself.
+    const hunterKey = process.env.HUNTER_API_KEY?.trim()
+    if (websiteUrl && hunterKey && candidates.length === 0) {
+      const domain = extractDomain(websiteUrl)
+      try {
+        const res = await fetch(`https://api.hunter.io/v2/domain-search?${new URLSearchParams({ domain, limit: '5', api_key: hunterKey })}`, { signal: AbortSignal.timeout(10000) })
+        if (res.ok) {
+          const data = await res.json() as { data?: { emails?: Array<{ value?: string; type?: string; confidence?: number }> } }
+          // A generic inbox (info@, hello@) is the right first contact for a
+          // small business; a named person's address only if there's no other.
+          const emails = (data.data?.emails ?? []).filter(e => e.value && !isJunk(e.value))
+            .sort((a, b) => Number(b.type === 'generic') - Number(a.type === 'generic') || (b.confidence ?? 0) - (a.confidence ?? 0))
+          emails.slice(0, 2).forEach(e => candidates.push({ email: e.value!.toLowerCase(), source: `https://hunter.io/search/${domain}`, confidence: (e.confidence ?? 0) >= 80 ? 'high' : 'low', reason: `Hunter.io knows this address at ${domain}${e.confidence ? ` (${e.confidence}% confidence)` : ''}` }))
+        }
+      } catch { /* optional source */ }
     }
 
     // 2. Otherwise, run a real Google search — this is what surfaces an email
@@ -149,6 +173,28 @@ export async function POST(req: Request) {
       }
     }
 
+    // 2b. The market's own business directories. Abroad, a business with no
+    // website often still lists an email on Yell, Yelp, Gelbe Seiten and the
+    // like. Only a page about this one business counts, not a search page.
+    const directories = DIRECTORY_SITES[market.country] ?? []
+    if (!candidates.some(c => c.confidence === 'high') && tokens.length > 0 && directories.length) {
+      const q = `"${name}" (${directories.map(d => `site:${d}`).join(' OR ')})`
+      const params = new URLSearchParams({ engine: 'google', q, hl: 'en', gl: market.gl, num: '10', api_key: key })
+      const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) }).catch(() => null)
+      if (res?.ok) {
+        const data = await res.json() as { organic_results?: Array<{ link?: string; title?: string; snippet?: string }> }
+        for (const r of data.organic_results ?? []) {
+          const link = r.link ?? ''
+          const site = directories.find(d => extractDomain(link) === d || extractDomain(link).endsWith('.' + d))
+          if (!site || !isSingleListing(link)) continue
+          if (!tokens.every(t => (r.title ?? '').toLowerCase().includes(t))) continue
+          extractEmails(`${r.title ?? ''} ${r.snippet ?? ''}`).forEach(email => candidates.push({
+            email, source: link, confidence: 'high', reason: `listed on their ${site} page`,
+          }))
+        }
+      }
+    }
+
     // 3. Businesses without a website usually have a Facebook Page instead, and
     // Google's snippet of that page often carries the email from its About
     // section. A snippet from the business's own Page is far more trustworthy
@@ -182,6 +228,45 @@ export async function POST(req: Request) {
           })
         }
       }
+    }
+
+    // 4. Google rarely shows a Page's contact email in its snippet, but the
+    // Page and an Instagram business profile list it in their contact info.
+    // Read them directly with Apify (optional, APIFY_TOKEN), using the
+    // profiles Find socials saved, or the Page the search above found.
+    const fbPage = socials?.facebook ?? facebookUrl
+    const igHandle = socials?.instagram?.replace(/\/+$/, '').split('/').pop()
+    if (!candidates.some(c => c.confidence === 'high') && apifyToken() && (fbPage || igHandle)) {
+      const runs = await Promise.allSettled([
+        fbPage ? runActor('apify~facebook-pages-scraper', { startUrls: [{ url: fbPage }] }, 40) : Promise.resolve([]),
+        igHandle ? runActor('apify~instagram-profile-scraper', { usernames: [igHandle] }, 40) : Promise.resolve([]),
+      ])
+      runs.forEach((run, i) => {
+        if (run.status !== 'fulfilled') return
+        run.value.flatMap(emailsFromProfile).slice(0, 2).forEach(email => candidates.push({
+          email,
+          source: i === 0 ? fbPage! : `https://www.instagram.com/${igHandle}`,
+          confidence: 'high',
+          reason: i === 0 ? 'in the contact info of their Facebook Page' : 'on their Instagram business profile',
+        }))
+      })
+    }
+
+    // 5. Outscraper (optional, OUTSCRAPER_API_KEY) crawls a site or Page for
+    // contacts, as a last resort when nothing above found one.
+    const outscraperKey = process.env.OUTSCRAPER_API_KEY?.trim()
+    const crawlTarget = websiteUrl ?? fbPage
+    if (!candidates.some(c => c.confidence === 'high') && outscraperKey && crawlTarget) {
+      try {
+        const res = await fetch(`https://api.app.outscraper.com/emails-and-contacts?${new URLSearchParams({ query: crawlTarget, async: 'false' })}`, {
+          headers: { 'X-API-KEY': outscraperKey }, signal: AbortSignal.timeout(30000),
+        })
+        if (res.ok) {
+          emailsFromProfile(await res.json()).filter(e => !isJunk(e)).slice(0, 2).forEach(email => candidates.push({
+            email, source: crawlTarget, confidence: 'high', reason: `found by Outscraper on ${websiteUrl ? 'their website' : 'their Facebook Page'}`,
+          }))
+        }
+      } catch { /* optional source */ }
     }
 
     if (candidates.length === 0) {

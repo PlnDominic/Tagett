@@ -195,3 +195,6 @@ alter table deals add column if not exists dm_history jsonb default '[]'::jsonb;
 
 -- Posts asking for a website found by the 3am run, for Social listening
 alter table agent_runs add column if not exists social_posts jsonb;
+
+-- Weak-website leads: what's wrong with their site
+alter table deals add column if not exists site_issue text;

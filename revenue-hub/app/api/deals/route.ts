@@ -29,6 +29,7 @@ interface Deal {
   callLog?: Array<{ calledAt: number }>
   websiteCheck?: string
   websiteCheckUrl?: string
+  siteIssue?: string
   sequenceStep?: number
 }
 
@@ -58,6 +59,7 @@ function toRow(d: Deal) {
     call_log: d.callLog ?? [],
     website_check: d.websiteCheck ?? null,
     website_check_url: d.websiteCheckUrl ?? null,
+    site_issue: d.siteIssue ?? null,
     sequence_step: d.sequenceStep ?? null,
   }
 }
@@ -88,6 +90,7 @@ function fromRow(r: Record<string, unknown>): Deal {
     callLog: (r.call_log as Deal['callLog']) ?? undefined,
     websiteCheck: (r.website_check as string | null) ?? undefined,
     websiteCheckUrl: (r.website_check_url as string | null) ?? undefined,
+    siteIssue: (r.site_issue as string | null) ?? undefined,
     sequenceStep: (r.sequence_step as number | null) ?? undefined,
   }
 }
