@@ -4,10 +4,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
+import type { ProspectTarget } from '@/lib/prospect-search'
 import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
 import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
 import { dmSentUpdates, dmTarget } from '@/lib/dm'
+import { RULE_NOTES, coldEmailRule, needsConsent } from '@/lib/email-rules'
 import { labelledPosts, notesStart, plainPostText } from '@/lib/viral-posts'
 import { CHAR_LIMITS, NETWORK_NAMES, PLATFORM_LIMITS_PROMPT, checkLength, postLength, splitThread, type LimitNetwork } from '@/lib/platform-limits'
 import { REQUEST_PHRASES, THREAD_PHRASES, cleanHandle, messageUrl, profileUrl, xReplyUrl, type Commenter, type ListenMode, type ListenPlatform, type Recency } from '@/lib/social-listening'
@@ -3009,17 +3011,18 @@ function saveJSON(key: string, value: unknown): void {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
 }
 
-interface ProspectSearch { industries: string[]; city: string; area: string; country?: string }
+interface ProspectSearch { industries: string[]; city: string; area: string; country?: string; target?: ProspectTarget }
 interface ProspectLines { why?: string; service?: string; value?: number; pitch?: string }
 
 /** Asks the LLM for pitch lines only; facts stay the ones Maps returned. */
 async function writeProspectLines(candidates: ProspectCandidate[], market: Market): Promise<ProspectLines[]> {
   const facts = candidates.map((c, i) => ({
     i, name: c.name, industry: c.industry, area: c.address, googleReviews: c.reviews, rating: c.rating,
-    onlinePresence: c.socialOnly ? `only a social page (${c.socialOnly})` : 'none found',
+    onlinePresence: c.website ? `has a website (${c.website}) that ${c.siteIssue}` : c.socialOnly ? `only a social page (${c.socialOnly})` : 'none found',
   }))
-  const systemPrompt = `You write cold-call lines for Ecstasy Technologies, a web and software studio (ecstasytechnologies.com). The businesses below are real, from Google Maps, and have no website. For each, return one object {"i", "why", "service", "value", "pitch"}:
-- why: one sentence on why THIS business is losing customers without a website, using only the facts given (industry, reviews, rating, area, social page). Never invent history, owners, competitors or numbers.
+  const weak = candidates.some(c => c.website)
+  const systemPrompt = `You write cold-call lines for Ecstasy Technologies, a web and software studio (ecstasytechnologies.com). The businesses below are real, from Google Maps, and ${weak ? 'have a website with the problem shown in onlinePresence (measured by Google PageSpeed)' : 'have no website'}. For each, return one object {"i", "why", "service", "value", "pitch"}:
+- why: one sentence on why THIS business is losing customers ${weak ? 'because of that website problem' : 'without a website'}, using only the facts given (industry, reviews, rating, area, ${weak ? 'the measured problem' : 'social page'}). Never invent history, owners, competitors or numbers.
 - service: one of "web design", "mobile app", "business software", "GIS".
 - value: whole number in ${market.currency} for the service you pick, within these prices for ${market.country}:
 ${priceListText(market)}
@@ -3060,15 +3063,21 @@ async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise
       offsets: loadJSON<Record<string, number>>(PROSPECT_OFFSETS_KEY, {}),
     }),
   })
+  const weak = search.target === 'weak-site'
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error ?? `Prospect search failed (${res.status})`)
   const candidates = (data.candidates ?? []) as ProspectCandidate[]
-  const stats = data.stats as { scanned: number; withWebsite: number; alreadyKnown: number }
+  const stats = data.stats as { scanned: number; withWebsite: number; alreadyKnown: number; audited?: number; fine?: number }
   saveJSON(PROSPECT_OFFSETS_KEY, data.offsets ?? {})
   for (const c of candidates) seen[c.key] = now
   saveJSON(PROSPECT_SEEN_KEY, seen)
 
   const where = [search.area, search.city].filter(Boolean).join(', ')
+  if (weak) {
+    const header = `Checked ${stats.scanned} businesses on Google Maps in ${where}: ${stats.withWebsite} have a website. Tested the busiest ${stats.audited ?? 0} with Google PageSpeed: ${stats.fine ?? 0} are fine, ${stats.alreadyKnown} are in your pipeline or were shown before.`
+    if (candidates.length === 0) return `${header}\n\nNo weak websites this time. Try another area or industry; running the same search again digs further down the Maps results.`
+    return presentProspects(candidates, search.city, market, `${header} Here are ${candidates.length} with a website problem to lead with, busiest first:`)
+  }
   const header = `Checked ${stats.scanned} businesses on Google Maps in ${where}: ${stats.withWebsite} already have a website, ${stats.alreadyKnown} are in your pipeline or were shown before.`
   if (candidates.length === 0) {
     return `${header}\n\nNo new businesses without a website this time. Try another area of ${search.city} or another industry; running the same search again digs further down the Maps results.`
@@ -3091,11 +3100,19 @@ async function presentProspects(candidates: ProspectCandidate[], city: string, m
       `   Country: ${market.country}`,
       `   Phone: ${c.phone ?? 'Not listed on Google Maps'}`,
       `   Google Maps: ${busy}`,
-      `   Online presence: ${c.socialOnly ? `social page only (${c.socialOnly})` : 'no website found'}`,
-      `   Why they need a website: ${l.why ?? `Customers searching for ${c.industry.toLowerCase()} in ${city} find them on Maps (${busy}) but have no website to check before they call or visit.`}`,
+      ...(c.website ? [
+        `   Website: ${c.website}`,
+        `   Website issue: ${c.siteIssue}`,
+        `   Why they need a better website: ${l.why ?? `Their site ${c.siteIssue}, so many of the people who find them on Maps (${busy}) leave before they call or visit.`}`,
+      ] : [
+        `   Online presence: ${c.socialOnly ? `social page only (${c.socialOnly})` : 'no website found'}`,
+        `   Why they need a website: ${l.why ?? `Customers searching for ${c.industry.toLowerCase()} in ${city} find them on Maps (${busy}) but have no website to check before they call or visit.`}`,
+      ]),
       `   Service to pitch: ${l.service ?? 'web design'}`,
       `   Estimated value: ${money}${(l.value && l.value > 0 ? l.value : defaultValue).toLocaleString()}`,
-      `   Phone pitch: "${l.pitch ?? `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I saw you on Google Maps and noticed you don't have a website yet, and I'd like to show you what one could do for you.`}"`,
+      `   Phone pitch: "${l.pitch ?? (c.website
+        ? `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I tested your website and it ${c.siteIssue}, which loses customers who find you on Google. I'd like to show you what we'd fix.`
+        : `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I saw you on Google Maps and noticed you don't have a website yet, and I'd like to show you what one could do for you.`)}"`,
       `   Source: Google Maps`,
     ].join('\n')
   })
@@ -3139,7 +3156,7 @@ function OvernightLeadsBanner({ onShow }: { onShow: (run: OvernightRun) => void 
   return (
     <div style={{ margin: '12px 12px 0', padding: '10px 12px', borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}0c`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <span style={{ flex: 1, minWidth: 180, fontSize: 13, color: TEXT, fontFamily: FONT_BODY }}>
-        🌙 {leads.length} lead{leads.length === 1 ? '' : 's'} found overnight: {industry} in {locale}, no website, busiest first.
+        🌙 {leads.length} lead{leads.length === 1 ? '' : 's'} found overnight: {industry} in {locale}, {leads.some(l => l.website) ? 'with a weak website' : 'no website'}, busiest first.
       </span>
       <button onClick={() => { onShow(run); dismiss() }} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', background: GOLD, color: '#fff', fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Show them</button>
       <button onClick={dismiss} title="Hide" style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 14 }}>✕</button>
@@ -3181,6 +3198,10 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
   // well-known cities and a box for any town (smaller places are where
   // businesses are least likely to have a website already).
   const [country, setCountry] = useState<string>('Ghana')
+  // Abroad, most businesses have some website and the ones without rarely
+  // publish an email; a weak website is the better lead there.
+  const defaultTarget = (c: string): ProspectTarget => marketFor(c).whatsappFirst ? 'no-site' : 'weak-site'
+  const [target, setTarget] = useState<ProspectTarget>(defaultTarget('Ghana'))
   const cityOptions = country === 'Ghana' ? CITIES : marketFor(country).seedCities
 
   const toggleIndustry = (ind: string) => {
@@ -3198,7 +3219,7 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
 
   const handleSubmit = () => {
     if (!canSubmit || loading) return
-    if (onFind) onFind({ industries: selectedIndustries, city: selectedCity.trim(), area: selectedArea, country })
+    if (onFind) onFind({ industries: selectedIndustries, city: selectedCity.trim(), area: selectedArea, country, target })
     else onSubmit(buildProspectPrompt(selectedIndustries, selectedCity, selectedArea))
   }
 
@@ -3250,11 +3271,22 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
         {onFind && (
           <select
             value={country}
-            onChange={e => { setCountry(e.target.value); setSelectedCity(''); setSelectedArea('') }}
+            onChange={e => { setCountry(e.target.value); setSelectedCity(''); setSelectedArea(''); setTarget(defaultTarget(e.target.value)) }}
             style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY }}
           >
             {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+        )}
+        {onFind && (
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+            {([['no-site', 'No website'], ['weak-site', 'Weak website']] as Array<[ProspectTarget, string]>).map(([t, label]) => (
+              <button key={t} onClick={() => setTarget(t)} title={t === 'weak-site' ? 'Businesses whose site is slow on phones, broken or not secure, tested with Google PageSpeed. Their email is easy to find, and the problem is your opening line.' : 'Businesses with no website at all'}
+                style={{ padding: '5px 12px', borderRadius: 16, border: `1px solid ${target === t ? GOLD : BORDER}`, background: target === t ? `${GOLD}18` : 'transparent', color: target === t ? GOLD : MUTED, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: target === t ? 600 : 400, cursor: 'pointer' }}>
+                {label}
+              </button>
+            ))}
+            {target === 'weak-site' && <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, alignSelf: 'center' }}>Tests each site with PageSpeed, so it takes up to a minute.</span>}
+          </div>
         )}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {cityOptions.map((city) => {
@@ -3592,7 +3624,7 @@ const KNOWN_PROJECTS = 'Lavimac Royal Hotel (website + hotel management system),
 const OUTREACH_EMAIL_PROMPT = `You write one cold email from Dominic Kudom, founder of Ecstasy Technologies (a web and software studio, ecstasytechnologies.com), to one specific small business. It must read like a person wrote it to them alone.
 
 Structure, in this order, in 70 to 120 words:
-1. Open with a short scene from their customer's point of view: the moment a customer looks for a business like theirs online and finds nothing, or finds only a social page, and goes elsewhere. Concrete and visual, one or two sentences. Use only facts given about them.
+1. Open with a short scene from their customer's point of view: the moment a customer looks for a business like theirs online and finds nothing, or finds only a social page, or (if Website names a problem) waits on their slow site or hits the broken page, and goes elsewhere. Concrete and visual, one or two sentences. Use only facts given about them; a measured website problem may be quoted exactly.
 2. Name the cost of that moment for a business like theirs (lost bookings, calls that never come, trust they don't get) without exaggerating or inventing numbers.
 3. A two-sentence true story from ONE project in PORTFOLIO (or PROJECTS) that is closest to their industry: what that client had before and what Ecstasy built. Never invent results, figures, quotes or projects; if nothing is close, describe in one sentence what Ecstasy would build for them instead, without a story.
 4. End with one low-pressure question they can answer in a word (e.g. "Would it help if I sent you a quick idea of what that could look like?"). No links, no prices, no attachments, no "hope this finds you well".
@@ -3621,7 +3653,7 @@ async function writeOutreachEmail(deal: Deal): Promise<{ subject: string; body: 
     `Business: ${deal.name}`,
     `Industry: ${deal.industry || 'small business'}`,
     `Country: ${market.country} (${outreachNotes(market)})`,
-    `Website: ${deal.websiteCheck === 'found_site' ? `they have one (${deal.websiteCheckUrl ?? 'url unknown'}), pitch improving it` : deal.websiteCheck === 'confirmed_no_site' ? 'confirmed they have no website' : 'none found'}`,
+    `Website: ${deal.websiteCheck === 'found_site' ? `they have one (${deal.websiteCheckUrl ?? 'url unknown'})${deal.siteIssue ? ` that ${deal.siteIssue} (measured with Google PageSpeed)` : ''}, pitch improving it` : deal.websiteCheck === 'confirmed_no_site' ? 'confirmed they have no website' : 'none found'}`,
     deal.sourceUrl ? `Found via: ${deal.sourceUrl}` : null,
     socialLinks(deal.socials).length ? `On social media: ${socialLinks(deal.socials).map(([n]) => SOCIAL_LABELS[n]).join(', ')} ${deal.websiteCheck === 'found_site' ? '' : ' (customers can find them there, but not on a site of their own)'}` : null,
     deal.repliedAt ? 'They have replied before.' : null,
@@ -3673,6 +3705,12 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
   const [error, setError] = useState('')
   const [optedOut, setOptedOut] = useState(false)
   const [writing, setWriting] = useState(false)
+  // Countries where cold email needs prior consent: sending waits for a
+  // confirmation, already given if they've replied (a conversation, not cold).
+  const country = deal ? dealCountry(deal) : undefined
+  const rule = coldEmailRule(country)
+  const [consentTicked, setConsentTicked] = useState(false)
+  const hasConsent = !!deal?.repliedAt || consentTicked
 
   const write = async () => {
     if (!deal) return
@@ -3701,7 +3739,7 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
       const res = await fetch('/api/email/send', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ to, subject, text, dealId: deal?.id }),
+        body: JSON.stringify({ to, subject, text, dealId: deal?.id, country: deal ? dealCountry(deal) : undefined, consent: hasConsent }),
       })
       const d = await res.json()
       if (!res.ok) { setError(d.error ?? 'Could not send.'); return }
@@ -3722,7 +3760,7 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
 
   const field: React.CSSProperties = { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, outline: 'none' }
   const atLimit = !!status && status.sentToday >= status.dailyLimit
-  const canSend = !!to.trim() && !!subject.trim() && !!text.trim() && !sending && !writing && !atLimit && status?.configured !== false && !optedOut
+  const canSend = !!to.trim() && !!subject.trim() && !!text.trim() && !sending && !writing && !atLimit && status?.configured !== false && !optedOut && (rule !== 'consent' || hasConsent)
   // Rendered at the page root: opened from a draggable deal card, it would
   // otherwise sit inside the card, where selecting text drags the card.
   return createPortal(
@@ -3739,6 +3777,17 @@ function EmailComposeModal({ deal, initialTo, initialSubject, initialText, onClo
         </div>
         {status && !status.configured && (
           <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>Email sending isn&apos;t set up yet: add the OUTREACH_SMTP_* settings in Vercel.</div>
+        )}
+        {deal && rule !== 'allowed' && !deal.repliedAt && (
+          <div style={{ fontSize: 12, fontFamily: FONT_BODY, lineHeight: 1.5, padding: '8px 10px', borderRadius: 8, border: `1px solid ${rule === 'consent' ? '#e05c5c60' : '#F59E0B60'}`, background: rule === 'consent' ? '#e05c5c0d' : '#F59E0B0d', color: TEXT }}>
+            <strong>{country}:</strong> {RULE_NOTES[rule]}
+            {rule === 'consent' && (
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 6, cursor: 'pointer' }}>
+                <input type="checkbox" checked={consentTicked} onChange={e => setConsentTicked(e.target.checked)} />
+                They asked me to email them, or agreed to it
+              </label>
+            )}
+          </div>
         )}
         {atLimit && <div style={{ fontSize: 12, color: '#e05c5c', fontFamily: FONT_BODY }}>Today&apos;s limit is reached. Sending more risks the domain being marked as spam.</div>}
         <input value={to} onChange={e => setTo(e.target.value)} placeholder="To" type="email" style={field} />
@@ -4948,7 +4997,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       const res = await fetch('/api/deals/find-email', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name: deal.name, hint: deal.industry, websiteUrl: deal.websiteCheckUrl, country: dealCountry(deal) }),
+        body: JSON.stringify({ name: deal.name, hint: deal.industry, websiteUrl: deal.websiteCheckUrl, country: dealCountry(deal), socials: deal.socials }),
       })
       const data = await res.json()
       if (res.ok && data.email) {
@@ -5201,6 +5250,16 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
             : deal.websiteCheck === 'unclear' ? '? Inconclusive'
             : '🔍 Verify no website'}
         </button>
+        {deal.siteIssue && (
+          <span title="Measured with Google PageSpeed when the lead was found" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: '1px solid #e05c5c50', background: '#e05c5c10', color: '#e05c5c', fontFamily: FONT_BODY }}>
+            Site {deal.siteIssue}
+          </span>
+        )}
+        {deal.websiteCheck === 'found_site' && deal.websiteCheckUrl && !deal.email && (
+          <a href={deal.websiteCheckUrl} target="_blank" rel="noopener noreferrer" title="No email yet: write to them through the contact form on their own site" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${BORDER}`, background: 'transparent', color: MUTED, fontFamily: FONT_BODY, textDecoration: 'none' }}>
+            ✎ Their contact form
+          </a>
+        )}
         {deal.websiteCheck === 'found_site' && deal.websiteCheckUrl && (
           <button onClick={() => onOpenAudit(deal)} title="Scan their site with PageSpeed Insights and draft a pitch from the real numbers" style={{ fontSize: 10, padding: '3px 7px', borderRadius: 10, border: `1px solid ${GOLD}60`, background: `${GOLD}10`, color: GOLD, fontFamily: FONT_BODY, cursor: 'pointer' }}>
             🔎 Audit their site
@@ -5277,6 +5336,8 @@ function emailQueue(deals: Deal[]): Deal[] {
   const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999)
   return deals
     .filter(d => d.email && d.stage !== 'closed' && d.stage !== 'lost')
+    // Where cold email needs consent, only people already in conversation.
+    .filter(d => !needsConsent(dealCountry(d)) || !!d.repliedAt)
     .filter(d => (d.followUpAt && d.followUpAt <= endOfToday.getTime()) || !d.lastContactedAt)
     .sort((a, b) => b.valueGHS - a.valueGHS)
 }
@@ -6374,7 +6435,9 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
   const [results, setResults] = useState<EmailFinderResult[]>([])
   const stopRef = useRef(false)
 
-  const targets = deals.filter(d => !d.email && d.websiteCheck !== 'found_site' && d.stage !== 'closed' && d.stage !== 'lost')
+  // Website or not: a lead with a weak website is found through its site
+  // (and Hunter), one without through directories and its social profiles.
+  const targets = deals.filter(d => !d.email && d.stage !== 'closed' && d.stage !== 'lost')
 
   const run = async () => {
     const queue = targets.filter(d => !results.some(r => r.dealId === d.id))
@@ -6388,7 +6451,7 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
         const res = await fetch('/api/deals/find-email', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: d.name, hint: d.industry, websiteUrl: d.websiteCheckUrl, country: dealCountry(d) }),
+          body: JSON.stringify({ name: d.name, hint: d.industry, websiteUrl: d.websiteCheckUrl, country: dealCountry(d), socials: d.socials }),
         })
         const data = await res.json()
         if (res.ok) result = { ...result, email: data.email ?? undefined, confidence: data.confidence, reason: data.reason, source: data.source, facebookUrl: data.facebookUrl }
@@ -6415,9 +6478,9 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
 
   return (
     <div style={{ background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', marginBottom: 14 }}>
-      <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>Find Emails for No-Website Leads</div>
+      <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: TEXT, marginBottom: 4 }}>Find Emails</div>
       <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>
-        {targets.length} open lead{targets.length === 1 ? '' : 's'} with no email and no known website. Searches Google, then their Facebook Page (up to 2 SerpAPI searches each). Nothing is saved until you approve it.
+        {targets.length} open lead{targets.length === 1 ? '' : 's'} with no email. For each: their website (and Hunter.io if set up), Google, the country&apos;s business directories, their Facebook Page, then the contact info on their Facebook and Instagram profiles (with Apify, if set up). Run Find socials first for the best results. Nothing is saved until you approve it.
       </div>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: results.length ? 12 : 0 }}>
         {running ? (
@@ -9852,7 +9915,7 @@ export default function Page() {
     try {
       const when = new Date(run.run_at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
       const reply = leads.length
-        ? await presentProspects(leads, batch.city, marketFor(batch.country), `Found on Google Maps by the overnight run (${when}): ${batch.industry} in ${batch.locale} with no website, busiest first.`)
+        ? await presentProspects(leads, batch.city, marketFor(batch.country), `Found on Google Maps by the overnight run (${when}): ${batch.industry} in ${batch.locale} ${leads.some(l => l.website) ? 'with a weak website (tested with Google PageSpeed)' : 'with no website'}, busiest first.`)
         : 'Every lead from the overnight run is already in your pipeline.'
       setAllChats((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(agentId, 'assistant', reply)
@@ -9950,6 +10013,7 @@ export default function Page() {
       phone: p.phone,
       country: (p.country && COUNTRIES.includes(p.country) ? p.country : undefined) ?? countryFromPhone(p.phone),
       sourceUrl: p.sourceUrl,
+      ...(p.websiteUrl ? { websiteCheck: 'found_site' as const, websiteCheckUrl: p.websiteUrl, siteIssue: p.siteIssue } : {}),
       followUpAt,
       createdAt: base + i,
       stageChangedAt: base + i,
@@ -9968,7 +10032,7 @@ export default function Page() {
     // pipeline shows which ones are confirmed before any call is made. Leads
     // with no email are picked up by Data Quality's Find Emails panel.
     void (async () => {
-      for (const deal of newDeals) {
+      for (const deal of newDeals.filter(d => !d.websiteCheckUrl)) {
         try {
           const res = await fetch('/api/deals/verify-website', {
             method: 'POST',

@@ -103,6 +103,8 @@ export interface Deal {
   callLog?: Array<{ calledAt: number }>
   websiteCheck?: 'confirmed_no_site' | 'found_site' | 'unclear'
   websiteCheckUrl?: string
+  /** What's wrong with their website, from the weak-website search ("scores 31/100 for speed on phones"). */
+  siteIssue?: string
   // Multi-touch follow-up sequence: number of touches sent so far (1 = the
   // initial pitch). The follow-up cron advances this and schedules the next
   // touch (day 3 → day 7 → day 14 break-up) until the client replies,
@@ -125,6 +127,9 @@ export interface ParsedProspect {
   country?: string
   /** Link the lead was found at, from a "Source:" line. */
   sourceUrl?: string
+  /** Weak-website leads: their site and what's wrong with it. */
+  websiteUrl?: string
+  siteIssue?: string
 }
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────

@@ -172,6 +172,11 @@ export async function GET(req: NextRequest) {
   // monthly search budget small. Saved as raw posts; the app's AI reads them
   // when they're opened, so this costs no AI quota overnight.
   // OVERNIGHT_LISTENING=off turns it off.
+  // Abroad most businesses have some website, and the ones without rarely
+  // publish an email: there the run looks for weak websites instead.
+  const target = market.whatsappFirst ? 'no-site' as const : 'weak-site' as const
+  const kind = target === 'weak-site' ? 'with a weak website' : 'without a website'
+
   const listenPlatform = new Date().getUTCDate() % 2 ? 'x' as const : 'facebook' as const
   const serpKey = serpApiKey()
   const listening: Promise<{ posts: ListenPost[]; error?: string }> = serpKey && process.env.OVERNIGHT_LISTENING !== 'off'
@@ -195,6 +200,9 @@ OUTREACH FOR THIS MARKET: ${outreach}`,
     // with nothing on Maps doesn't leave the morning list empty.
     findProspectsWidening({
       industries: [industry],
+      target,
+      // The run has 120s in all; up to three areas may each test their sites.
+      auditTimeoutMs: 20000,
       country: market.country,
       exclude: deals.map(d => prospectKey(d.name, d.phone ?? undefined)),
       excludeNames: deals.map(d => d.name),
@@ -213,8 +221,8 @@ OUTREACH FOR THIS MARKET: ${outreach}`,
     : found.error === 'failed' ? `Google Maps search failed: ${found.errorMessage ?? 'unknown error'}.`
     : null
   const prospect = searchError ?? (leads.length
-    ? `${foundArea !== tried[0] ? `Nothing in ${where(tried[0])}, so widened to ${leadsLocale}.\n` : ''}${leads.map((c, i) => `${i + 1}. ${c.name} | ${c.address ?? 'address not listed'} | ${c.phone ?? 'no phone listed'} | ${c.reviews} Google reviews${c.rating ? `, rated ${c.rating}` : ''}${c.socialOnly ? ` | social page only: ${c.socialOnly}` : ''}`).join('\n')}`
-    : `No ${industry} businesses without a website found on Google Maps in ${tried.map(where).join(', then ')} (checked ${found.stats.scanned} in the last).`)
+    ? `${foundArea !== tried[0] ? `Nothing in ${where(tried[0])}, so widened to ${leadsLocale}.\n` : ''}${leads.map((c, i) => `${i + 1}. ${c.name} | ${c.address ?? 'address not listed'} | ${c.phone ?? 'no phone listed'} | ${c.reviews} Google reviews${c.rating ? `, rated ${c.rating}` : ''}${c.website ? ` | ${c.website}: ${c.siteIssue}` : c.socialOnly ? ` | social page only: ${c.socialOnly}` : ''}`).join('\n')}`
+    : `No ${industry} businesses ${kind} found on Google Maps in ${tried.map(where).join(', then ')} (checked ${found.stats.scanned} in the last).`)
   workspace.scout = social
   workspace.prospect = prospect
 
@@ -308,7 +316,7 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
     await sendPush({
       title: leads.length ? `🌙 ${leads.length} new lead${leads.length === 1 ? '' : 's'} ready` : '🤖 Tagett auto-run complete',
       body: (leads.length
-        ? `${industry} in ${leadsLocale}, no website, busiest first. Open ProspectBot to import them.`
+        ? `${industry} in ${leadsLocale}, ${kind}, busiest first. Open ProspectBot to import them.`
         : searchError ?? `No new ${industry} leads in ${locale} or wider tonight. Pitches and pipeline summary are in your email.`)
         + (listenPosts.length ? ` Plus ${listenPosts.length} ${listenPlatform === 'x' ? 'X' : 'Facebook'} post${listenPosts.length === 1 ? '' : 's'} asking for a website in ${market.country}: SocialScout → Social listening.` : ''),
     })

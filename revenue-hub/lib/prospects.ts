@@ -12,6 +12,10 @@ export interface ProspectCandidate {
   /** The Facebook/Instagram/link page they use instead of a website. */
   socialOnly?: string
   category?: string
+  /** Weak-website search: their site, and what's wrong with it. */
+  website?: string
+  siteIssue?: string
+  siteScore?: number
 }
 
 /** Stable identity for "have we seen this business before", from name + phone digits. */
