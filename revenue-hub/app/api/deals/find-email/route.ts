@@ -3,6 +3,9 @@ import { marketFor } from '@/lib/markets'
 import { serpApiKey } from '@/lib/serpapi'
 import { apifyToken, runActor } from '@/lib/apify'
 import { DIRECTORY_SITES, emailsFromProfile, isSingleListing } from '@/lib/email-sources'
+import { findWithProviders } from '@/lib/email-providers'
+import { crawlSiteEmails, isUsableEmail } from '@/lib/site-emails'
+import { emailAcceptsMail } from '@/lib/mail-check'
 import type { Socials } from '@/lib/socials'
 
 // Social profiles are read with Apify scrapers, which take 20-40 seconds.
@@ -65,20 +68,6 @@ function nameTokens(name: string): string[] {
     .filter(t => t.length >= 4 && !GENERIC_WORDS.has(t))
 }
 
-async function fetchPageEmails(url: string): Promise<string[]> {
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; TagettBot/1.0; +https://ecstasytechnologies.com)' },
-      signal: AbortSignal.timeout(8000),
-    })
-    if (!res.ok) return []
-    const html = await res.text()
-    return extractEmails(html)
-  } catch {
-    return []
-  }
-}
-
 interface Candidate {
   email: string
   source: string
@@ -100,38 +89,21 @@ export async function POST(req: Request) {
     const tokens = nameTokens(name)
     const candidates: Candidate[] = []
 
-    // 1. If we already know their website (from the website-verification check,
-    // which already confirmed the domain/title belongs to THIS business before
-    // ever setting websiteCheckUrl), an email found there is high confidence —
-    // it's their own site, not a third party's page that happens to mention them.
+    // 1. Their own website, when we know it: the homepage, then the pages its
+    // own links call contact, imprint or legal notice (an Impressum in
+    // Germany, Austria and Switzerland must carry an email), reading hidden
+    // and Cloudflare-protected addresses too. Free, and the most reliable.
     if (websiteUrl) {
-      try {
-        const base = new URL(websiteUrl)
-        const pages = [base.toString(), new URL('/contact', base).toString(), new URL('/contact-us', base).toString(), new URL('/about', base).toString()]
-        for (const page of pages) {
-          const emails = await fetchPageEmails(page)
-          emails.forEach(email => candidates.push({ email, source: page, confidence: 'high', reason: 'found on their own verified website' }))
-          if (candidates.length > 0) break // stop once the homepage or contact page yields something
-        }
-      } catch { /* invalid URL, skip */ }
+      for (const { email, page } of await crawlSiteEmails(websiteUrl)) {
+        candidates.push({ email, source: page, confidence: 'high', reason: 'found on their own website' })
+      }
     }
 
-    // 1b. Hunter.io (optional, HUNTER_API_KEY; free plan 25 searches a month)
-    // knows addresses on a domain that aren't printed on the site itself.
-    const hunterKey = process.env.HUNTER_API_KEY?.trim()
-    if (websiteUrl && hunterKey && candidates.length === 0) {
-      const domain = extractDomain(websiteUrl)
-      try {
-        const res = await fetch(`https://api.hunter.io/v2/domain-search?${new URLSearchParams({ domain, limit: '5', api_key: hunterKey })}`, { signal: AbortSignal.timeout(10000) })
-        if (res.ok) {
-          const data = await res.json() as { data?: { emails?: Array<{ value?: string; type?: string; confidence?: number }> } }
-          // A generic inbox (info@, hello@) is the right first contact for a
-          // small business; a named person's address only if there's no other.
-          const emails = (data.data?.emails ?? []).filter(e => e.value && !isJunk(e.value))
-            .sort((a, b) => Number(b.type === 'generic') - Number(a.type === 'generic') || (b.confidence ?? 0) - (a.confidence ?? 0))
-          emails.slice(0, 2).forEach(e => candidates.push({ email: e.value!.toLowerCase(), source: `https://hunter.io/search/${domain}`, confidence: (e.confidence ?? 0) >= 80 ? 'high' : 'low', reason: `Hunter.io knows this address at ${domain}${e.confidence ? ` (${e.confidence}% confidence)` : ''}` }))
-        }
-      } catch { /* optional source */ }
+    // 1b. Email-finder services with free monthly allowances (Hunter.io,
+    // Tomba.io, Snov.io), each only if its key is set, for addresses on the
+    // domain that the site doesn't print.
+    if (websiteUrl && candidates.length === 0) {
+      candidates.push(...await findWithProviders(extractDomain(websiteUrl)))
     }
 
     // 2. Otherwise, run a real Google search — this is what surfaces an email
@@ -252,25 +224,27 @@ export async function POST(req: Request) {
       })
     }
 
-    // 5. Outscraper (optional, OUTSCRAPER_API_KEY) crawls a site or Page for
-    // contacts, as a last resort when nothing above found one.
-    const outscraperKey = process.env.OUTSCRAPER_API_KEY?.trim()
-    const crawlTarget = websiteUrl ?? fbPage
-    if (!candidates.some(c => c.confidence === 'high') && outscraperKey && crawlTarget) {
+    // 5. Last resort for a site that hides its address from a simple fetch
+    // (rendered by JavaScript, or more pages deep): Apify's Contact Details
+    // Scraper crawls it properly, on the same free monthly Apify credit.
+    if (!candidates.some(c => c.confidence === 'high') && websiteUrl && apifyToken()) {
       try {
-        const res = await fetch(`https://api.app.outscraper.com/emails-and-contacts?${new URLSearchParams({ query: crawlTarget, async: 'false' })}`, {
-          headers: { 'X-API-KEY': outscraperKey }, signal: AbortSignal.timeout(30000),
-        })
-        if (res.ok) {
-          emailsFromProfile(await res.json()).filter(e => !isJunk(e)).slice(0, 2).forEach(email => candidates.push({
-            email, source: crawlTarget, confidence: 'high', reason: `found by Outscraper on ${websiteUrl ? 'their website' : 'their Facebook Page'}`,
-          }))
-        }
+        const items = await runActor('vdrmota~contact-info-scraper', { startUrls: [{ url: websiteUrl }], maxDepth: 2, maxRequestsPerStartUrl: 12, sameDomain: true }, 45)
+        items.flatMap(emailsFromProfile).filter(isUsableEmail).slice(0, 2).forEach(email => candidates.push({
+          email, source: websiteUrl, confidence: 'high', reason: 'found on their own website (deeper crawl)',
+        }))
       } catch { /* optional source */ }
     }
 
+    // A free DNS check: drop any address whose domain can't receive email,
+    // so a bounce never costs the sending domain its reputation.
+    const accepts = await Promise.all(candidates.map(c => emailAcceptsMail(c.email)))
+    const before = candidates.length
+    candidates.splice(0, candidates.length, ...candidates.filter((_, i) => accepts[i]))
+    const dropped = before - candidates.length
+
     if (candidates.length === 0) {
-      return NextResponse.json({ email: null, facebookUrl, checkedAt: Date.now() })
+      return NextResponse.json({ email: null, facebookUrl, checkedAt: Date.now(), ...(dropped ? { note: `${dropped} address${dropped === 1 ? '' : 'es'} found, but the domain doesn't accept email` } : {}) })
     }
 
     // Prefer a high-confidence match; among ties, prefer one whose domain

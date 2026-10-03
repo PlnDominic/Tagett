@@ -1,4 +1,5 @@
 import { needsConsent } from '@/lib/email-rules'
+import { emailAcceptsMail } from '@/lib/mail-check'
 import { NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
 import { DAILY_LIMIT, OUTREACH_FROM, outreachConfigured, sendOutreachEmail } from '@/lib/outreach-mail'
@@ -34,6 +35,11 @@ export async function POST(req: Request) {
   const text = body.text?.trim() ?? ''
   if (!EMAIL_RE.test(to)) return NextResponse.json({ error: 'That email address does not look valid.' }, { status: 400 })
   if (!subject || !text) return NextResponse.json({ error: 'A subject and a message are both required.' }, { status: 400 })
+  // A domain with no mail server bounces the message, and bounces are what
+  // get a sending domain marked as spam. Free DNS check before any send.
+  if (!(await emailAcceptsMail(to))) {
+    return NextResponse.json({ error: `${to.split('@')[1]} doesn't accept email (no mail server), so this would bounce. Check the address for a typo.` }, { status: 422 })
+  }
   // Cold email needs prior consent in some markets (lib/email-rules.ts).
   if (needsConsent(body.country) && !body.consent) {
     return NextResponse.json({ error: `In ${body.country} unsolicited marketing email needs their consent first. Message them on social media, use their contact form or call instead.` }, { status: 403 })
