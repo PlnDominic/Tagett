@@ -1,5 +1,6 @@
 import { COUNTRIES, marketFor, glFor } from '@/lib/markets'
 import { parseBrownbookListing, parseYellListing, type DirectoryResult } from '@/lib/directories'
+import { serpApiKey } from './serpapi'
 
 export interface ToolDefinition {
   type: 'function'
@@ -213,7 +214,7 @@ export async function executeTool(name: string, args: Record<string, string>): P
     }
 
     if (name === 'search_google_maps') {
-      const key = process.env.SERPAPI_KEY
+      const key = serpApiKey()
       if (!key) return 'Google Maps search not available — SERPAPI_KEY not set.'
       const market = marketFor(args.country)
       const city = (args.city ?? market.seedCities[0]).trim()
@@ -246,7 +247,7 @@ export async function executeTool(name: string, args: Record<string, string>): P
     }
 
     if (name === 'search_google') {
-      const key = process.env.SERPAPI_KEY
+      const key = serpApiKey()
       if (!key) return 'Google search not available — SERPAPI_KEY not set. Fall back to search_web.'
       const query = (args.query ?? '').trim()
       const params = new URLSearchParams({ engine: 'google', q: query, hl: 'en', gl: glFor(args.country), num: '10', api_key: key })
@@ -260,7 +261,7 @@ export async function executeTool(name: string, args: Record<string, string>): P
     }
 
     if (name === 'search_brownbook') {
-      const key = process.env.SERPAPI_KEY
+      const key = serpApiKey()
       if (!key) return 'Brownbook search not available — SERPAPI_KEY not set.'
       const market = marketFor(args.country)
       const query = (args.query ?? '').trim()
@@ -299,7 +300,7 @@ export async function executeTool(name: string, args: Record<string, string>): P
     }
 
     if (name === 'search_yell') {
-      const key = process.env.SERPAPI_KEY
+      const key = serpApiKey()
       if (!key) return 'Yell search not available — SERPAPI_KEY not set.'
       const query = (args.query ?? '').trim()
       const city = (args.city ?? '').trim()

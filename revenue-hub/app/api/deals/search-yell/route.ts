@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server'
 import { marketFor } from '@/lib/markets'
 import { parseYellListing, type DirectoryResult } from '@/lib/directories'
+import { serpApiKey } from '@/lib/serpapi'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
 
-const KEY = process.env.SERPAPI_KEY
+const KEY = serpApiKey()
 
 // See lib/directories.ts for why this parses SerpAPI's own indexed snippet
 // rather than fetching yell.com directly — Yell's Cloudflare protection

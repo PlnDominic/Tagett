@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { marketFor } from '@/lib/markets'
+import { serpApiKey } from '@/lib/serpapi'
 
 // Addresses that show up in search results / page HTML but are never the
 // business's own contact — platform noreply addresses, template/demo
@@ -80,7 +81,7 @@ interface Candidate {
 }
 
 export async function POST(req: Request) {
-  const key = process.env.SERPAPI_KEY
+  const key = serpApiKey()
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
 
   try {

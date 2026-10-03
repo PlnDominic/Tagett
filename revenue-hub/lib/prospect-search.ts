@@ -4,6 +4,7 @@
 // returned, which is what makes the leads trustworthy and the search cheap.
 import { marketFor, toE164 } from '@/lib/markets'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
+import { serpApiKey } from './serpapi'
 
 const PAGE_SIZE = 20          // Google Maps results per page
 const MAX_PAGES_PER_QUERY = 3 // how deep one run digs before giving up
@@ -47,7 +48,7 @@ export interface ProspectSearchResult {
 }
 
 export async function findProspects(input: ProspectSearchInput): Promise<ProspectSearchResult> {
-  const key = process.env.SERPAPI_KEY
+  const key = serpApiKey()
   const empty = { candidates: [], offsets: input.offsets ?? {}, stats: { scanned: 0, withWebsite: 0, alreadyKnown: 0 } }
   if (!key) return { ...empty, error: 'no-key' }
   const industries = input.industries.map(s => s.trim()).filter(Boolean).slice(0, 3)

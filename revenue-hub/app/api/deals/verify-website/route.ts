@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { serpApiKey } from '@/lib/serpapi'
 
 // Domains that turn up in Google results for a business but aren't the business's
 // own website — a hit on Google Maps only means "no website field on their Maps
@@ -85,7 +86,7 @@ function belongsToBusiness(
 }
 
 export async function POST(req: Request) {
-  const key = process.env.SERPAPI_KEY
+  const key = serpApiKey()
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
 
   try {
