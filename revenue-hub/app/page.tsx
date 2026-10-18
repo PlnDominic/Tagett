@@ -6431,6 +6431,15 @@ interface EmailFinderResult {
 // a snippet can carry a different business's address.
 function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: string, updates: Partial<Deal>) => void }) {
   const [running, setRunning] = useState(false)
+  // Asking for the website scraper's health also wakes a free host that has
+  // gone to sleep, so it's ready by the time a search reaches it.
+  const [scraper, setScraper] = useState<'checking' | 'ready' | 'asleep' | 'off'>('checking')
+  useEffect(() => {
+    fetch('/api/scraper/health', { cache: 'no-store' })
+      .then(r => r.json())
+      .then((d: { configured?: boolean; ok?: boolean }) => setScraper(!d.configured ? 'off' : d.ok ? 'ready' : 'asleep'))
+      .catch(() => setScraper('asleep'))
+  }, [])
   const [progress, setProgress] = useState(0)
   const [results, setResults] = useState<EmailFinderResult[]>([])
   const stopRef = useRef(false)
@@ -6482,6 +6491,13 @@ function BulkEmailFinder({ deals, onUpdate }: { deals: Deal[]; onUpdate: (id: st
       <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginBottom: 10 }}>
         {targets.length} open lead{targets.length === 1 ? '' : 's'} with no email. For each: their website (homepage, contact and imprint pages), the free email finders you&apos;ve set up (Hunter.io, Tomba.io, Snov.io), Google, the country&apos;s business directories, their Facebook Page, then the contact info on their Facebook and Instagram profiles (with Apify). Addresses whose domain can&apos;t receive email are dropped. Run Find socials first for the best results. Nothing is saved until you approve it.
       </div>
+      {scraper !== 'off' && (
+        <div style={{ fontSize: 11, fontFamily: FONT_BODY, marginBottom: 10, color: scraper === 'ready' ? '#10B981' : MUTED }}>
+          {scraper === 'checking' ? 'Waking the website scraper (up to a minute on the free host)…'
+            : scraper === 'ready' ? '✓ Website scraper (ScrapeGraphAI) ready: reads sites built with JavaScript too'
+            : 'Website scraper not answering; searches skip it until it wakes'}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: results.length ? 12 : 0 }}>
         {running ? (
           <button onClick={() => { stopRef.current = true }} style={{ padding: '6px 14px', background: SURFACE2, color: TEXT, border: `1px solid ${BORDER}`, borderRadius: 6, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Stop</button>
