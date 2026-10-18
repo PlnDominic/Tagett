@@ -55,4 +55,18 @@ describe('parseProspects', () => {
     expect(leads[1].sourceUrl).toBe('https://facebook.com/hebdenplumbing')
     expect(leads[0].sourceUrl).toBeUndefined()
   })
+
+  it('reads store contacts, and never takes "Owner email" as the owner\'s name', () => {
+    const [withOwner, noOwner] = parseProspects(`1. Business Name — Leder Werk
+   Email: info@lederwerk.de
+   Owner: Anna Schmidt
+   Owner email: anna@lederwerk.de
+
+2. Business Name — Paws & Co
+   Email: hello@pawsandco.co.uk
+   Owner email: lisa@pawsandco.co.uk`)
+    expect(withOwner).toMatchObject({ email: 'info@lederwerk.de', ownerEmail: 'anna@lederwerk.de', contactName: 'Anna Schmidt' })
+    expect(noOwner).toMatchObject({ email: 'hello@pawsandco.co.uk', ownerEmail: 'lisa@pawsandco.co.uk' })
+    expect(noOwner.contactName).toBeUndefined()
+  })
 })

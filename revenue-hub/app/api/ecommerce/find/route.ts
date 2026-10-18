@@ -12,5 +12,6 @@ export async function POST(req: Request) {
   const result = await findStores({ industry: body.industry, country: body.country, excludeSites: body.excludeSites, excludeNames: body.excludeNames })
   if (result.error === 'no-key') return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
   if (result.error === 'quota') return NextResponse.json({ error: 'Out of SerpAPI searches for now' }, { status: 429 })
+  if (result.error === 'failed') return NextResponse.json({ error: `Google search failed: ${result.errorMessage ?? 'no answer from SerpAPI'}` }, { status: 502 })
   return NextResponse.json(result)
 }

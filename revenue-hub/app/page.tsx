@@ -3075,19 +3075,30 @@ Output only the JSON array, nothing else.`
 /** Online stores in a market, with the contacts each publishes (lib/store-search.ts). */
 async function runStoreSearch(search: ProspectSearch, deals: Deal[]): Promise<string> {
   const market = marketFor(search.country)
+  const now = Date.now()
+  const seen = Object.fromEntries(
+    Object.entries(loadJSON<Record<string, number>>(PROSPECT_SEEN_KEY, {})).filter(([, t]) => now - t < SEEN_FOR_MS),
+  )
+  // Stores shown before are remembered by their site, so a repeat search skips them before reading them.
+  const shownSites = Object.keys(seen).filter(k => k.startsWith('site:')).map(k => k.slice(5))
   const res = await fetch('/api/ecommerce/find', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       industry: search.industries[0], country: market.country,
-      excludeSites: deals.map(d => d.websiteCheckUrl).filter(Boolean), excludeNames: deals.map(d => d.name),
+      excludeSites: [...deals.map(d => d.websiteCheckUrl).filter(Boolean), ...shownSites], excludeNames: deals.map(d => d.name),
     }),
   })
   const data = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(data.error ?? `Store search failed (${res.status})`)
   const candidates = (data.candidates ?? []) as ProspectCandidate[]
+  for (const c of candidates) {
+    seen[c.key] = now
+    if (c.website) seen[`site:${c.website}`] = now
+  }
+  saveJSON(PROSPECT_SEEN_KEY, seen)
   const stats = data.stats as { found: number; inspected: number; withEmail: number; alreadyKnown: number }
-  const header = `Found ${stats.found} online ${data.industry} stores in ${market.country} on Google and read the ${stats.inspected} newest to you: ${stats.withEmail} publish an email${stats.alreadyKnown ? `, ${stats.alreadyKnown} were already in your pipeline` : ''}. Every email and owner name below is published on the store's own site.`
+  const header = `Found ${stats.found} online ${data.industry} stores in ${market.country} on Google and read the ${stats.inspected} newest to you: ${stats.withEmail} publish an email${stats.alreadyKnown ? `, ${stats.alreadyKnown} were in your pipeline or shown before` : ''}. Every email and owner name below is published on the store's own site.`
   if (!candidates.length) return `${header}\n\nNo new stores this time. Try another industry; each search reads a fresh set.`
   return presentProspects(candidates, market.country, market, `${header} Best first:`)
 }

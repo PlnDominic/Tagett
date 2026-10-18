@@ -35,19 +35,32 @@ export async function findStores(input: {
 
   const origins: string[] = []
   let refused: StoreSearchResult['error'] | undefined
+  let failure: string | undefined
+  let answered = 0
   for (const q of storeQueries(industry, market.country)) {
     const params = new URLSearchParams({ engine: 'google', q, gl: market.gl, hl: 'en', num: '20', api_key: key })
     try {
       const res = await fetch(`https://serpapi.com/search.json?${params}`, { signal: AbortSignal.timeout(15000) })
-      const data = await res.json().catch(() => ({})) as { organic_results?: Array<{ link?: string }>; error?: string }
-      if (res.status === 429 || /run out of searches/i.test(data.error ?? '')) { refused = 'quota'; break }
+      const data = await res.json().catch(() => null) as { organic_results?: Array<{ link?: string }>; error?: string } | null
+      if (res.status === 429 || /run out of searches/i.test(data?.error ?? '')) { refused = 'quota'; break }
+      // "No results" comes back as an error too, but the search itself worked.
+      if (!res.ok || !data || (data.error && !/hasn't returned any results/i.test(data.error))) {
+        failure = data?.error ?? `SerpAPI answered ${res.status}`
+        continue
+      }
+      answered++
       for (const r of data.organic_results ?? []) {
         const origin = r.link ? storeOrigin(r.link) : null
         if (origin && !origins.includes(origin)) origins.push(origin)
       }
-    } catch { /* one query failing still leaves the other */ }
+    } catch (err) {
+      // One query failing still leaves the other.
+      failure = err instanceof Error ? err.message : 'SerpAPI did not answer'
+    }
   }
   if (!origins.length && refused) return { ...empty, error: refused }
+  // Neither search worked: say so rather than report "no new stores".
+  if (!answered) return { ...empty, error: 'failed', errorMessage: failure }
 
   const known = new Set((input.excludeSites ?? []).map(s => storeOrigin(s)?.replace(/^https?:\/\/(www\.)?/, '')).filter(Boolean))
   const fresh = origins.filter(o => !known.has(o.replace(/^https?:\/\/(www\.)?/, '')))

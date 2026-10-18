@@ -84,4 +84,17 @@ describe('findStores', () => {
     ])
     expect(r.stats).toMatchObject({ found: 3, alreadyKnown: 1, withEmail: 1 })
   })
+
+  it('reports a broken search instead of "no new stores"', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: 'Invalid API key.' }), { status: 401 })))
+    const r = await findStores({ industry: 'Pet Supplies', country: 'Germany' })
+    expect(r).toMatchObject({ error: 'failed', errorMessage: 'Invalid API key.', candidates: [] })
+  })
+
+  it('treats "no results" as a search that worked', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: "Google hasn't returned any results for this query." }))))
+    const r = await findStores({ industry: 'Pet Supplies', country: 'Germany' })
+    expect(r.error).toBeUndefined()
+    expect(r.candidates).toEqual([])
+  })
 })
