@@ -6,6 +6,7 @@ import { DIRECTORY_SITES, emailsFromProfile, isSingleListing } from '@/lib/email
 import { findWithProviders } from '@/lib/email-providers'
 import { crawlSiteEmails, isUsableEmail } from '@/lib/site-emails'
 import { emailAcceptsMail } from '@/lib/mail-check'
+import { scrapeContacts, scrapeGraphConfigured } from '@/lib/scrapegraph'
 import type { Socials } from '@/lib/socials'
 
 // Social profiles are read with Apify scrapers, which take 20-40 seconds.
@@ -76,6 +77,10 @@ interface Candidate {
 }
 
 export async function POST(req: Request) {
+  // Vercel stops this function at 60s; the slow steps at the end only run
+  // with enough of that left.
+  const startedAt = Date.now()
+  const secondsLeft = () => (57000 - (Date.now() - startedAt)) / 1000
   const key = serpApiKey()
   if (!key) return NextResponse.json({ error: 'SERPAPI_KEY not set' }, { status: 503 })
 
@@ -225,9 +230,23 @@ export async function POST(req: Request) {
     }
 
     // 5. Last resort for a site that hides its address from a simple fetch
-    // (rendered by JavaScript, or more pages deep): Apify's Contact Details
-    // Scraper crawls it properly, on the same free monthly Apify credit.
-    if (!candidates.some(c => c.confidence === 'high') && websiteUrl && apifyToken()) {
+    // (built by JavaScript, or more pages deep). First the Tagett website
+    // scraper (ScrapeGraphAI with a real browser, scraper/ in this repo, free
+    // on Render), which only returns addresses actually on the pages...
+    let scraped = false
+    if (!candidates.some(c => c.confidence === 'high') && websiteUrl && scrapeGraphConfigured() && secondsLeft() > 12) {
+      try {
+        const found = await scrapeContacts(websiteUrl, (secondsLeft() - 3) * 1000)
+        scraped = true
+        found.emails.filter(isUsableEmail).slice(0, 2).forEach(email => candidates.push({
+          email, source: found.pages.find(p => p !== websiteUrl) ?? websiteUrl, confidence: 'high',
+          reason: `found on their own website by the website scraper${found.contactName ? ` (contact: ${found.contactName})` : ''}`,
+        }))
+      } catch { /* asleep or unreachable: fall through to Apify */ }
+    }
+
+    // ...else Apify's Contact Details Scraper, on the free monthly Apify credit.
+    if (!scraped && !candidates.some(c => c.confidence === 'high') && websiteUrl && apifyToken() && secondsLeft() > 15) {
       try {
         const items = await runActor('vdrmota~contact-info-scraper', { startUrls: [{ url: websiteUrl }], maxDepth: 2, maxRequestsPerStartUrl: 12, sameDomain: true }, 45)
         items.flatMap(emailsFromProfile).filter(isUsableEmail).slice(0, 2).forEach(email => candidates.push({

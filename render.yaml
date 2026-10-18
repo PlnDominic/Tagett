@@ -1,0 +1,16 @@
+# Render Blueprint for the Tagett website scraper (scraper/): ScrapeGraphAI
+# with headless Chromium, on Render's free plan. Tagett calls it from
+# Find Email; see scraper/README.md.
+services:
+  - type: web
+    name: tagett-scraper
+    runtime: docker
+    plan: free
+    dockerfilePath: ./scraper/Dockerfile
+    dockerContext: ./scraper
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: SCRAPER_SECRET
+        generateValue: true
