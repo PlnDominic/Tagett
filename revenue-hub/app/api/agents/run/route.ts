@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic'
 import { getAgentTools, executeTool, ToolDefinition } from '@/lib/tools'
 import { getSupabase, writeToleratingSchemaDrift } from '@/lib/supabase'
 import { findProspectsWidening } from '@/lib/prospect-search'
+import { findStores } from '@/lib/store-search'
 import { prospectKey } from '@/lib/prospects'
 import { sendRunEmail } from '@/lib/mailer'
 import { stripEmDashes } from '@/lib/text'
@@ -156,10 +157,10 @@ export async function GET(req: NextRequest) {
   const outreach = outreachNotes(market)
   const workspace: Record<string, string> = {}
 
-  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null; stage_changed_at?: number | null; created_at?: number | null; source_url?: string | null }> = []
+  let deals: Array<{ stage: string; value_ghs: number; name: string; phone?: string | null; stage_changed_at?: number | null; created_at?: number | null; source_url?: string | null; website_check_url?: string | null }> = []
   try {
     const sb = getSupabase()
-    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone, stage_changed_at, created_at, source_url')
+    const { data } = await sb.from('deals').select('stage, value_ghs, name, phone, stage_changed_at, created_at, source_url, website_check_url')
     deals = data ?? []
   } catch { /* continue without DB data */ }
 
@@ -174,8 +175,10 @@ export async function GET(req: NextRequest) {
   // OVERNIGHT_LISTENING=off turns it off.
   // Abroad most businesses have some website, and the ones without rarely
   // publish an email: there the run looks for weak websites instead.
-  const target = market.whatsappFirst ? 'no-site' as const : 'weak-site' as const
-  const kind = target === 'weak-site' ? 'with a weak website' : 'without a website'
+  // Abroad, alternate nights look for online stores (e-commerce brands and
+  // the contacts they publish) instead.
+  const target = market.whatsappFirst ? 'no-site' as const : new Date().getUTCDate() % 2 ? 'ecommerce' as const : 'weak-site' as const
+  const kind = target === 'weak-site' ? 'with a weak website' : target === 'ecommerce' ? 'selling online' : 'without a website'
 
   const listenPlatform = new Date().getUTCDate() % 2 ? 'x' as const : 'facebook' as const
   const serpKey = serpApiKey()
@@ -198,29 +201,38 @@ OUTREACH FOR THIS MARKET: ${outreach}`,
     // The town first (region included: village names repeat within a
     // country), then its region, then the whole country, so a small town
     // with nothing on Maps doesn't leave the morning list empty.
-    findProspectsWidening({
-      industries: [industry],
-      target,
-      // The run has 120s in all; up to three areas may each test their sites.
-      auditTimeoutMs: 20000,
-      country: market.country,
-      exclude: deals.map(d => prospectKey(d.name, d.phone ?? undefined)),
-      excludeNames: deals.map(d => d.name),
-    }, [place.admin1 ? `${city}, ${place.admin1}` : city, ...(place.admin1 ? [place.admin1] : []), '']),
+    target === 'ecommerce'
+      ? findStores({ country: market.country, excludeSites: deals.map(d => d.website_check_url ?? '').filter(Boolean), excludeNames: deals.map(d => d.name) })
+          .then(r => ({ result: { candidates: r.candidates, error: r.error, errorMessage: r.errorMessage, stats: { scanned: r.stats.found } }, area: '', tried: [''], storeIndustry: r.industry as string | undefined }))
+      : findProspectsWidening({
+          industries: [industry],
+          target,
+          // The run has 120s in all; up to three areas may each test their sites.
+          auditTimeoutMs: 20000,
+          country: market.country,
+          exclude: deals.map(d => prospectKey(d.name, d.phone ?? undefined)),
+          excludeNames: deals.map(d => d.name),
+        }, [place.admin1 ? `${city}, ${place.admin1}` : city, ...(place.admin1 ? [place.admin1] : []), ''])
+          .then(r => ({ ...r, storeIndustry: undefined as string | undefined })),
     listening,
   ])
 
-  const { result: found, area: foundArea, tried } = searched
+  const { result: found, area: foundArea, tried, storeIndustry } = searched
+  const leadIndustry = storeIndustry ?? industry
   const listenPosts = listening_.posts
   const leads = found.candidates
   const where = (area: string) => area ? `${area}, ${market.country}` : `${market.country} (country-wide)`
-  const leadsLocale = where(foundArea)
+  const leadsLocale = storeIndustry ? `${market.country} (online stores)` : where(foundArea)
   // A failed search used to read as "nothing found"; say what happened.
   const searchError = found.error === 'quota' ? 'Out of SerpAPI searches: no Google Maps search could run tonight. Check "Searches left" at serpapi.com.'
     : found.error === 'no-key' ? 'SERPAPI_KEY is not set in Vercel, so no Google Maps search ran.'
     : found.error === 'failed' ? `Google Maps search failed: ${found.errorMessage ?? 'unknown error'}.`
     : null
-  const prospect = searchError ?? (leads.length
+  const prospect = searchError ?? (storeIndustry
+    ? (leads.length
+      ? leads.map((c, i) => `${i + 1}. ${c.name} | ${c.website} (${c.platform}) | ${c.email ?? 'no email published'}${c.contactName ? ` | owner: ${c.contactName}` : ''}${c.ownerEmail ? ` (${c.ownerEmail})` : ''}`).join('\n')
+      : `No new ${storeIndustry} stores found in ${market.country} (found ${found.stats.scanned} on Google).`)
+    : leads.length
     ? `${foundArea !== tried[0] ? `Nothing in ${where(tried[0])}, so widened to ${leadsLocale}.\n` : ''}${leads.map((c, i) => `${i + 1}. ${c.name} | ${c.address ?? 'address not listed'} | ${c.phone ?? 'no phone listed'} | ${c.reviews} Google reviews${c.rating ? `, rated ${c.rating}` : ''}${c.website ? ` | ${c.website}: ${c.siteIssue}` : c.socialOnly ? ` | social page only: ${c.socialOnly}` : ''}`).join('\n')}`
     : `No ${industry} businesses ${kind} found on Google Maps in ${tried.map(where).join(', then ')} (checked ${found.stats.scanned} in the last).`)
   workspace.scout = social
@@ -285,7 +297,7 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
       // Structured leads + where they came from, for ProspectBot's
       // "found overnight" list in the app.
       // locale is where the leads were found, which may be wider than the town.
-      prospect_leads: { country: market.country, city, locale: leadsLocale, industry, leads, ...(searchError ? { error: searchError } : {}) },
+      prospect_leads: { country: market.country, city, locale: leadsLocale, industry: leadIndustry, leads, ...(searchError ? { error: searchError } : {}) },
       // Posts asking for a website, for Social listening's "found overnight".
       social_posts: { country: market.country, platform: listenPlatform, posts: listenPosts, ...(listening_.error ? { error: listening_.error } : {}) },
     }], rows => sb.from('agent_runs').insert(rows))
@@ -316,7 +328,7 @@ Provide a 3-sentence status: where we stand, biggest opportunity right now, and 
     await sendPush({
       title: leads.length ? `🌙 ${leads.length} new lead${leads.length === 1 ? '' : 's'} ready` : '🤖 Tagett auto-run complete',
       body: (leads.length
-        ? `${industry} in ${leadsLocale}, ${kind}, busiest first. Open ProspectBot to import them.`
+        ? `${leadIndustry} in ${leadsLocale}, ${kind}${storeIndustry ? `, ${leads.filter(l => l.email).length} with an email` : ', busiest first'}. Open ProspectBot to import them.`
         : searchError ?? `No new ${industry} leads in ${locale} or wider tonight. Pitches and pipeline summary are in your email.`)
         + (listenPosts.length ? ` Plus ${listenPosts.length} ${listenPlatform === 'x' ? 'X' : 'Facebook'} post${listenPosts.length === 1 ? '' : 's'} asking for a website in ${market.country}: SocialScout → Social listening.` : ''),
     })

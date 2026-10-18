@@ -198,3 +198,6 @@ alter table agent_runs add column if not exists social_posts jsonb;
 
 -- Weak-website leads: what's wrong with their site
 alter table deals add column if not exists site_issue text;
+
+-- The owner or contact person a business publishes (online-store leads)
+alter table deals add column if not exists contact_name text;

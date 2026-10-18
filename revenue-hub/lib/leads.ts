@@ -57,6 +57,10 @@ export function parseProspects(text: string): ParsedProspect[] {
       // Weak-website leads: their site and what's wrong with it.
       websiteUrl: field('Website')?.match(/https?:\/\/\S+/)?.[0],
       siteIssue: field('Website issue'),
+      // Online-store leads: the contacts the store publishes on its own site.
+      email: field('Email')?.match(/[\w.%+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0]?.toLowerCase(),
+      ownerEmail: field('Owner email')?.match(/[\w.%+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0]?.toLowerCase(),
+      contactName: field('Owner') && !/not published/i.test(field('Owner')!) ? field('Owner') : undefined,
       country: field('Country'),
       // SocialScout leads carry the post or page they came from.
       sourceUrl: field('Source')?.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, ''),
