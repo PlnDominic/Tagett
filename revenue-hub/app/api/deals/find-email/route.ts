@@ -237,8 +237,10 @@ export async function POST(req: Request) {
     if (!candidates.some(c => c.confidence === 'high') && websiteUrl && scrapeGraphConfigured() && secondsLeft() > 12) {
       try {
         const found = await scrapeContacts(websiteUrl, (secondsLeft() - 3) * 1000)
-        scraped = true
-        found.emails.filter(isUsableEmail).slice(0, 2).forEach(email => candidates.push({
+        const emails = found.emails.filter(isUsableEmail).slice(0, 2)
+        // Only a find skips Apify: its deeper crawl can still reach pages the scraper didn't open.
+        scraped = emails.length > 0
+        emails.forEach(email => candidates.push({
           email, source: found.pages.find(p => p !== websiteUrl) ?? websiteUrl, confidence: 'high',
           reason: `found on their own website by the website scraper${found.contactName ? ` (contact: ${found.contactName})` : ''}`,
         }))
