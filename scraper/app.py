@@ -11,8 +11,11 @@ never reach an outreach email.
 """
 
 import asyncio
+import ipaddress
 import os
 import re
+import socket
+from functools import lru_cache
 from urllib.parse import urljoin, urlparse
 
 from fastapi import FastAPI, Header, HTTPException
@@ -46,7 +49,29 @@ JUNK_DOMAIN = re.compile(
 )
 JUNK_LOCAL = re.compile(r"^(noreply|no-reply|donotreply|test|user|your|name|email|example)$", re.I)
 
+# Local testing against a site on localhost; never set on the live service.
+ALLOW_PRIVATE = os.environ.get("SCRAPER_ALLOW_PRIVATE") == "1"
+
 app = FastAPI(title="Tagett scraper")
+
+
+@lru_cache(maxsize=512)
+def public_host(host: str) -> bool:
+    """Whether every address the host resolves to is on the public internet."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except (socket.gaierror, UnicodeError):
+        return False
+    return bool(infos) and all(ipaddress.ip_address(i[4][0].split("%")[0]).is_global for i in infos)
+
+
+def allowed(url: str) -> bool:
+    """Only public http(s) sites: the service must never become a way to reach
+    loopback, link-local (cloud metadata) or private-network addresses."""
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return False
+    return ALLOW_PRIVATE or public_host(p.hostname)
 
 
 class ExtractRequest(BaseModel):
@@ -94,6 +119,15 @@ async def render(url: str) -> list[dict]:
         )
         try:
             page = await browser.new_page(user_agent="Mozilla/5.0 (compatible; TagettBot/1.0; +https://ecstasytechnologies.com)")
+
+            # Every request the page makes, redirects included, is checked again.
+            async def guard(route):
+                if allowed(route.request.url):
+                    await route.continue_()
+                else:
+                    await route.abort()
+
+            await page.route("**/*", guard)
 
             async def grab(target: str) -> dict | None:
                 try:
@@ -166,6 +200,8 @@ async def extract(req: ExtractRequest, x_scraper_secret: str = Header(default=""
     if x_scraper_secret != SECRET:
         raise HTTPException(401, "wrong scraper secret")
     url = req.url if req.url.startswith("http") else f"https://{req.url}"
+    if not allowed(url):
+        raise HTTPException(400, "only public http(s) websites can be read")
 
     pages = await render(url)
     if not pages:

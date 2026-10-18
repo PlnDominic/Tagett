@@ -5,6 +5,10 @@ import { createPortal } from 'react-dom'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
 import type { ProspectTarget } from '@/lib/prospect-search'
+import { ECOMMERCE_INDUSTRIES } from '@/lib/store-finder'
+
+/** What ProspectBot looks for: local businesses on Maps, or online stores. */
+type SearchTarget = ProspectTarget | 'ecommerce'
 import { parseProspects } from '@/lib/leads'
 import { refCodeFor } from '@/lib/refcode'
 import { SOCIAL_LABELS, type SocialNetwork, type Socials } from '@/lib/socials'
@@ -3011,15 +3015,16 @@ function saveJSON(key: string, value: unknown): void {
   try { localStorage.setItem(key, JSON.stringify(value)) } catch {}
 }
 
-interface ProspectSearch { industries: string[]; city: string; area: string; country?: string; target?: ProspectTarget }
+interface ProspectSearch { industries: string[]; city: string; area: string; country?: string; target?: SearchTarget }
 interface ProspectLines { why?: string; service?: string; value?: number; pitch?: string }
 
 /** Asks the LLM for pitch lines only; facts stay the ones Maps returned. */
 async function writeProspectLines(candidates: ProspectCandidate[], market: Market): Promise<ProspectLines[]> {
   const facts = candidates.map((c, i) => ({
     i, name: c.name, industry: c.industry, area: c.address, googleReviews: c.reviews, rating: c.rating,
-    onlinePresence: c.website ? `has a website (${c.website}) that ${c.siteIssue}` : c.socialOnly ? `only a social page (${c.socialOnly})` : 'none found',
+    onlinePresence: c.platform ? `an online store on ${c.platform} (${c.website})` : c.website ? `has a website (${c.website}) that ${c.siteIssue}` : c.socialOnly ? `only a social page (${c.socialOnly})` : 'none found',
   }))
+  if (candidates.some(c => c.platform)) return writeStoreLines(candidates, market)
   const weak = candidates.some(c => c.website)
   const systemPrompt = `You write cold-call lines for Ecstasy Technologies, a web and software studio (ecstasytechnologies.com). The businesses below are real, from Google Maps, and ${weak ? 'have a website with the problem shown in onlinePresence (measured by Google PageSpeed)' : 'have no website'}. For each, return one object {"i", "why", "service", "value", "pitch"}:
 - why: one sentence on why THIS business is losing customers ${weak ? 'because of that website problem' : 'without a website'}, using only the facts given (industry, reviews, rating, area, ${weak ? 'the measured problem' : 'social page'}). Never invent history, owners, competitors or numbers.
@@ -3046,7 +3051,60 @@ Output only the JSON array, nothing else.`
   }
 }
 
+/** Pitch lines for online stores: what Ecstasy would build or fix for an e-commerce brand. */
+async function writeStoreLines(candidates: ProspectCandidate[], market: Market): Promise<ProspectLines[]> {
+  const facts = candidates.map((c, i) => ({ i, name: c.name, industry: c.industry, store: c.website, platform: c.platform, owner: c.contactName ?? null }))
+  const systemPrompt = `You write first-contact lines for Ecstasy Technologies, a web and software studio (ecstasytechnologies.com), to independent online stores. The stores below are real (found on Google, details from their own sites). For each, return one object {"i", "why", "service", "value", "pitch"}:
+- why: one sentence on what would grow THIS store's sales that a studio can build: a faster mobile store, a custom storefront beyond its standard theme, subscriptions or bundles, a wholesale portal, a booking or quiz feature, an app. Use only the facts given; never invent sales figures, problems or history.
+- service: one of "web design", "mobile app", "business software".
+- value: whole number in ${market.currency} for that service, within these prices for ${market.country}:
+${priceListText(market)}
+- pitch: one opening sentence, using the store's name (and the owner's first name if given).
+How first contact works in ${market.country}: ${outreachNotes(market)}
+Output only the JSON array, nothing else.`
+  try {
+    const res = await fetch('/api/chat', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ systemPrompt, messages: [{ role: 'user', content: JSON.stringify(facts) }] }) })
+    const text = String((await res.json()).text ?? '')
+    const rows = JSON.parse(text.slice(text.indexOf('['), text.lastIndexOf(']') + 1)) as Array<ProspectLines & { i: number }>
+    return candidates.map((_, i) => rows.find(r => r.i === i) ?? {})
+  } catch {
+    return candidates.map(() => ({}))
+  }
+}
+
+/** Online stores in a market, with the contacts each publishes (lib/store-search.ts). */
+async function runStoreSearch(search: ProspectSearch, deals: Deal[]): Promise<string> {
+  const market = marketFor(search.country)
+  const now = Date.now()
+  const seen = Object.fromEntries(
+    Object.entries(loadJSON<Record<string, number>>(PROSPECT_SEEN_KEY, {})).filter(([, t]) => now - t < SEEN_FOR_MS),
+  )
+  // Stores shown before are remembered by their site, so a repeat search skips them before reading them.
+  const shownSites = Object.keys(seen).filter(k => k.startsWith('site:')).map(k => k.slice(5))
+  const res = await fetch('/api/ecommerce/find', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      industry: search.industries[0], country: market.country,
+      excludeSites: [...deals.map(d => d.websiteCheckUrl).filter(Boolean), ...shownSites], excludeNames: deals.map(d => d.name),
+    }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? `Store search failed (${res.status})`)
+  const candidates = (data.candidates ?? []) as ProspectCandidate[]
+  for (const c of candidates) {
+    seen[c.key] = now
+    if (c.website) seen[`site:${c.website}`] = now
+  }
+  saveJSON(PROSPECT_SEEN_KEY, seen)
+  const stats = data.stats as { found: number; inspected: number; withEmail: number; alreadyKnown: number }
+  const header = `Found ${stats.found} online ${data.industry} stores in ${market.country} on Google and read the ${stats.inspected} newest to you: ${stats.withEmail} publish an email${stats.alreadyKnown ? `, ${stats.alreadyKnown} were in your pipeline or shown before` : ''}. Every email and owner name below is published on the store's own site.`
+  if (!candidates.length) return `${header}\n\nNo new stores this time. Try another industry; each search reads a fresh set.`
+  return presentProspects(candidates, market.country, market, `${header} Best first:`)
+}
+
 async function runProspectSearch(search: ProspectSearch, deals: Deal[]): Promise<string> {
+  if (search.target === 'ecommerce') return runStoreSearch(search, deals)
   const market = marketFor(search.country)
   const now = Date.now()
   const seen = Object.fromEntries(
@@ -3100,7 +3158,15 @@ async function presentProspects(candidates: ProspectCandidate[], city: string, m
       `   Country: ${market.country}`,
       `   Phone: ${c.phone ?? 'Not listed on Google Maps'}`,
       `   Google Maps: ${busy}`,
-      ...(c.website ? [
+      ...(c.platform ? [
+        `   Website: ${c.website}`,
+        `   Platform: ${c.platform}`,
+        `   Email: ${c.email ?? 'not published'}`,
+        ...(c.contactName ? [`   Owner: ${c.contactName}`] : []),
+        ...(c.ownerEmail ? [`   Owner email: ${c.ownerEmail}`] : []),
+        ...(c.socials?.length ? [`   Social: ${c.socials.join(' ')}`] : []),
+        `   Why they need a better website: ${l.why ?? `A custom, faster storefront would turn more of ${c.name}'s visitors into orders than a standard ${c.platform} theme.`}`,
+      ] : c.website ? [
         `   Website: ${c.website}`,
         `   Website issue: ${c.siteIssue}`,
         `   Why they need a better website: ${l.why ?? `Their site ${c.siteIssue}, so many of the people who find them on Maps (${busy}) leave before they call or visit.`}`,
@@ -3110,10 +3176,12 @@ async function presentProspects(candidates: ProspectCandidate[], city: string, m
       ]),
       `   Service to pitch: ${l.service ?? 'web design'}`,
       `   Estimated value: ${money}${(l.value && l.value > 0 ? l.value : defaultValue).toLocaleString()}`,
-      `   Phone pitch: "${l.pitch ?? (c.website
+      `   Phone pitch: "${l.pitch ?? (c.platform
+        ? `Hello${c.contactName ? ` ${c.contactName.split(' ')[0]}` : ''}, I'm Dominic from Ecstasy Technologies. I came across ${c.name} and have a few ideas that could turn more of your visitors into orders.`
+        : c.website
         ? `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I tested your website and it ${c.siteIssue}, which loses customers who find you on Google. I'd like to show you what we'd fix.`
         : `Hello, is this ${c.name}? I'm Dominic from Ecstasy Technologies. I saw you on Google Maps and noticed you don't have a website yet, and I'd like to show you what one could do for you.`)}"`,
-      `   Source: Google Maps`,
+      `   Source: ${c.platform ? c.website : 'Google Maps'}`,
     ].join('\n')
   })
   const total = candidates.reduce((sum, _, i) => sum + (lines[i].value && lines[i].value! > 0 ? lines[i].value! : defaultValue), 0)
@@ -3156,7 +3224,7 @@ function OvernightLeadsBanner({ onShow }: { onShow: (run: OvernightRun) => void 
   return (
     <div style={{ margin: '12px 12px 0', padding: '10px 12px', borderRadius: 10, border: `1px solid ${GOLD}40`, background: `${GOLD}0c`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
       <span style={{ flex: 1, minWidth: 180, fontSize: 13, color: TEXT, fontFamily: FONT_BODY }}>
-        🌙 {leads.length} lead{leads.length === 1 ? '' : 's'} found overnight: {industry} in {locale}, {leads.some(l => l.website) ? 'with a weak website' : 'no website'}, busiest first.
+        🌙 {leads.length} lead{leads.length === 1 ? '' : 's'} found overnight: {industry} in {locale}, {leads.some(l => l.platform) ? `online stores, ${leads.filter(l => l.email).length} with an email` : leads.some(l => l.website) ? 'with a weak website' : 'no website'}, busiest first.
       </span>
       <button onClick={() => { onShow(run); dismiss() }} style={{ padding: '5px 12px', borderRadius: 20, border: 'none', background: GOLD, color: '#fff', fontSize: 12, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }}>Show them</button>
       <button onClick={dismiss} title="Hide" style={{ background: 'none', border: 'none', color: MUTED, cursor: 'pointer', fontSize: 14 }}>✕</button>
@@ -3201,7 +3269,8 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
   // Abroad, most businesses have some website and the ones without rarely
   // publish an email; a weak website is the better lead there.
   const defaultTarget = (c: string): ProspectTarget => marketFor(c).whatsappFirst ? 'no-site' : 'weak-site'
-  const [target, setTarget] = useState<ProspectTarget>(defaultTarget('Ghana'))
+  const [target, setTarget] = useState<SearchTarget>(defaultTarget('Ghana'))
+  const stores = target === 'ecommerce'
   const cityOptions = country === 'Ghana' ? CITIES : marketFor(country).seedCities
 
   const toggleIndustry = (ind: string) => {
@@ -3215,7 +3284,8 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
     setSelectedArea('')
   }
 
-  const canSubmit = selectedIndustries.length > 0 && selectedCity.trim() !== ''
+  // Stores are searched country-wide, so they need no town.
+  const canSubmit = selectedIndustries.length > 0 && (stores || selectedCity.trim() !== '')
 
   const handleSubmit = () => {
     if (!canSubmit || loading) return
@@ -3241,12 +3311,13 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
           01 — Which industry?
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {INDUSTRIES.map((ind) => {
+          {(stores ? ['Any industry', ...ECOMMERCE_INDUSTRIES] : INDUSTRIES).map((ind) => {
             const active = selectedIndustries.includes(ind)
             return (
               <button
                 key={ind}
-                onClick={() => toggleIndustry(ind)}
+                // A store search covers one industry at a time (two Google searches each).
+                onClick={() => stores ? setSelectedIndustries(active ? [] : [ind]) : toggleIndustry(ind)}
                 style={{
                   padding: '6px 12px', borderRadius: 20,
                   border: `1px solid ${active ? GOLD : BORDER}`,
@@ -3271,7 +3342,7 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
         {onFind && (
           <select
             value={country}
-            onChange={e => { setCountry(e.target.value); setSelectedCity(''); setSelectedArea(''); setTarget(defaultTarget(e.target.value)) }}
+            onChange={e => { setCountry(e.target.value); setSelectedCity(''); setSelectedArea(''); if (target !== 'ecommerce') setTarget(defaultTarget(e.target.value)) }}
             style={{ marginBottom: 10, padding: '7px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY }}
           >
             {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
@@ -3279,16 +3350,17 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
         )}
         {onFind && (
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-            {([['no-site', 'No website'], ['weak-site', 'Weak website']] as Array<[ProspectTarget, string]>).map(([t, label]) => (
-              <button key={t} onClick={() => setTarget(t)} title={t === 'weak-site' ? 'Businesses whose site is slow on phones, broken or not secure, tested with Google PageSpeed. Their email is easy to find, and the problem is your opening line.' : 'Businesses with no website at all'}
+            {([['no-site', 'No website'], ['weak-site', 'Weak website'], ['ecommerce', 'Online stores']] as Array<[SearchTarget, string]>).map(([t, label]) => (
+              <button key={t} onClick={() => { if ((t === 'ecommerce') !== (target === 'ecommerce')) setSelectedIndustries([]); setTarget(t) }} title={t === 'ecommerce' ? 'E-commerce brands in this country (Shopify, WooCommerce...), found on Google, with the email and owner each publishes on its own site' : t === 'weak-site' ? 'Businesses whose site is slow on phones, broken or not secure, tested with Google PageSpeed. Their email is easy to find, and the problem is your opening line.' : 'Businesses with no website at all'}
                 style={{ padding: '5px 12px', borderRadius: 16, border: `1px solid ${target === t ? GOLD : BORDER}`, background: target === t ? `${GOLD}18` : 'transparent', color: target === t ? GOLD : MUTED, fontSize: 12, fontFamily: FONT_HEADING, fontWeight: target === t ? 600 : 400, cursor: 'pointer' }}>
                 {label}
               </button>
             ))}
             {target === 'weak-site' && <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, alignSelf: 'center' }}>Tests each site with PageSpeed, so it takes up to a minute.</span>}
+            {target === 'ecommerce' && <span style={{ fontSize: 11, color: MUTED, fontFamily: FONT_BODY, alignSelf: 'center' }}>Searches the whole country; reads each store&apos;s contact, imprint and policy pages (up to a minute).</span>}
           </div>
         )}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {!stores && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {cityOptions.map((city) => {
             const active = selectedCity === city
             return (
@@ -3308,8 +3380,8 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
               </button>
             )
           })}
-        </div>
-        {onFind && (
+        </div>}
+        {onFind && !stores && (
           <input
             value={cityOptions.includes(selectedCity) ? '' : selectedCity}
             onChange={e => { setSelectedCity(e.target.value); setSelectedArea('') }}
@@ -3320,7 +3392,7 @@ function ProspectIntakeScreen({ onSubmit, onFind, loading }: {
       </div>
 
       {/* Step 3: Area (only when city selected) */}
-      {selectedCity && GHANA_LOCATIONS[selectedCity] && (
+      {!stores && selectedCity && GHANA_LOCATIONS[selectedCity] && (
         <div style={{ marginBottom: 24 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 12, color: GOLD, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 10 }}>
             03 — Which area? <span style={{ color: MUTED, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
@@ -3655,6 +3727,7 @@ async function writeOutreachEmail(deal: Deal): Promise<{ subject: string; body: 
     `Country: ${market.country} (${outreachNotes(market)})`,
     `Website: ${deal.websiteCheck === 'found_site' ? `they have one (${deal.websiteCheckUrl ?? 'url unknown'})${deal.siteIssue ? ` that ${deal.siteIssue} (measured with Google PageSpeed)` : ''}, pitch improving it` : deal.websiteCheck === 'confirmed_no_site' ? 'confirmed they have no website' : 'none found'}`,
     deal.sourceUrl ? `Found via: ${deal.sourceUrl}` : null,
+    deal.contactName ? `Contact person: ${deal.contactName} (greet them by first name)` : null,
     socialLinks(deal.socials).length ? `On social media: ${socialLinks(deal.socials).map(([n]) => SOCIAL_LABELS[n]).join(', ')} ${deal.websiteCheck === 'found_site' ? '' : ' (customers can find them there, but not on a site of their own)'}` : null,
     deal.repliedAt ? 'They have replied before.' : null,
     `PREVIOUS MESSAGES: ${previous.length ? previous.map(m => m.text.replace(/\s+/g, ' ').slice(0, 300)).join(' || ') : 'none, this is the first contact'}`,
@@ -5163,6 +5236,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       )}
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 5, flexWrap: 'wrap' }}>
+        {deal.contactName && <span title="Owner or contact person, as published by the business" style={{ fontSize: 10, color: TEXT, fontFamily: FONT_BODY, marginRight: 2 }}>👤 {deal.contactName}</span>}
         <SocialIcons socials={deal.socials} />
         {deal.dmHistory?.length ? (() => {
           const last = deal.dmHistory[deal.dmHistory.length - 1]
@@ -9931,7 +10005,7 @@ export default function Page() {
     try {
       const when = new Date(run.run_at).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit' })
       const reply = leads.length
-        ? await presentProspects(leads, batch.city, marketFor(batch.country), `Found on Google Maps by the overnight run (${when}): ${batch.industry} in ${batch.locale} ${leads.some(l => l.website) ? 'with a weak website (tested with Google PageSpeed)' : 'with no website'}, busiest first.`)
+        ? await presentProspects(leads, batch.city, marketFor(batch.country), `Found on Google Maps by the overnight run (${when}): ${batch.industry} in ${batch.locale} ${leads.some(l => l.platform) ? 'selling online, contacts from their own sites' : leads.some(l => l.website) ? 'with a weak website (tested with Google PageSpeed)' : 'with no website'}, best first.`)
         : 'Every lead from the overnight run is already in your pipeline.'
       setAllChats((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), { role: 'assistant', content: reply }] }))
       saveMessage(agentId, 'assistant', reply)
@@ -10030,6 +10104,9 @@ export default function Page() {
       country: (p.country && COUNTRIES.includes(p.country) ? p.country : undefined) ?? countryFromPhone(p.phone),
       sourceUrl: p.sourceUrl,
       ...(p.websiteUrl ? { websiteCheck: 'found_site' as const, websiteCheckUrl: p.websiteUrl, siteIssue: p.siteIssue } : {}),
+      // An owner's own published address reaches a decision-maker; else the store's inbox.
+      ...(p.ownerEmail || p.email ? { email: p.ownerEmail ?? p.email } : {}),
+      ...(p.contactName ? { contactName: p.contactName } : {}),
       followUpAt,
       createdAt: base + i,
       stageChangedAt: base + i,

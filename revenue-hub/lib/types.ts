@@ -105,6 +105,8 @@ export interface Deal {
   websiteCheckUrl?: string
   /** What's wrong with their website, from the weak-website search ("scores 31/100 for speed on phones"). */
   siteIssue?: string
+  /** The owner or contact person the business publishes (e.g. on its Impressum). */
+  contactName?: string
   // Multi-touch follow-up sequence: number of touches sent so far (1 = the
   // initial pitch). The follow-up cron advances this and schedules the next
   // touch (day 3 → day 7 → day 14 break-up) until the client replies,
@@ -130,6 +132,10 @@ export interface ParsedProspect {
   /** Weak-website leads: their site and what's wrong with it. */
   websiteUrl?: string
   siteIssue?: string
+  /** Online-store leads: the contacts the store publishes. */
+  email?: string
+  ownerEmail?: string
+  contactName?: string
 }
 
 // ─── Invoices ─────────────────────────────────────────────────────────────────

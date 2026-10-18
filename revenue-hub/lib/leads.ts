@@ -19,6 +19,11 @@ export function parseProspects(text: string): ParsedProspect[] {
       const m = block.match(new RegExp(label + '\\s*:?\\s*(.+?)(?:\\n|$)', 'i'))
       return m ? m[1].replace(/\*+/g, '').trim() : undefined
     }
+    // The whole label only: "Owner" must not read the "Owner email:" line.
+    const exactField = (label: string) => {
+      const m = block.match(new RegExp('(?:^|\\n)[\\s*-]*' + label + '\\s*\\*{0,2}\\s*:\\s*(.+?)(?:\\n|$)', 'i'))
+      return m ? m[1].replace(/\*+/g, '').trim() : undefined
+    }
 
     const phoneRaw = field('Phone')
     let phone: string | undefined
@@ -57,6 +62,10 @@ export function parseProspects(text: string): ParsedProspect[] {
       // Weak-website leads: their site and what's wrong with it.
       websiteUrl: field('Website')?.match(/https?:\/\/\S+/)?.[0],
       siteIssue: field('Website issue'),
+      // Online-store leads: the contacts the store publishes on its own site.
+      email: field('Email')?.match(/[\w.%+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0]?.toLowerCase(),
+      ownerEmail: field('Owner email')?.match(/[\w.%+-]+@[\w.-]+\.[a-z]{2,}/i)?.[0]?.toLowerCase(),
+      contactName: exactField('Owner') && !/not published/i.test(exactField('Owner')!) ? exactField('Owner') : undefined,
       country: field('Country'),
       // SocialScout leads carry the post or page they came from.
       sourceUrl: field('Source')?.match(/https?:\/\/\S+/)?.[0]?.replace(/[)\].,]+$/, ''),

@@ -54,3 +54,7 @@ pip install -r requirements.txt && python -m playwright install chromium
 SCRAPER_SECRET=dev GROQ_API_KEY=... uvicorn app:app --port 8000
 curl -X POST localhost:8000/extract -H 'X-Scraper-Secret: dev' -H 'content-type: application/json' -d '{"url":"https://example.com"}'
 ```
+
+The service only reads public websites: localhost, private networks and cloud
+metadata addresses are refused, redirects included. To test against a site on
+your own machine, start it with `SCRAPER_ALLOW_PRIVATE=1` (never set this on Render).

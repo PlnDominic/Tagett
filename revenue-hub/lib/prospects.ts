@@ -16,6 +16,13 @@ export interface ProspectCandidate {
   website?: string
   siteIssue?: string
   siteScore?: number
+  /** Online-store search: the platform and the contacts the store publishes. */
+  platform?: string
+  email?: string
+  /** The owner's own address, when the store publishes one. */
+  ownerEmail?: string
+  contactName?: string
+  socials?: string[]
 }
 
 /** Stable identity for "have we seen this business before", from name + phone digits. */
