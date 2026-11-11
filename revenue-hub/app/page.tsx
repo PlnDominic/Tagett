@@ -7219,10 +7219,17 @@ function WebsiteProjectsView({ prefill, onClearPrefill, onOpenAgent }: {
     setBulkImporting(true)
     setBulkMsg('')
     try {
+      // The built-in list plus every public repo on the GitHub account; the
+      // server skips anything already published (same title or same link).
+      let fromGithub: typeof SEED_PROJECTS = []
+      try {
+        const gh = await safeJson(await fetch('/api/website/github-repos', { cache: 'no-store' }))
+        if (Array.isArray(gh.projects)) fromGithub = gh.projects as typeof SEED_PROJECTS
+      } catch { /* the built-in list still imports */ }
       const res = await fetch('/api/website/bulk', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(SEED_PROJECTS),
+        body: JSON.stringify([...SEED_PROJECTS, ...fromGithub]),
       })
       const d = await safeJson(res)
       if (!res.ok) throw new Error((d.error as string) ?? 'Import failed')

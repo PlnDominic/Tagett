@@ -83,13 +83,15 @@ export async function POST(req: Request) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       const { projects, sha } = await readFile()
       const existingTitles = new Set(projects.map(p => p.title.toLowerCase()))
+      // The same project under another name (a repo imported earlier by its link).
+      const existingLinks = new Set(projects.map(p => p.link?.toLowerCase().replace(/\/+$/, '')).filter(Boolean))
       let maxId = projects.reduce((m, p) => Math.max(m, p.id), 0)
       added = []
       skipped = []
 
       for (const p of incoming) {
         if (!p.title) continue
-        if (existingTitles.has(p.title.toLowerCase())) {
+        if (existingTitles.has(p.title.toLowerCase()) || (p.link && existingLinks.has(p.link.toLowerCase().replace(/\/+$/, '')))) {
           skipped.push(p.title)
           continue
         }
@@ -104,6 +106,7 @@ export async function POST(req: Request) {
           updatedAt: new Date().toISOString(),
         } as WebsiteProject)
         existingTitles.add(p.title.toLowerCase())
+        if (p.link) existingLinks.add(p.link.toLowerCase().replace(/\/+$/, ''))
         added.push(p.title)
       }
 
