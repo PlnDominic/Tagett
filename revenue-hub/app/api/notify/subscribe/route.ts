@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabase } from '@/lib/supabase'
+import { denyUnlessAdmin } from '@/lib/auth'
 
+// Admin devices only: the daily push lists follow-ups across every deal, so a
+// rep's phone must not be on the receiving end.
 export async function POST(req: NextRequest) {
+  const denied = denyUnlessAdmin(req)
+  if (denied) return denied
   try {
     const subscription = await req.json()
     const endpoint: string = subscription?.endpoint

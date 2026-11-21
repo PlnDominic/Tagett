@@ -1,7 +1,8 @@
 import { needsConsent } from '@/lib/email-rules'
 import { emailAcceptsMail } from '@/lib/mail-check'
 import { NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase'
+import { getSupabase, writeToleratingSchemaDrift } from '@/lib/supabase'
+import { getActor, isPrivileged } from '@/lib/auth'
 import { DAILY_LIMIT, OUTREACH_FROM, outreachConfigured, sendOutreachEmail } from '@/lib/outreach-mail'
 
 export const dynamic = 'force-dynamic'
@@ -11,6 +12,11 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 function startOfTodayUTC(): string {
   const d = new Date()
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())).toISOString()
+}
+
+// email_log gained sent_by columns with accounts; tolerate a missed migration.
+function logEmail(sb: ReturnType<typeof getSupabase>, row: Record<string, unknown>) {
+  return writeToleratingSchemaDrift([row], rows => sb.from('email_log').insert(rows))
 }
 
 // GET — how many outreach emails went out today, against the daily limit.
@@ -29,6 +35,7 @@ export async function GET() {
 // business address. Only ever called from an explicit Send click in the app
 // (behind the session middleware); nothing sends on its own.
 export async function POST(req: Request) {
+  const actor = getActor(req)
   const body = await req.json().catch(() => ({})) as { to?: string; subject?: string; text?: string; dealId?: string; country?: string; consent?: boolean }
   const to = body.to?.trim().toLowerCase() ?? ''
   const subject = body.subject?.trim() ?? ''
@@ -49,6 +56,19 @@ export async function POST(req: Request) {
   }
 
   const sb = getSupabase()
+
+  // A rep may only email on behalf of a deal they own, and never an address a
+  // teammate has already emailed — that's the overlap this is here to stop.
+  if (!isPrivileged(actor)) {
+    if (!body.dealId) return NextResponse.json({ error: 'Open the deal you are working to send from it.' }, { status: 400 })
+    const { data: deal } = await sb.from('deals').select('owner_id').eq('id', body.dealId).maybeSingle()
+    if (!deal || deal.owner_id !== actor.id) return NextResponse.json({ error: 'That deal is not assigned to you.' }, { status: 403 })
+  }
+  const { data: prior } = await sb.from('email_log').select('sent_by_name').eq('to_email', to).eq('status', 'sent').limit(1).maybeSingle()
+  if (prior && (prior as { sent_by_name?: string | null }).sent_by_name && (prior as { sent_by_name?: string }).sent_by_name !== actor.name) {
+    return NextResponse.json({ error: `${(prior as { sent_by_name?: string }).sent_by_name} has already emailed ${to}, so this was not sent.` }, { status: 409 })
+  }
+
   const { data: optedOut } = await sb.from('email_optouts').select('email').eq('email', to).maybeSingle()
   if (optedOut) return NextResponse.json({ error: `${to} asked not to be emailed, so this was not sent.` }, { status: 409 })
 
@@ -62,9 +82,9 @@ export async function POST(req: Request) {
     await sendOutreachEmail({ to, subject, text })
   } catch (err) {
     const error = err instanceof Error ? err.message : 'Send failed'
-    await sb.from('email_log').insert({ deal_id: body.dealId ?? null, to_email: to, subject, body: text, status: 'failed', error })
+    await logEmail(sb, { deal_id: body.dealId ?? null, to_email: to, subject, body: text, status: 'failed', error, sent_by: actor.id, sent_by_name: actor.name || null })
     return NextResponse.json({ error: `The email server refused it: ${error}` }, { status: 502 })
   }
-  await sb.from('email_log').insert({ deal_id: body.dealId ?? null, to_email: to, subject, body: text, status: 'sent' })
+  await logEmail(sb, { deal_id: body.dealId ?? null, to_email: to, subject, body: text, status: 'sent', sent_by: actor.id, sent_by_name: actor.name || null })
   return NextResponse.json({ ok: true, sentToday: (count ?? 0) + 1, dailyLimit: DAILY_LIMIT })
 }

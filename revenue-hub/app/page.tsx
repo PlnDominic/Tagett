@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, createContext, useContext } from 'react'
 import { createPortal } from 'react-dom'
 import { getSupabaseBrowser } from '@/lib/supabase-browser'
 import { prospectKey, type ProspectCandidate } from '@/lib/prospects'
@@ -752,7 +752,7 @@ const COUNCIL_AGENT_IDS: AgentId[] = ['contrarian', 'firstp', 'expansionist', 'o
 // ─── Mobile tab groupings ─────────────────────────────────────────────────────
 const WORK_VIEWS: ViewId[]  = ['pipeline', 'clients', 'invoices', 'prospect-map']
 const AGENT_VIEWS: ViewId[] = ['council', ...MAIN_AGENT_IDS] as ViewId[]
-const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality', 'analytics']
+const MORE_VIEWS: ViewId[]  = ['social', 'website', 'history', 'data-quality', 'analytics', 'team']
 function getMobileTab(view: ViewId): MobileTab {
   if (WORK_VIEWS.includes(view))  return 'work'
   if (AGENT_VIEWS.includes(view)) return 'agents'
@@ -2150,12 +2150,57 @@ function ThemeToggle({ theme, onToggle }: { theme: 'dark' | 'light'; onToggle: (
   )
 }
 
+// ─── Who is signed in ─────────────────────────────────────────────────────────
+// Admins see the whole business; reps see only the deals assigned to or claimed
+// by them (the API enforces it — this only decides which screens to show).
+interface Viewer { id: string | null; name: string; email: string; role: 'admin' | 'member' }
+const ViewerContext = createContext<Viewer>({ id: null, name: '', email: '', role: 'admin' })
+const useViewer = () => useContext(ViewerContext)
+
+// Everything this app keeps in the browser is per person. On a shared computer
+// the next rep to sign in must not see (or sync up) the previous rep's deals.
+const LAST_USER_KEY = 'tagett-last-user'
+function clearLocalWorkData() {
+  try {
+    const keep = new Set(['revenue-hub-theme', 'tagett-onboarded'])
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('tagett-') && !keep.has(k)) localStorage.removeItem(k)
+    }
+    localStorage.removeItem(LAST_USER_KEY)
+  } catch { /* private mode */ }
+}
+
+function showToast(message: string) {
+  if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('tagett-toast', { detail: message }))
+}
+function ToastHost() {
+  const [msgs, setMsgs] = useState<Array<{ id: number; text: string }>>([])
+  useEffect(() => {
+    const on = (e: Event) => {
+      const id = Date.now() + Math.random()
+      setMsgs(m => [...m.slice(-3), { id, text: String((e as CustomEvent).detail) }])
+      setTimeout(() => setMsgs(m => m.filter(x => x.id !== id)), 7000)
+    }
+    window.addEventListener('tagett-toast', on)
+    return () => window.removeEventListener('tagett-toast', on)
+  }, [])
+  if (msgs.length === 0) return null
+  return (
+    <div style={{ position: 'fixed', left: 0, right: 0, bottom: 'calc(16px + env(safe-area-inset-bottom))', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, zIndex: 9999, pointerEvents: 'none', padding: '0 16px' }}>
+      {msgs.map(m => (
+        <div key={m.id} role="status" style={{ maxWidth: 460, background: SURFACE2, color: TEXT, border: `1px solid ${GOLD}55`, borderRadius: 10, padding: '10px 14px', fontSize: 13, fontFamily: FONT_BODY, boxShadow: '0 10px 30px rgba(0,0,0,0.4)' }}>{m.text}</div>
+      ))}
+    </div>
+  )
+}
+
 function SignOutButton() {
   const [loading, setLoading] = useState(false)
   const handleSignOut = async () => {
     setLoading(true)
     try {
       await fetch('/api/auth/signout', { method: 'POST' })
+      clearLocalWorkData()
     } catch {
       // Ignore — navigate to /login below regardless so the button never gets stuck.
     }
@@ -5031,6 +5076,7 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
   onDragStart: () => void
   onDragEnd: () => void
 }) {
+  const viewer = useViewer()
   const now = Date.now()
   const isOverdue = !!deal.followUpAt && deal.followUpAt < now
   const staleMs = STAGE_STALE_MS[deal.stage]
@@ -5125,6 +5171,9 @@ function DealCard({ deal, onDelete, onUpdate, onOpenAgent, onPublishToWebsite, o
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 13, color: deal.stage === 'lost' ? MUTED : TEXT, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{deal.name}</div>
+          {viewer.role === 'admin' && (
+            <div style={{ fontSize: 10, fontFamily: FONT_BODY, color: deal.ownerName ? GOLD : MUTED, marginTop: 1 }}>{deal.ownerName ? `Owner: ${deal.ownerName}` : 'Unassigned'}</div>
+          )}
           {deal.sourceUrl && (
             <a href={deal.sourceUrl} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} title="The post or page this lead came from" style={{ fontSize: 11, color: GOLD, fontFamily: FONT_BODY, textDecoration: 'none' }}>↗ Where they were found</a>
           )}
@@ -9699,7 +9748,182 @@ function ErrorBanner({ error, onDismiss }: { error: string; onDismiss: () => voi
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// ─── Team (admin) ─────────────────────────────────────────────────────────────
+interface TeamRow { id: string; email: string; name: string; role: 'admin' | 'member'; active: boolean; createdAt: string; lastSignInAt: string | null; deals: number; contacted: number; closed: number }
+
+function TeamView() {
+  const viewer = useViewer()
+  const [members, setMembers] = useState<TeamRow[]>([])
+  const [unassigned, setUnassigned] = useState(0)
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [err, setErr] = useState('')
+  const [form, setForm] = useState({ name: '', email: '', password: '' })
+  const [created, setCreated] = useState<{ name: string; email: string; password: string; reset?: boolean } | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetchAuthed('/api/team', { cache: 'no-store' })
+      const j = await safeJson(r)
+      if (!r.ok) { setErr(j.error ?? 'Could not load the team.'); return }
+      setMembers(j.members ?? []); setUnassigned(j.unassigned ?? 0); setErr('')
+    } catch { /* redirected to login */ } finally { setLoading(false) }
+  }, [])
+  useEffect(() => { void load() }, [load])
+
+  const call = async (key: string, url: string, init: RequestInit) => {
+    setBusy(key); setErr('')
+    try {
+      const r = await fetchAuthed(url, { ...init, headers: { 'content-type': 'application/json' } })
+      const j = await safeJson(r)
+      if (!r.ok) { setErr(j.error ?? 'That did not work.'); return null }
+      return j
+    } catch { return null } finally { setBusy(null) }
+  }
+
+  const addMember = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const j = await call('add', '/api/team', { method: 'POST', body: JSON.stringify({ ...form, role: 'member' }) })
+    if (j) { setCreated({ name: j.name, email: j.email, password: j.password }); setForm({ name: '', email: '', password: '' }); void load() }
+  }
+  const resetPassword = async (m: TeamRow) => {
+    if (!confirm(`Set a new password for ${m.name}? Their current password stops working.`)) return
+    const j = await call(m.id, `/api/team/${m.id}`, { method: 'PATCH', body: JSON.stringify({ resetPassword: true }) })
+    if (j?.password) setCreated({ name: m.name, email: m.email, password: j.password, reset: true })
+  }
+  const setActive = async (m: TeamRow, active: boolean) => {
+    if (!active && !confirm(`Deactivate ${m.name}? They are signed out, and their ${m.deals} deal${m.deals === 1 ? '' : 's'} go back to the unassigned pool.`)) return
+    const j = await call(m.id, `/api/team/${m.id}`, { method: 'PATCH', body: JSON.stringify({ active }) })
+    if (j) { if (j.released) showToast(`${j.released} deal${j.released === 1 ? '' : 's'} returned to the unassigned pool.`); void load() }
+  }
+  const distribute = async () => {
+    const j = await call('dist', '/api/team/assign', { method: 'POST', body: JSON.stringify({ distribute: true }) })
+    if (j) { showToast(`${j.assigned} deal${j.assigned === 1 ? '' : 's'} shared out between the team.`); void load() }
+  }
+
+  const activeReps = members.filter(m => m.role === 'member' && m.active).length
+  const input: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: SURFACE2, color: TEXT, fontSize: 13, fontFamily: FONT_BODY, minWidth: 0, flex: '1 1 160px' }
+  const btn: React.CSSProperties = { padding: '8px 14px', borderRadius: 8, border: `1px solid ${GOLD}`, background: GOLD, color: '#fff', fontSize: 13, fontFamily: FONT_HEADING, fontWeight: 600, cursor: 'pointer' }
+  const ghost: React.CSSProperties = { padding: '5px 10px', borderRadius: 8, border: `1px solid ${BORDER}`, background: 'transparent', color: TEXT, fontSize: 12, fontFamily: FONT_BODY, cursor: 'pointer' }
+  const card: React.CSSProperties = { background: SURFACE, border: `1px solid ${BORDER}`, borderRadius: 12, padding: 16, marginBottom: 14 }
+  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short' }) : 'Never')
+
+  return (
+    <div style={{ flex: 1, overflowY: 'auto', padding: '20px 16px 40px' }}>
+      <div style={{ maxWidth: 860, margin: '0 auto' }}>
+        <div style={{ fontFamily: FONT_HEADING, fontWeight: 700, fontSize: 20, color: TEXT }}>Team</div>
+        <div style={{ fontSize: 13, color: MUTED, fontFamily: FONT_BODY, margin: '4px 0 16px' }}>
+          Each person signs in with their own account and works only their own deals. A business can sit in one person&apos;s pipeline at a time, and nobody can email an address a teammate has already contacted.
+        </div>
+
+        {err && <div style={{ ...card, borderColor: `${GOLD}66`, color: '#f27a7a', fontSize: 13, fontFamily: FONT_BODY }}>{err}</div>}
+
+        {created && (
+          <div style={{ ...card, borderColor: `${GOLD}88` }}>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{created.reset ? `New password for ${created.name}` : `Account created for ${created.name}`}</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, margin: '4px 0 10px' }}>Send them these details now. The password is not shown again.</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 13, color: TEXT, background: SURFACE2, borderRadius: 8, padding: '10px 12px', userSelect: 'all', wordBreak: 'break-all' }}>
+              Email: {created.email}<br />Password: {created.password}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+              <button style={ghost} onClick={() => { void navigator.clipboard?.writeText(`Email: ${created.email}\nPassword: ${created.password}`); showToast('Copied.') }}>Copy</button>
+              <button style={ghost} onClick={() => setCreated(null)}>Done</button>
+            </div>
+          </div>
+        )}
+
+        <form onSubmit={addMember} style={card}>
+          <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT, marginBottom: 10 }}>Add a team member</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            <input style={input} placeholder="Full name" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+            <input style={input} type="email" placeholder="Email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required />
+            <input style={input} placeholder="Password (blank = generate one)" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} autoComplete="off" />
+            <button type="submit" style={{ ...btn, opacity: busy === 'add' ? 0.7 : 1 }} disabled={busy === 'add'}>{busy === 'add' ? 'Creating…' : 'Create account'}</button>
+          </div>
+        </form>
+
+        <div style={{ ...card, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>{unassigned} unassigned deal{unassigned === 1 ? '' : 's'}</div>
+            <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, marginTop: 2 }}>Only admins can see these. Share them out so every rep starts with a separate list.</div>
+          </div>
+          <button style={{ ...btn, opacity: unassigned === 0 || activeReps === 0 || busy === 'dist' ? 0.5 : 1 }} disabled={unassigned === 0 || activeReps === 0 || busy === 'dist'} onClick={distribute}>
+            {activeReps === 0 ? 'Add a member first' : `Split between ${activeReps} rep${activeReps === 1 ? '' : 's'}`}
+          </button>
+        </div>
+
+        <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+          {loading ? <div style={{ padding: 16, color: MUTED, fontSize: 13 }}>Loading…</div> : members.map((m, i) => (
+            <div key={m.id} style={{ padding: '12px 16px', borderTop: i ? `1px solid ${BORDER}` : 'none', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', opacity: m.active ? 1 : 0.55 }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0 }}>
+                <div style={{ fontFamily: FONT_HEADING, fontWeight: 600, fontSize: 14, color: TEXT }}>
+                  {m.name}
+                  <span style={{ marginLeft: 8, fontSize: 10, padding: '2px 7px', borderRadius: 10, background: `${GOLD}20`, color: GOLD, fontFamily: FONT_BODY, fontWeight: 500 }}>{m.role === 'admin' ? 'Admin' : m.active ? 'Sales' : 'Deactivated'}</span>
+                </div>
+                <div style={{ fontSize: 12, color: MUTED, fontFamily: FONT_BODY, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.email} · last sign-in {fmt(m.lastSignInAt)}</div>
+              </div>
+              <div style={{ display: 'flex', gap: 14, fontSize: 12, fontFamily: FONT_BODY, color: MUTED }}>
+                <span><b style={{ color: TEXT, fontSize: 15 }}>{m.deals}</b> deals</span>
+                <span><b style={{ color: TEXT, fontSize: 15 }}>{m.contacted}</b> contacted</span>
+                <span><b style={{ color: TEXT, fontSize: 15 }}>{m.closed}</b> closed</span>
+              </div>
+              {m.id !== viewer.id && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button style={ghost} disabled={busy === m.id} onClick={() => resetPassword(m)}>Reset password</button>
+                  <button style={ghost} disabled={busy === m.id} onClick={() => setActive(m, !m.active)}>{m.active ? 'Deactivate' : 'Reactivate'}</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Page() {
+  const [viewer, setViewer] = useState<Viewer | null>(null)
+
+  // Learn who is signed in before anything renders, so a rep never sees an
+  // admin screen flash up, and so browser-stored work from a different person
+  // is cleared first (see clearLocalWorkData).
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/team/me', { cache: 'no-store' })
+      .then(r => (r.ok ? r.json() : null))
+      .then((me: Viewer | null) => {
+        if (cancelled) return
+        if (!me || (me.role !== 'admin' && me.role !== 'member')) { setViewer({ id: null, name: '', email: '', role: 'admin' }); return }
+        try {
+          const last = localStorage.getItem(LAST_USER_KEY)
+          if (me.id && last && last !== me.id) {
+            clearLocalWorkData()
+            localStorage.setItem(LAST_USER_KEY, me.id)
+            window.location.reload()
+            return
+          }
+          if (me.id) localStorage.setItem(LAST_USER_KEY, me.id)
+        } catch { /* private mode */ }
+        setViewer(me)
+      })
+      // Session-expiry redirects land on /login's HTML; fall back to the single-operator view
+      // rather than hanging on a blank screen.
+      .catch(() => { if (!cancelled) setViewer({ id: null, name: '', email: '', role: 'admin' }) })
+    return () => { cancelled = true }
+  }, [])
+
+  if (!viewer) return <div style={{ height: '100%', background: BG }} />
+  return (
+    <ViewerContext.Provider value={viewer}>
+      <PageInner />
+      <ToastHost />
+    </ViewerContext.Provider>
+  )
+}
+
+function PageInner() {
+  const viewer = useViewer()
+  const isAdmin = viewer.role === 'admin'
   const isMobile = useIsMobile()
   const { theme, toggleTheme } = useTheme()
   const { done: onboarded, complete: completeOnboarding } = useOnboarding()
@@ -9929,7 +10153,17 @@ export default function Page() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(deals),
       })
-        .then(r => { if (r.ok) syncedSeqRef.current = seq })
+        .then(async r => {
+          if (!r.ok) return
+          syncedSeqRef.current = seq
+          // Rows the server refused (someone else's deal, or a business a teammate already has).
+          const j = await r.json().catch(() => ({})) as { rejected?: string[] }
+          if (j.rejected?.length) {
+            const gone = new Set(j.rejected)
+            setDeals(prev => prev.filter(d => !gone.has(d.id)))
+            showToast(`${gone.size} deal${gone.size === 1 ? ' was' : 's were'} removed from your list: already assigned to someone else.`)
+          }
+        })
         .catch(() => {})
     }, 1500)
   }, [deals])
@@ -10076,6 +10310,23 @@ export default function Page() {
     handleHandoff(agentId, prompt)
   }, [handleHandoff])
 
+  // The server refuses a business that is already in someone's pipeline (409),
+  // so two reps never work the same prospect. Take it back off the screen and
+  // say who has it, instead of keeping a deal nobody owns.
+  const saveNewDeal = useCallback((deal: Deal) => {
+    return fetch('/api/deals', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(deal),
+    }).then(async r => {
+      if (r.status === 409) {
+        const j = await r.json().catch(() => ({})) as { error?: string }
+        setDeals(prev => prev.filter(d => d.id !== deal.id))
+        showToast(j.error ?? `${deal.name} is already being worked by someone else.`)
+      }
+    }).catch(() => {})
+  }, [])
+
   const handleAddDeal = useCallback((d: Omit<Deal, 'id' | 'createdAt'>) => {
     const deal: Deal = { ...d, id: Date.now().toString(), createdAt: Date.now() }
     setDeals(prev => [...prev, deal])
@@ -10083,12 +10334,8 @@ export default function Page() {
     // PUT — that delay was the window where a concurrent GET (e.g. the
     // hydrate-on-mount fetch) could overwrite local state and drop this deal
     // before it ever reached Supabase.
-    fetch('/api/deals', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(deal),
-    }).catch(() => {})
-  }, [])
+    saveNewDeal(deal)
+  }, [saveNewDeal])
 
   const handleImportProspects = useCallback(async (selected: ParsedProspect[], followUpDays: number) => {
     const base = Date.now()
@@ -10119,13 +10366,7 @@ export default function Page() {
       stageChangedAt: base + i,
     }))
     setDeals(prev => [...prev, ...newDeals])
-    newDeals.forEach(deal => {
-      fetch('/api/deals', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(deal),
-      }).catch(() => {})
-    })
+    newDeals.forEach(deal => { void saveNewDeal(deal) })
     setImportModal(null)
     // Maps can miss a website the business does have; re-check each new lead
     // the same way the deal card's Verify button does, one at a time, so the
@@ -10147,7 +10388,7 @@ export default function Page() {
         } catch { /* non-fatal: the card's Verify button still works */ }
       }
     })()
-  }, [])
+  }, [saveNewDeal])
 
   const handleMoveDeal = useCallback((id: string, stage: DealStage) => {
     editSeqRef.current++
@@ -10300,13 +10541,13 @@ export default function Page() {
       <>
         {viewHeader('Work')}
         <SubTabs
-          items={[{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }, { id: 'invoices', label: 'Invoices' }, { id: 'prospect-map', label: '📍 Find' }]}
+          items={isAdmin ? [{ id: 'pipeline', label: 'Deals' }, { id: 'clients', label: 'Clients' }, { id: 'invoices', label: 'Invoices' }, { id: 'prospect-map', label: '📍 Find' }] : [{ id: 'pipeline', label: 'Deals' }, { id: 'prospect-map', label: '📍 Find' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
         {activeView === 'pipeline'      && <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} onRetainerAdded={refreshRetainers} />}
-        {activeView === 'clients'       && <ClientsView onOpenAgent={handleOpenAgent} />}
-        {activeView === 'invoices'      && <InvoicesView deals={deals} />}
+        {activeView === 'clients'       && isAdmin && <ClientsView onOpenAgent={handleOpenAgent} />}
+        {activeView === 'invoices'      && isAdmin && <InvoicesView deals={deals} />}
         {activeView === 'prospect-map'  && <ProspectMapView onAdd={handleAddDeal} />}
       </>
     )
@@ -10316,14 +10557,15 @@ export default function Page() {
       <>
         {viewHeader('More')}
         <SubTabs
-          items={[{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'analytics', label: 'Analytics' }, { id: 'history', label: 'History' }, { id: 'data-quality', label: 'Data' }]}
+          items={isAdmin ? [{ id: 'social', label: 'Social' }, { id: 'website', label: 'Website' }, { id: 'analytics', label: 'Analytics' }, { id: 'history', label: 'History' }, { id: 'data-quality', label: 'Data' }, { id: 'team', label: 'Team' }] : [{ id: 'analytics', label: 'Analytics' }, { id: 'data-quality', label: 'Data' }]}
           active={activeView as ViewId}
           onSelect={(v) => { setActiveView(v); setError(null) }}
         />
-        {activeView === 'social'        && <SocialCalendarView deals={deals} />}
-        {activeView === 'website'       && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />}
+        {activeView === 'team'          && isAdmin && <TeamView />}
+        {activeView === 'social'        && isAdmin && <SocialCalendarView deals={deals} />}
+        {activeView === 'website'       && isAdmin && <WebsiteProjectsView prefill={websitePrefill} onClearPrefill={() => setWebsitePrefill(null)} onOpenAgent={handleOpenAgent} />}
         {activeView === 'analytics'     && <AnalyticsView deals={deals} />}
-        {activeView === 'history'       && <AgentRunHistory />}
+        {activeView === 'history'       && isAdmin && <AgentRunHistory />}
         {activeView === 'data-quality'  && <DataQualityView deals={deals} onUpdate={handleUpdateDeal} />}
       </>
     )
@@ -10426,7 +10668,13 @@ export default function Page() {
     )
   }
 
+  // Screens that belong to the business, not a rep. The API refuses them too.
+  const ADMIN_VIEWS: ViewId[] = ['website', 'history', 'clients', 'invoices', 'social', 'team']
   const renderMainContent = () => {
+    if (!isAdmin && ADMIN_VIEWS.includes(activeView)) return (
+      <DealPipeline deals={deals} onAdd={handleAddDeal} onMove={handleMoveDeal} onDelete={handleDeleteDeal} onUpdate={handleUpdateDeal} onOpenAgent={handleOpenAgent} onPublishToWebsite={handlePublishDealToWebsite} onSetFollowUp={handleSetFollowUp} onRetainerAdded={refreshRetainers} />
+    )
+    if (activeView === 'team') return <TeamView />
     if (activeView === 'home') return (
       <CommandCenter deals={deals} mrrGHS={mrrGHS} theme={theme} onToggleTheme={toggleTheme} notifToggle={notifToggle} onNavigate={(v) => { setActiveView(v); setError(null) }} onRunBrief={handleRunBrief} briefResult={briefResult} briefLoading={briefLoading} onUpdateDeal={handleUpdateDeal} />
     )
@@ -10495,13 +10743,14 @@ export default function Page() {
           </button>
           {renderDesktopNavBtn('home', '⌂', 'Command Center', 'Goal, brief & overview')}
           {renderDesktopNavBtn('pipeline', '◫', 'Deal Pipeline', 'Track deals by stage')}
-          {renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
+          {isAdmin && renderDesktopNavBtn('website', '↑', 'Website Projects', 'Publish to ecstasytechnologies.com')}
           {renderDesktopNavBtn('council', '⊙', 'Council Chamber', 'All 5 advisors respond together')}
-          {renderDesktopNavBtn('history', '◷', 'Run History', 'Browse every autonomous agent run')}
-          {renderDesktopNavBtn('clients', '👥', 'Clients', 'Contact database')}
-          {renderDesktopNavBtn('invoices', '◎', 'Invoices', 'Billing & payment tracking')}
+          {isAdmin && renderDesktopNavBtn('history', '◷', 'Run History', 'Browse every autonomous agent run')}
+          {isAdmin && renderDesktopNavBtn('clients', '👥', 'Clients', 'Contact database')}
+          {isAdmin && renderDesktopNavBtn('invoices', '◎', 'Invoices', 'Billing & payment tracking')}
           {renderDesktopNavBtn('prospect-map', '📍', 'Find Prospects', 'Search local businesses in Ghana')}
-          {renderDesktopNavBtn('social', '⌖', 'Social Calendar', 'Schedule & publish content')}
+          {isAdmin && renderDesktopNavBtn('social', '⌖', 'Social Calendar', 'Schedule & publish content')}
+          {isAdmin && renderDesktopNavBtn('team', '☻', 'Team', 'Accounts, assignments & progress')}
           {renderDesktopNavBtn('data-quality', '◈', 'Data Quality', 'Deduplicate & clean CRM')}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 4px 6px' }}>
             <div style={{ flex: 1, height: 1, background: BORDER }} />
@@ -10511,6 +10760,9 @@ export default function Page() {
           {MAIN_AGENT_IDS.map(renderAgentNavBtn)}
         </nav>
         <div style={{ borderTop: `1px solid ${BORDER}` }}>
+          <div style={{ padding: '10px 16px 0', fontSize: 11, color: MUTED, fontFamily: FONT_BODY, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={viewer.email}>
+            {viewer.name || viewer.email || 'Signed in'}{!isAdmin && ' · Sales'}
+          </div>
           <div style={{ padding: '10px 16px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             {notifToggle}
             <ThemeToggle theme={theme} onToggle={toggleTheme} />

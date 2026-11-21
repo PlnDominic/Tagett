@@ -345,3 +345,19 @@ ALTER TABLE website_projects ENABLE ROW LEVEL SECURITY;
 -- Never expose the service role key to the browser.
 -- If you add multi-user auth later, add per-user policies here.
 -- ============================================================
+
+
+-- ─── 13. TEAM ACCOUNTS & DEAL OWNERSHIP ──────────────────────────────────────
+-- Sales reps have their own logins (created by an admin on the Team page; the
+-- role lives in Supabase Auth app_metadata). Every deal belongs to exactly one
+-- person so nobody's outreach overlaps. NULL owner = unassigned pool (all deals
+-- that existed before accounts); only admins see those until they're assigned.
+
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS owner_id   UUID;
+ALTER TABLE deals ADD COLUMN IF NOT EXISTS owner_name TEXT;
+CREATE INDEX IF NOT EXISTS deals_owner_id_idx ON deals (owner_id);
+
+-- Who sent each outreach email, so a teammate can't email an address that
+-- someone else already contacted.
+ALTER TABLE email_log ADD COLUMN IF NOT EXISTS sent_by      UUID;
+ALTER TABLE email_log ADD COLUMN IF NOT EXISTS sent_by_name TEXT;

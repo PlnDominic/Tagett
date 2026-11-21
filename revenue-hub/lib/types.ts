@@ -11,7 +11,7 @@ export interface Message {
 }
 
 export type AgentId = 'prospect' | 'content' | 'scope' | 'revenue' | 'viral' | 'scout' | 'contrarian' | 'firstp' | 'expansionist' | 'outsider' | 'executor'
-export type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | 'prospect-map' | AgentId
+export type ViewId = 'home' | 'pipeline' | 'website' | 'council' | 'history' | 'clients' | 'invoices' | 'social' | 'data-quality' | 'analytics' | 'prospect-map' | 'team' | AgentId
 
 export type MobileTab = 'home' | 'work' | 'agents' | 'more'
 
@@ -107,6 +107,9 @@ export interface Deal {
   siteIssue?: string
   /** The owner or contact person the business publishes (e.g. on its Impressum). */
   contactName?: string
+  /** Who is working this deal. Set by the server; never edited from the client. */
+  ownerId?: string
+  ownerName?: string
   // Multi-touch follow-up sequence: number of touches sent so far (1 = the
   // initial pitch). The follow-up cron advances this and schedules the next
   // touch (day 3 → day 7 → day 14 break-up) until the client replies,

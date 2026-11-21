@@ -201,3 +201,10 @@ alter table deals add column if not exists site_issue text;
 
 -- The owner or contact person a business publishes (online-store leads)
 alter table deals add column if not exists contact_name text;
+
+-- Team accounts: each deal has one owner (NULL = unassigned pool, admin-only).
+alter table deals add column if not exists owner_id uuid;
+alter table deals add column if not exists owner_name text;
+create index if not exists deals_owner_id_idx on deals (owner_id);
+alter table email_log add column if not exists sent_by uuid;
+alter table email_log add column if not exists sent_by_name text;
